@@ -30,8 +30,8 @@ const estadoInicial: EstadoSistema = {
   ultimoNumero: 0,
   totalAtendidos: 0,
   numerosLlamados: 0,
-  fechaInicio: new Date().toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
-  ultimoReinicio: new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
+  fechaInicio: new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }), // YYYY-MM-DD
+  ultimoReinicio: new Date().toISOString(),
   tickets: [],
 }
 
@@ -95,26 +95,21 @@ async function escribirDatos(estado: EstadoSistema): Promise<void> {
 
 // Función para verificar si debe reiniciarse
 function debeReiniciarse(estado: EstadoSistema): boolean {
+  // Obtener fecha actual en Argentina
   const ahora = new Date()
-  const ahoraArgentina = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }))
-  const ultimoReinicio = new Date(estado.ultimoReinicio)
-  const ultimoReinicioArgentina = new Date(
-    ultimoReinicio.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }),
-  )
+  const fechaActualArgentina = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }))
 
-  // Obtener la fecha actual y la fecha del último reinicio (solo fecha, sin hora) en zona horaria argentina
-  const fechaActual = new Date(ahoraArgentina.getFullYear(), ahoraArgentina.getMonth(), ahoraArgentina.getDate())
-  const fechaUltimoReinicio = new Date(
-    ultimoReinicioArgentina.getFullYear(),
-    ultimoReinicioArgentina.getMonth(),
-    ultimoReinicioArgentina.getDate(),
-  )
+  // Obtener solo la fecha (sin hora) como string para comparar
+  const fechaHoyString = fechaActualArgentina.toISOString().split("T")[0] // YYYY-MM-DD
 
-  // Solo reiniciar si es un día diferente al último reinicio
-  const esDiaDiferente = fechaActual.getTime() > fechaUltimoReinicio.getTime()
+  // Comparar con la fecha de inicio del estado
+  const fechaInicioString = estado.fechaInicio
+
+  // Si las fechas son diferentes, necesita reiniciarse
+  const esDiaDiferente = fechaHoyString !== fechaInicioString
 
   if (esDiaDiferente) {
-    console.log("Reinicio automático: nuevo día detectado")
+    console.log(`Reinicio automático: fecha actual ${fechaHoyString} vs fecha inicio ${fechaInicioString}`)
     return true
   }
 
@@ -200,8 +195,8 @@ export async function GET() {
         ultimoNumero: 0,
         totalAtendidos: 0,
         numerosLlamados: 0,
-        fechaInicio: ahora.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
-        ultimoReinicio: ahora.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
+        fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }), // YYYY-MM-DD
+        ultimoReinicio: ahora.toISOString(),
         tickets: [],
       }
 
@@ -258,8 +253,8 @@ export async function POST(request: NextRequest) {
         ultimoNumero: 0,
         totalAtendidos: 0,
         numerosLlamados: 0,
-        fechaInicio: ahora.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
-        ultimoReinicio: ahora.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
+        fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }), // YYYY-MM-DD
+        ultimoReinicio: ahora.toISOString(),
         tickets: [],
       }
 
@@ -293,6 +288,12 @@ export async function POST(request: NextRequest) {
 
         console.log("Ticket generado:", nuevoTicket)
 
+        console.log("Estado antes de actualizar:", {
+          numeroActual: estado.numeroActual,
+          totalAtendidos: estado.totalAtendidos,
+          ticketsLength: estado.tickets.length,
+        })
+
         // Actualizar estado
         estado = {
           ...estado,
@@ -301,6 +302,13 @@ export async function POST(request: NextRequest) {
           totalAtendidos: estado.totalAtendidos + 1,
           tickets: [...estado.tickets, nuevoTicket],
         }
+
+        console.log("Estado después de actualizar:", {
+          numeroActual: estado.numeroActual,
+          totalAtendidos: estado.totalAtendidos,
+          ticketsLength: estado.tickets.length,
+          ultimoTicket: estado.tickets[estado.tickets.length - 1],
+        })
 
         // Guardar inmediatamente en Redis
         await escribirDatos(estado)
@@ -362,8 +370,8 @@ export async function POST(request: NextRequest) {
           ultimoNumero: 0,
           totalAtendidos: 0,
           numerosLlamados: 0,
-          fechaInicio: ahora.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
-          ultimoReinicio: ahora.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
+          fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }), // YYYY-MM-DD
+          ultimoReinicio: ahora.toISOString(),
           tickets: [],
         }
 
@@ -409,8 +417,8 @@ export async function POST(request: NextRequest) {
           ultimoNumero: 0,
           totalAtendidos: 0,
           numerosLlamados: 0,
-          fechaInicio: ahora.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
-          ultimoReinicio: ahora.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
+          fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }), // YYYY-MM-DD
+          ultimoReinicio: ahora.toISOString(),
           tickets: [],
         }
 
