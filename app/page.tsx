@@ -3,11 +3,10 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Printer, Users, Clock, Wifi, WifiOff, AlertTriangle, Database, History, Bug } from "lucide-react"
+import { Printer, Database, Bug } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 import TicketDisplay from "@/components/TicketDisplay"
 import NombreModal from "@/components/NombreModal"
-import { SpeedInsights } from "@vercel/speed-insights/next"
 
 const FRASES_ALEATORIAS = [
   "¡Gracias por visitarnos!",
@@ -20,16 +19,16 @@ const FRASES_ALEATORIAS = [
   "¡Que tenga un excelente día!",
   "Apreciamos su visita",
   "Estamos para ayudarle",
-  "¡Hoy puede ser un gran día para decorar una torta o una fiesta! 🎉🍰 ", 
-"Mientras esperás tu turno, pensá qué excusa vas a dar para llevarte todo.😉🛍️" , 
-"Decorá tu día con colores, glaseado… y un poco de ZOCO. 🌈✨" , 
-"Respirá hondo… estás en el lugar donde empiezan las fiestas.🎈💃" ,
-"No sos vos, es tu casa que necesita más cotillón 🏡🎊",
-"Tranquilo… en ZOCO los turnos son rápidos y las ideas, infinitas 🧠⚡",
-"¡ZOCOnsejo del día! Nunca subestimes el poder de una buena servilleta temática. 🍽️🎁",
-"Quedate tranquilo, ya te toca. Y sí, podés llevarte ese globo gigante. 🎈🛒",
-"Un turno en ZOCO vale más que mil excusas para no festejar. 🥳💬",
-"Estás a un paso de que tu casa parezca una fiesta sorpresa permanente. 🎁🎊",
+  "¡Hoy puede ser un gran día para decorar una torta o una fiesta! 🎉🍰 ",
+  "Mientras esperás tu turno, pensá qué excusa vas a dar para llevarte todo.😉🛍️",
+  "Decorá tu día con colores, glaseado… y un poco de ZOCO. 🌈✨",
+  "Respirá hondo… estás en el lugar donde empiezan las fiestas.🎈💃",
+  "No sos vos, es tu casa que necesita más cotillón 🏡🎊",
+  "Tranquilo… en ZOCO los turnos son rápidos y las ideas, infinitas 🧠⚡",
+  "¡ZOCOnsejo del día! Nunca subestimes el poder de una buena servilleta temática. 🍽️🎁",
+  "Quedate tranquilo, ya te toca. Y sí, podés llevarte ese globo gigante. 🎈🛒",
+  "Un turno en ZOCO vale más que mil excusas para no festejar. 🥳💬",
+  "Estás a un paso de que tu casa parezca una fiesta sorpresa permanente. 🎁🎊",
 ]
 
 export default function SistemaAtencion() {
@@ -197,41 +196,6 @@ export default function SistemaAtencion() {
               {generandoTicket ? "GENERANDO..." : "SACAR NÚMERO"}
             </Button>
           </div>
-          <div className="flex justify-center items-center gap-4 text-sm text-gray-500 flex-wrap">
-            <div className="flex items-center gap-1">
-              <Clock className="h-4 w-4" />
-              <span>{horaActual ? horaActual.toLocaleTimeString("es-ES") : "--:--:--"}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span>Reinicio a medianoche en: {tiempoHastaReinicio}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              {error ? (
-                <>
-                  <WifiOff className="h-4 w-4 text-red-500" />
-                  <span className="text-red-500">Error de conexión</span>
-                </>
-              ) : (
-                <>
-                  <Wifi className="h-4 w-4 text-green-500" />
-                  <span className="text-green-500">Redis conectado</span>
-                </>
-              )}
-            </div>
-            {ultimaSincronizacion && (
-              <div className="flex items-center gap-1">
-                <Database className="h-4 w-4 text-blue-500" />
-                <span className="text-blue-500">Sync: {ultimaSincronizacion.toLocaleTimeString("es-ES")}</span>
-              </div>
-            )}
-            <button
-              onClick={() => setMostrarDebug(!mostrarDebug)}
-              className="flex items-center gap-1 text-gray-400 hover:text-gray-600"
-            >
-              <Bug className="h-4 w-4" />
-              <span>Debug</span>
-            </button>
-          </div>
         </div>
 
         {/* Panel de debug */}
@@ -291,100 +255,6 @@ export default function SistemaAtencion() {
             </span>
           </div>
         </div>
-
-        {/* Estadísticas principales */}
-        
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-         
-         
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">En Espera</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-orange-600">{estado.totalAtendidos - estado.numerosLlamados}</div>
-              <p className="text-xs text-muted-foreground">Tickets pendientes</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Hoy</CardTitle>
-              <History className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-purple-600">{estado.totalAtendidos}</div>
-              <p className="text-xs text-muted-foreground">Tickets emitidos</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Estadísticas adicionales si están disponibles */}
-        {estadisticas && (
-          <Card className="mb-8 bg-gradient-to-r from-blue-50 to-indigo-50">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Database className="h-5 w-5 text-blue-600" />
-                Estadísticas del Día
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-600">Tickets última hora</p>
-                  <p className="text-2xl font-bold text-blue-600">{estadisticas.ticketsUltimaHora}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Inicio operaciones</p>
-                  <p className="text-lg font-semibold text-green-600">{estadisticas.horaInicioOperaciones}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Última actividad</p>
-                  <p className="text-lg font-semibold text-orange-600">
-                    {estadisticas.ultimaActividad !== "Sin actividad"
-                      ? new Date(estadisticas.ultimaActividad).toLocaleTimeString("es-ES")
-                      : "Sin actividad"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Promedio tiempo</p>
-                  <p className="text-lg font-semibold text-purple-600">
-                    {estadisticas.promedioTiempoPorTicket.toFixed(1)} min
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Verificación de integridad */}
-        {integridad && !integridad.ok && (
-          <Card className="mb-8 border-yellow-300 bg-yellow-50">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-yellow-800 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                Verificación de Integridad
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-sm text-yellow-800">
-                <p>Se detectaron {integridad.saltos.length} saltos en la numeración:</p>
-                <ul className="list-disc pl-5 mt-2">
-                  {integridad.saltos.map((salto: any, index: number) => (
-                    <li key={index}>
-                      Salto entre {salto.desde} y {salto.hasta} ({salto.faltantes} números faltantes)
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-2">
-                  Total de tickets: {integridad.totalTickets} | Rango: {integridad.minimo}-{integridad.maximo} |
-                  Esperados: {integridad.esperados}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Instrucciones */}
         <Card className="mt-4">
