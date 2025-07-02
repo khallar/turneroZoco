@@ -256,14 +256,17 @@ export default function PaginaEmpleados() {
           <div className="flex flex-col sm:flex-row justify-center items-center gap-2 md:gap-4 text-xs md:text-sm text-gray-500 mb-3 md:mb-4">
             <div className="flex items-center gap-1">
               <Clock className="h-3 w-3 md:h-4 md:w-4" />
-              <span>{horaActual.toLocaleTimeString("es-ES")}</span>
+              <span>{horaActual.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}</span>
             </div>
             <div className="flex items-center gap-1">
               <span>Reinicio medianoche: {tiempoHastaReinicio}</span>
             </div>
             <div className="flex items-center gap-1">
               <span>
-                Última sync: {ultimaSincronizacion ? ultimaSincronizacion.toLocaleTimeString("es-ES") : "Nunca"}
+                Última sync:{" "}
+                {ultimaSincronizacion
+                  ? ultimaSincronizacion.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
+                  : "Nunca"}
               </span>
               {actualizandoDatos && (
                 <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500 ml-1"></div>
@@ -563,7 +566,9 @@ export default function PaginaEmpleados() {
                     <span className="text-gray-600">Última actividad:</span>
                     <p className="font-bold text-orange-600">
                       {estadisticas.ultimaActividad !== "Sin actividad"
-                        ? new Date(estadisticas.ultimaActividad).toLocaleTimeString("es-ES")
+                        ? new Date(estadisticas.ultimaActividad).toLocaleTimeString("es-AR", {
+                            timeZone: "America/Argentina/Buenos_Aires",
+                          })
                         : "Sin actividad"}
                     </p>
                   </div>

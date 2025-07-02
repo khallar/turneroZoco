@@ -311,6 +311,25 @@ export default function SistemaAtencion() {
           onClose={() => setTicketGenerado(null)}
         />
       )}
+      {/* Footer con información adicional */}
+      <footer className="text-center mt-8 text-gray-500 text-sm">
+        <div>
+          Hora actual:{" "}
+          {horaActual
+            ? horaActual.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
+            : "Cargando..."}
+        </div>
+        <div>Reinicio del sistema en: {tiempoHastaReinicio}</div>
+        {ultimaSincronizacion && (
+          <div>
+            Última sincronización:{" "}
+            {ultimaSincronizacion.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}
+          </div>
+        )}
+        <button onClick={() => setMostrarDebug(!mostrarDebug)} className="hover:text-gray-700">
+          Mostrar Debug
+        </button>
+      </footer>
     </div>
   )
 }

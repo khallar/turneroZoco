@@ -30,8 +30,8 @@ const estadoInicial: EstadoSistema = {
   ultimoNumero: 0,
   totalAtendidos: 0,
   numerosLlamados: 0,
-  fechaInicio: new Date().toDateString(),
-  ultimoReinicio: new Date().toISOString(),
+  fechaInicio: new Date().toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
+  ultimoReinicio: new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
   tickets: [],
 }
 
@@ -96,14 +96,18 @@ async function escribirDatos(estado: EstadoSistema): Promise<void> {
 // Función para verificar si debe reiniciarse
 function debeReiniciarse(estado: EstadoSistema): boolean {
   const ahora = new Date()
+  const ahoraArgentina = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }))
   const ultimoReinicio = new Date(estado.ultimoReinicio)
+  const ultimoReinicioArgentina = new Date(
+    ultimoReinicio.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }),
+  )
 
-  // Obtener la fecha actual y la fecha del último reinicio (solo fecha, sin hora)
-  const fechaActual = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate())
+  // Obtener la fecha actual y la fecha del último reinicio (solo fecha, sin hora) en zona horaria argentina
+  const fechaActual = new Date(ahoraArgentina.getFullYear(), ahoraArgentina.getMonth(), ahoraArgentina.getDate())
   const fechaUltimoReinicio = new Date(
-    ultimoReinicio.getFullYear(),
-    ultimoReinicio.getMonth(),
-    ultimoReinicio.getDate(),
+    ultimoReinicioArgentina.getFullYear(),
+    ultimoReinicioArgentina.getMonth(),
+    ultimoReinicioArgentina.getDate(),
   )
 
   // Solo reiniciar si es un día diferente al último reinicio
@@ -196,8 +200,8 @@ export async function GET() {
         ultimoNumero: 0,
         totalAtendidos: 0,
         numerosLlamados: 0,
-        fechaInicio: ahora.toDateString(),
-        ultimoReinicio: ahora.toISOString(),
+        fechaInicio: ahora.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
+        ultimoReinicio: ahora.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
         tickets: [],
       }
 
@@ -254,8 +258,8 @@ export async function POST(request: NextRequest) {
         ultimoNumero: 0,
         totalAtendidos: 0,
         numerosLlamados: 0,
-        fechaInicio: ahora.toDateString(),
-        ultimoReinicio: ahora.toISOString(),
+        fechaInicio: ahora.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
+        ultimoReinicio: ahora.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
         tickets: [],
       }
 
@@ -277,7 +281,7 @@ export async function POST(request: NextRequest) {
       try {
         // Generar número de forma atómica usando Redis INCR
         const numeroAsignado = await generarNumeroAtomico()
-        const fecha = new Date().toLocaleString("es-ES")
+        const fecha = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
         const timestamp = Date.now()
 
         const nuevoTicket: TicketInfo = {
@@ -358,8 +362,8 @@ export async function POST(request: NextRequest) {
           ultimoNumero: 0,
           totalAtendidos: 0,
           numerosLlamados: 0,
-          fechaInicio: ahora.toDateString(),
-          ultimoReinicio: ahora.toISOString(),
+          fechaInicio: ahora.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
+          ultimoReinicio: ahora.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
           tickets: [],
         }
 
@@ -405,8 +409,8 @@ export async function POST(request: NextRequest) {
           ultimoNumero: 0,
           totalAtendidos: 0,
           numerosLlamados: 0,
-          fechaInicio: ahora.toDateString(),
-          ultimoReinicio: ahora.toISOString(),
+          fechaInicio: ahora.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
+          ultimoReinicio: ahora.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
           tickets: [],
         }
 

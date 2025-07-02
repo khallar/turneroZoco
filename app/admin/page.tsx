@@ -245,12 +245,15 @@ export default function PaginaAdmin() {
           <div className="flex justify-center items-center gap-4 text-sm text-gray-500 mb-6">
             <div className="flex items-center gap-1">
               <Clock className="h-4 w-4" />
-              <span>{horaActual.toLocaleTimeString("es-ES")}</span>
+              <span>{horaActual.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}</span>
             </div>
             <div className="flex items-center gap-1">
               <Database className="h-4 w-4" />
               <span>
-                Última sync: {ultimaSincronizacion ? ultimaSincronizacion.toLocaleTimeString("es-ES") : "Nunca"}
+                Última sync:{" "}
+                {ultimaSincronizacion
+                  ? ultimaSincronizacion.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
+                  : "Nunca"}
               </span>
             </div>
           </div>
@@ -389,7 +392,9 @@ export default function PaginaAdmin() {
                     <span className="text-gray-600">Última actividad:</span>
                     <p className="font-bold text-orange-600">
                       {estadisticas.ultimaActividad !== "Sin actividad"
-                        ? new Date(estadisticas.ultimaActividad).toLocaleTimeString("es-ES")
+                        ? new Date(estadisticas.ultimaActividad).toLocaleTimeString("es-AR", {
+                            timeZone: "America/Argentina/Buenos_Aires",
+                          })
                         : "Sin actividad"}
                     </p>
                   </div>
