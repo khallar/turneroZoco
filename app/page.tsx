@@ -278,14 +278,6 @@ export default function SistemaAtencion() {
               </p>
               <p className="ml-4">• Vaya al centro del salón y espere a ser llamado por su nombre o número</p>
             </div>
-
-            <div className="bg-green-50 p-3 rounded border-l-4 border-green-400">
-              <p className="font-bold text-green-800 mb-1">☁️ Persistencia en la Nube</p>
-              <p className="text-sm text-green-700">
-                Todos los números y nombres se guardan automáticamente en **Upstash Redis** en la nube. Los datos
-                persisten durante todo el día hasta medianoche, con alta disponibilidad y sin pérdida de información.
-              </p>
-            </div>
           </CardContent>
         </Card>
       </div>
