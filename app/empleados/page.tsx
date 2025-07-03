@@ -55,10 +55,34 @@ export default function PaginaEmpleados() {
     actualizarAutomaticamente()
 
     // Configurar intervalo más frecuente
-    const interval = setInterval(actualizarAutomaticamente, 5000) // 5 segundos
+    const interval = setInterval(actualizarAutomaticamente, 3000) // 3 segundos
 
     return () => clearInterval(interval)
   }, [cargarEstado, isClient])
+
+  // Actualización más agresiva cuando no hay tickets disponibles
+  useEffect(() => {
+    if (!isClient) return
+
+    const proximoNumeroALlamar = estado?.numerosLlamados + 1
+    const hayNumerosParaLlamar = proximoNumeroALlamar <= (estado?.totalAtendidos || 0)
+
+    // Si no hay números para llamar, actualizar cada 2 segundos
+    if (!hayNumerosParaLlamar && (estado?.totalAtendidos || 0) >= 0) {
+      console.log("No hay tickets disponibles, activando actualización agresiva...")
+
+      const intervalAgresivo = setInterval(async () => {
+        console.log("Actualización agresiva - buscando nuevos tickets...")
+        try {
+          await cargarEstado(true)
+        } catch (error) {
+          console.error("Error en actualización agresiva:", error)
+        }
+      }, 2000) // Cada 2 segundos cuando no hay tickets
+
+      return () => clearInterval(intervalAgresivo)
+    }
+  }, [estado?.numerosLlamados, estado?.totalAtendidos, cargarEstado, isClient])
 
   // Actualizar datos cuando hay cambios en el estado (para detectar nuevos tickets más rápido)
   useEffect(() => {
@@ -162,9 +186,20 @@ export default function PaginaEmpleados() {
   const actualizarDatosManual = async () => {
     setActualizandoDatos(true)
     try {
-      console.log("Actualizando datos manualmente...")
-      await cargarEstado(true) // Con estadísticas
-      setContadorActualizaciones((prev) => prev + 1)
+      console.log("Actualizando datos manualmente con headers más agresivos...")
+
+      // Hacer múltiples llamadas para asegurar datos frescos
+      await cargarEstado(true) // Primera llamada con estadísticas
+
+      // Esperar un momento y hacer una segunda llamada para confirmar
+      setTimeout(async () => {
+        try {
+          await cargarEstado(false) // Segunda llamada sin estadísticas para ser más rápida
+          setContadorActualizaciones((prev) => prev + 1)
+        } catch (error) {
+          console.error("Error en segunda actualización:", error)
+        }
+      }, 500)
     } catch (error) {
       console.error("Error al actualizar datos:", error)
     } finally {
@@ -273,7 +308,8 @@ export default function PaginaEmpleados() {
           <div className="flex justify-center items-center gap-2 mb-2">
             <div className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>
             <span className="text-xs text-gray-600">
-              Auto-actualización cada 5s {contadorActualizaciones > 0 && `(${contadorActualizaciones} updates)`}
+              Auto-actualización cada 3s {contadorActualizaciones > 0 && `(${contadorActualizaciones} updates)`}
+              {!hayNumerosParaLlamar && (estado?.totalAtendidos || 0) >= 0 && " - Modo agresivo: cada 2s"}
             </span>
           </div>
 
@@ -459,14 +495,30 @@ export default function PaginaEmpleados() {
                   {(estado?.totalAtendidos || 0) === 0 ? "Esperando nuevos tickets..." : "Esperando más tickets..."}
                 </p>
                 {(estado?.totalAtendidos || 0) > 0 && (
-                  <Button
-                    onClick={actualizarDatosManual}
-                    className="mt-4 bg-blue-600 hover:bg-blue-700"
-                    disabled={actualizandoDatos}
-                  >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Verificar Nuevos Tickets
-                  </Button>
+                  <div className="space-y-2">
+                    <Button
+                      onClick={actualizarDatosManual}
+                      className="bg-blue-600 hover:bg-blue-700"
+                      disabled={actualizandoDatos}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Verificar Nuevos Tickets
+                    </Button>
+                    <Button
+                      onClick={async () => {
+                        // Triple actualización forzada
+                        for (let i = 0; i < 3; i++) {
+                          await cargarEstado(true)
+                          await new Promise((resolve) => setTimeout(resolve, 200))
+                        }
+                      }}
+                      variant="outline"
+                      className="bg-orange-50 border-orange-300 text-orange-700 hover:bg-orange-100"
+                      disabled={actualizandoDatos}
+                    >
+                      🔄 Forzar Actualización Triple
+                    </Button>
+                  </div>
                 )}
               </div>
             )}
@@ -548,7 +600,7 @@ export default function PaginaEmpleados() {
                   <strong>Persistencia:</strong> Los números se mantienen hasta las 12:00 AM
                 </li>
                 <li>
-                  <strong>Actualización:</strong> Se actualiza automáticamente cada 5 segundos
+                  <strong>Actualización:</strong> Se actualiza automáticamente cada 3 segundos
                 </li>
                 <li>
                   <strong>Manual:</strong> Use "Actualizar Ahora" si no ve tickets nuevos
