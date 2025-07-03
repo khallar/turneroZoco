@@ -329,6 +329,11 @@ export default function SistemaAtencion() {
         <button onClick={() => setMostrarDebug(!mostrarDebug)} className="hover:text-gray-700">
           Mostrar Debug
         </button>
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <div className="text-center text-xs text-gray-400">
+            <p>Develop by: Karim :) | Versión 4.0</p>
+          </div>
+        </div>
       </footer>
     </div>
   )

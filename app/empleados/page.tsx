@@ -668,6 +668,13 @@ export default function PaginaEmpleados() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Footer */}
+      <footer className="text-center mt-8 pt-4 border-t border-gray-200">
+        <div className="text-xs text-gray-400">
+          <p>Develop by: Karim :) | Versión 4.0</p>
+        </div>
+      </footer>
     </div>
   )
 }
