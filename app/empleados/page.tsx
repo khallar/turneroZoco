@@ -26,33 +26,66 @@ export default function PaginaEmpleados() {
   const [nombreEnAtencion, setNombreEnAtencion] = useState("")
   const [horaActual, setHoraActual] = useState(new Date())
   const [tiempoHastaReinicio, setTiempoHastaReinicio] = useState("")
-  // Modificar la inicialización del estado isOnline para evitar acceder a navigator durante la renderización del servidor
-  const [isOnline, setIsOnline] = useState(true) // Inicializar como true por defecto
+  const [isOnline, setIsOnline] = useState(true)
   const [actualizandoDatos, setActualizandoDatos] = useState(false)
   const [isClient, setIsClient] = useState(false)
+  const [ultimaActualizacionAutomatica, setUltimaActualizacionAutomatica] = useState<Date | null>(null)
+  const [contadorActualizaciones, setContadorActualizaciones] = useState(0)
 
   useEffect(() => {
     setIsClient(true)
   }, [])
 
-  // Actualizar datos automáticamente cada 10 segundos
+  // Actualizar datos automáticamente cada 5 segundos (reducido de 10)
   useEffect(() => {
     if (!isClient) return
 
-    const interval = setInterval(() => {
-      console.log("Actualizando datos automáticamente...")
-      cargarEstado(true) // Con estadísticas para el panel de empleados
-    }, 10000) // 10 segundos
+    const actualizarAutomaticamente = async () => {
+      try {
+        console.log("Actualizando datos automáticamente...")
+        setUltimaActualizacionAutomatica(new Date())
+        setContadorActualizaciones((prev) => prev + 1)
+        await cargarEstado(true) // Con estadísticas para el panel de empleados
+      } catch (error) {
+        console.error("Error en actualización automática:", error)
+      }
+    }
+
+    // Ejecutar inmediatamente al montar
+    actualizarAutomaticamente()
+
+    // Configurar intervalo más frecuente
+    const interval = setInterval(actualizarAutomaticamente, 5000) // 5 segundos
 
     return () => clearInterval(interval)
   }, [cargarEstado, isClient])
 
-  // Actualizar hora y verificar reinicio automático
+  // Actualizar datos cuando hay cambios en el estado (para detectar nuevos tickets más rápido)
   useEffect(() => {
-    // Verificar el estado de conexión después del montaje
+    if (!isClient) return
+
+    // Si hay tickets nuevos y no hay números para llamar, forzar actualización
+    const proximoNumeroALlamar = estado?.numerosLlamados + 1
+    const hayNumerosParaLlamar = proximoNumeroALlamar <= (estado?.totalAtendidos || 0)
+
+    if (!hayNumerosParaLlamar && (estado?.totalAtendidos || 0) > 0) {
+      console.log("Detectados posibles tickets nuevos, forzando actualización...")
+      cargarEstado(true)
+    }
+  }, [estado?.totalAtendidos, estado?.numerosLlamados, cargarEstado, isClient])
+
+  // Verificar el estado de conexión después del montaje
+  useEffect(() => {
+    if (!isClient) return
+
     setIsOnline(typeof navigator !== "undefined" ? navigator.onLine : true)
 
-    const handleOnline = () => setIsOnline(true)
+    const handleOnline = () => {
+      setIsOnline(true)
+      // Cuando vuelve la conexión, actualizar inmediatamente
+      console.log("Conexión restaurada, actualizando datos...")
+      cargarEstado(true)
+    }
     const handleOffline = () => setIsOnline(false)
 
     if (typeof window !== "undefined") {
@@ -66,8 +99,9 @@ export default function PaginaEmpleados() {
         window.removeEventListener("offline", handleOffline)
       }
     }
-  }, [])
+  }, [cargarEstado, isClient])
 
+  // Actualizar hora y verificar reinicio automático
   useEffect(() => {
     const interval = setInterval(() => {
       const ahora = new Date()
@@ -118,13 +152,19 @@ export default function PaginaEmpleados() {
     await guardarEstado(nuevoEstado)
     setNumeroEnAtencion(proximoNumeroALlamar)
     setNombreEnAtencion(ticketALlamar?.nombre || "Cliente ZOCO")
+
+    // Actualizar datos inmediatamente después de llamar
+    setTimeout(() => {
+      cargarEstado(true)
+    }, 500)
   }
 
   const actualizarDatosManual = async () => {
     setActualizandoDatos(true)
     try {
+      console.log("Actualizando datos manualmente...")
       await cargarEstado(true) // Con estadísticas
-      console.log("Datos actualizados manualmente")
+      setContadorActualizaciones((prev) => prev + 1)
     } catch (error) {
       console.error("Error al actualizar datos:", error)
     } finally {
@@ -228,6 +268,15 @@ export default function PaginaEmpleados() {
             />
           </div>
           <h1 className="text-2xl md:text-4xl font-bold text-gray-800 mb-1 md:mb-2">Panel de Empleados</h1>
+
+          {/* Indicador de actualización automática */}
+          <div className="flex justify-center items-center gap-2 mb-2">
+            <div className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>
+            <span className="text-xs text-gray-600">
+              Auto-actualización cada 5s {contadorActualizaciones > 0 && `(${contadorActualizaciones} updates)`}
+            </span>
+          </div>
+
           {/* Botón de refresh manual */}
           <div className="flex justify-center mb-4">
             <Button
@@ -243,7 +292,7 @@ export default function PaginaEmpleados() {
               ) : (
                 <>
                   <RefreshCw className="mr-2 h-4 w-4" />
-                  Actualizar Datos
+                  Actualizar Ahora
                 </>
               )}
             </Button>
@@ -285,6 +334,19 @@ export default function PaginaEmpleados() {
                 </>
               )}
             </div>
+            {ultimaActualizacionAutomatica && (
+              <div className="flex items-center gap-1">
+                <span className="text-blue-600">
+                  Última auto:{" "}
+                  {ultimaActualizacionAutomatica.toLocaleTimeString("es-AR", {
+                    timeZone: "America/Argentina/Buenos_Aires",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  })}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Botones de navegación - stack en móvil */}
@@ -348,7 +410,12 @@ export default function PaginaEmpleados() {
         {/* Próximo número a llamar - optimizado para móvil */}
         <Card className="mb-4 md:mb-8">
           <CardHeader className="p-3 md:p-6">
-            <CardTitle className="text-center text-lg md:text-2xl">Próximo a Llamar</CardTitle>
+            <CardTitle className="text-center text-lg md:text-2xl flex items-center justify-center gap-2">
+              Próximo a Llamar
+              {!hayNumerosParaLlamar && (estado?.totalAtendidos || 0) > 0 && (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-500"></div>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent className="text-center p-3 md:p-6">
             {hayNumerosParaLlamar ? (
@@ -383,8 +450,24 @@ export default function PaginaEmpleados() {
             ) : (
               <div className="py-8 md:py-12">
                 <div className="text-4xl md:text-6xl text-gray-400 mb-4">---</div>
-                <p className="text-lg md:text-xl text-gray-500 mb-4">No hay números en espera</p>
-                <p className="text-sm md:text-base text-gray-400">Esperando nuevos tickets...</p>
+                <p className="text-lg md:text-xl text-gray-500 mb-4">
+                  {(estado?.totalAtendidos || 0) === 0
+                    ? "No hay números emitidos"
+                    : "Todos los números han sido llamados"}
+                </p>
+                <p className="text-sm md:text-base text-gray-400">
+                  {(estado?.totalAtendidos || 0) === 0 ? "Esperando nuevos tickets..." : "Esperando más tickets..."}
+                </p>
+                {(estado?.totalAtendidos || 0) > 0 && (
+                  <Button
+                    onClick={actualizarDatosManual}
+                    className="mt-4 bg-blue-600 hover:bg-blue-700"
+                    disabled={actualizandoDatos}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Verificar Nuevos Tickets
+                  </Button>
+                )}
               </div>
             )}
           </CardContent>
@@ -465,7 +548,10 @@ export default function PaginaEmpleados() {
                   <strong>Persistencia:</strong> Los números se mantienen hasta las 12:00 AM
                 </li>
                 <li>
-                  <strong>Tiempo Real:</strong> Se actualiza automáticamente cada 10 segundos
+                  <strong>Actualización:</strong> Se actualiza automáticamente cada 5 segundos
+                </li>
+                <li>
+                  <strong>Manual:</strong> Use "Actualizar Ahora" si no ve tickets nuevos
                 </li>
               </ul>
             </div>

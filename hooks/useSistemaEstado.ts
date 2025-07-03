@@ -82,7 +82,9 @@ export function useSistemaEstado() {
         const response = await fetch("/api/sistema", {
           method: "GET",
           headers: {
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
           },
         })
 
@@ -143,6 +145,9 @@ export function useSistemaEstado() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
         },
         body: JSON.stringify({
           action: "OBTENER_ESTADISTICAS",
@@ -169,6 +174,9 @@ export function useSistemaEstado() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
           },
           body: JSON.stringify(nuevoEstado),
         })
@@ -214,6 +222,9 @@ export function useSistemaEstado() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
           },
           body: JSON.stringify({
             action: "GENERAR_TICKET",
@@ -254,7 +265,13 @@ export function useSistemaEstado() {
     if (!isClient) return []
 
     try {
-      const response = await fetch("/api/backup?accion=listar")
+      const response = await fetch("/api/backup?accion=listar", {
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      })
       if (response.ok) {
         const data = await response.json()
         return data.backups || []
@@ -271,7 +288,13 @@ export function useSistemaEstado() {
       if (!isClient) return null
 
       try {
-        const response = await fetch(`/api/backup?fecha=${fecha}`)
+        const response = await fetch(`/api/backup?fecha=${fecha}`, {
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        })
         if (response.ok) {
           const data = await response.json()
           return data
@@ -292,22 +315,22 @@ export function useSistemaEstado() {
     }
   }, [cargarEstado, cargarDebugInfo, isClient])
 
-  // Sincronizar cada 2 minutos para asegurar persistencia
+  // Sincronizar cada 2 minutos para asegurar persistencia (reducido para mejor sincronización)
   useEffect(() => {
     if (!isClient) return
 
     const interval = setInterval(() => {
       cargarEstado(false) // Sin estadísticas para ser más rápido
-    }, 120000) // 2 minutos
+    }, 60000) // 1 minuto (reducido de 2 minutos)
 
     return () => clearInterval(interval)
   }, [cargarEstado, isClient])
 
-  // Cargar estadísticas cada 5 minutos
+  // Cargar estadísticas cada 3 minutos (reducido de 5)
   useEffect(() => {
     if (!isClient) return
 
-    const interval = setInterval(cargarEstadisticas, 300000) // 5 minutos
+    const interval = setInterval(cargarEstadisticas, 180000) // 3 minutos
     return () => clearInterval(interval)
   }, [cargarEstadisticas, isClient])
 
