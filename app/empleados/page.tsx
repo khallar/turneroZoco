@@ -36,7 +36,7 @@ export default function PaginaEmpleados() {
     setIsClient(true)
   }, [])
 
-  // Actualizar datos automáticamente cada 5 segundos (reducido de 10)
+  // Actualizar datos automáticamente cada 30 segundos (aumentado para reducir requests)
   useEffect(() => {
     if (!isClient) return
 
@@ -54,33 +54,32 @@ export default function PaginaEmpleados() {
     // Ejecutar inmediatamente al montar
     actualizarAutomaticamente()
 
-    // Configurar intervalo más frecuente
-    const interval = setInterval(actualizarAutomaticamente, 3000) // 3 segundos
+    // Configurar intervalo menos frecuente para evitar límite de requests
+    const interval = setInterval(actualizarAutomaticamente, 30000) // 30 segundos
 
     return () => clearInterval(interval)
   }, [cargarEstado, isClient])
 
-  // Actualización más agresiva cuando no hay tickets disponibles
+  // Sistema de caché local inteligente en lugar de actualización agresiva
   useEffect(() => {
     if (!isClient) return
 
     const proximoNumeroALlamar = estado?.numerosLlamados + 1
     const hayNumerosParaLlamar = proximoNumeroALlamar <= (estado?.totalAtendidos || 0)
 
-    // Si no hay números para llamar, actualizar cada 2 segundos
+    // En lugar de hacer requests frecuentes, usar datos locales y solo actualizar cuando sea crítico
     if (!hayNumerosParaLlamar && (estado?.totalAtendidos || 0) >= 0) {
-      console.log("No hay tickets disponibles, activando actualización agresiva...")
+      console.log("No hay tickets disponibles, usando caché local inteligente...")
 
-      const intervalAgresivo = setInterval(async () => {
-        console.log("Actualización agresiva - buscando nuevos tickets...")
-        try {
-          await cargarEstado(true)
-        } catch (error) {
-          console.error("Error en actualización agresiva:", error)
-        }
-      }, 2000) // Cada 2 segundos cuando no hay tickets
+      // Solo hacer una request si han pasado más de 60 segundos desde la última
+      const ultimaActualizacion = localStorage.getItem("ultimaActualizacionEmpleados")
+      const ahora = Date.now()
 
-      return () => clearInterval(intervalAgresivo)
+      if (!ultimaActualizacion || ahora - Number.parseInt(ultimaActualizacion) > 60000) {
+        console.log("Actualizando después de 60 segundos sin tickets...")
+        cargarEstado(true)
+        localStorage.setItem("ultimaActualizacionEmpleados", ahora.toString())
+      }
     }
   }, [estado?.numerosLlamados, estado?.totalAtendidos, cargarEstado, isClient])
 
@@ -186,20 +185,21 @@ export default function PaginaEmpleados() {
   const actualizarDatosManual = async () => {
     setActualizandoDatos(true)
     try {
-      console.log("Actualizando datos manualmente con headers más agresivos...")
+      console.log("Actualizando datos manualmente...")
 
-      // Hacer múltiples llamadas para asegurar datos frescos
-      await cargarEstado(true) // Primera llamada con estadísticas
+      // Verificar throttling local
+      const ultimaActualizacionManual = localStorage.getItem("ultimaActualizacionManual")
+      const ahora = Date.now()
 
-      // Esperar un momento y hacer una segunda llamada para confirmar
-      setTimeout(async () => {
-        try {
-          await cargarEstado(false) // Segunda llamada sin estadísticas para ser más rápida
-          setContadorActualizaciones((prev) => prev + 1)
-        } catch (error) {
-          console.error("Error en segunda actualización:", error)
-        }
-      }, 500)
+      if (ultimaActualizacionManual && ahora - Number.parseInt(ultimaActualizacionManual) < 5000) {
+        console.log("Actualización manual muy frecuente, usando caché")
+        setActualizandoDatos(false)
+        return
+      }
+
+      await cargarEstado(true) // Una sola llamada con estadísticas
+      localStorage.setItem("ultimaActualizacionManual", ahora.toString())
+      setContadorActualizaciones((prev) => prev + 1)
     } catch (error) {
       console.error("Error al actualizar datos:", error)
     } finally {
@@ -308,8 +308,8 @@ export default function PaginaEmpleados() {
           <div className="flex justify-center items-center gap-2 mb-2">
             <div className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>
             <span className="text-xs text-gray-600">
-              Auto-actualización cada 3s {contadorActualizaciones > 0 && `(${contadorActualizaciones} updates)`}
-              {!hayNumerosParaLlamar && (estado?.totalAtendidos || 0) >= 0 && " - Modo agresivo: cada 2s"}
+              Auto-actualización cada 30s {contadorActualizaciones > 0 && `(${contadorActualizaciones} updates)`}
+              {!hayNumerosParaLlamar && (estado?.totalAtendidos || 0) >= 0 && " - Caché inteligente activo"}
             </span>
           </div>
 
@@ -506,17 +506,21 @@ export default function PaginaEmpleados() {
                     </Button>
                     <Button
                       onClick={async () => {
-                        // Triple actualización forzada
-                        for (let i = 0; i < 3; i++) {
+                        // Una sola actualización forzada en lugar de triple
+                        setActualizandoDatos(true)
+                        try {
                           await cargarEstado(true)
-                          await new Promise((resolve) => setTimeout(resolve, 200))
+                          // Forzar re-render del componente
+                          setContadorActualizaciones((prev) => prev + 1)
+                        } finally {
+                          setActualizandoDatos(false)
                         }
                       }}
                       variant="outline"
                       className="bg-orange-50 border-orange-300 text-orange-700 hover:bg-orange-100"
                       disabled={actualizandoDatos}
                     >
-                      🔄 Forzar Actualización Triple
+                      🔄 Forzar Actualización
                     </Button>
                   </div>
                 )}
@@ -600,7 +604,7 @@ export default function PaginaEmpleados() {
                   <strong>Persistencia:</strong> Los números se mantienen hasta las 12:00 AM
                 </li>
                 <li>
-                  <strong>Actualización:</strong> Se actualiza automáticamente cada 3 segundos
+                  <strong>Actualización:</strong> Se actualiza automáticamente cada 30 segundos
                 </li>
                 <li>
                   <strong>Manual:</strong> Use "Actualizar Ahora" si no ve tickets nuevos

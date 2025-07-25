@@ -76,6 +76,14 @@ export function useSistemaEstado() {
       // Solo ejecutar en el cliente
       if (!isClient) return
 
+      // Implementar throttling - no más de una llamada cada 10 segundos
+      const ahora = Date.now()
+      const ultimaLlamada = localStorage.getItem("ultimaLlamadaAPI")
+      if (ultimaLlamada && ahora - Number.parseInt(ultimaLlamada) < 10000) {
+        console.log("Throttling: usando datos de caché local")
+        return
+      }
+
       try {
         console.log("Cargando estado desde API...")
 
@@ -95,6 +103,10 @@ export function useSistemaEstado() {
           setEstado(data)
           setError(null)
           setUltimaSincronizacion(new Date())
+
+          // Guardar timestamp de la última llamada exitosa
+          localStorage.setItem("ultimaLlamadaAPI", ahora.toString())
+          localStorage.setItem("sistemaAtencion", JSON.stringify(data))
 
           // Si incluye estadísticas, cargarlas por separado
           if (incluirEstadisticas) {
@@ -315,22 +327,22 @@ export function useSistemaEstado() {
     }
   }, [cargarEstado, cargarDebugInfo, isClient])
 
-  // Sincronizar cada 2 minutos para asegurar persistencia (reducido para mejor sincronización)
+  // Sincronizar cada 2 minutos para asegurar persistencia (aumentado para reducir requests)
   useEffect(() => {
     if (!isClient) return
 
     const interval = setInterval(() => {
       cargarEstado(false) // Sin estadísticas para ser más rápido
-    }, 60000) // 1 minuto (reducido de 2 minutos)
+    }, 120000) // 2 minutos (aumentado de 1 minuto)
 
     return () => clearInterval(interval)
   }, [cargarEstado, isClient])
 
-  // Cargar estadísticas cada 3 minutos (reducido de 5)
+  // Cargar estadísticas cada 5 minutos (aumentado de 3)
   useEffect(() => {
     if (!isClient) return
 
-    const interval = setInterval(cargarEstadisticas, 180000) // 3 minutos
+    const interval = setInterval(cargarEstadisticas, 300000) // 5 minutos
     return () => clearInterval(interval)
   }, [cargarEstadisticas, isClient])
 
