@@ -8,6 +8,7 @@ import {
   verificarConexionDB,
   limpiarDatosAntiguos,
 } from "@/lib/database"
+import { Redis } from "@upstash/redis" // Importar Redis para operaciones directas
 
 interface TicketInfo {
   numero: number
@@ -23,9 +24,20 @@ interface EstadoSistema {
   numerosLlamados: number
   fechaInicio: string
   ultimoReinicio: string
-  tickets: TicketInfo[]
+  tickets: TicketInfo[] // Mantener aquí para la consistencia del tipo en la API
   lastSync?: number
 }
+
+// Inicializar cliente de Upstash Redis para operaciones directas en la API
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL!,
+  token: process.env.KV_REST_API_TOKEN!,
+})
+
+// Prefijos para las claves de Redis (duplicados para uso directo aquí)
+const STATE_KEY_PREFIX = "sistemaTurnosZOCO:estado:"
+const TICKETS_LIST_KEY_PREFIX = "sistemaTurnosZOCO:tickets:"
+const COUNTER_KEY_PREFIX = "sistemaTurnosZOCO:counter:"
 
 // Función para verificar si debe reiniciarse
 function debeReiniciarse(estado: EstadoSistema): boolean {
@@ -59,27 +71,35 @@ export async function GET() {
       return NextResponse.json({ error: "Error de conexión a sistemaTurnosZOCO (Upstash Redis)" }, { status: 503 })
     }
 
-    let estado = await leerEstadoSistema()
+    let estado = await leerEstadoSistema() // Esto ya devuelve el estado con los tickets
 
     // Verificar si debe reiniciarse automáticamente
     if (debeReiniciarse(estado)) {
       console.log("🔄 Ejecutando reinicio automático (Upstash Redis)")
 
-      // Crear backup en background
+      // Crear backup en background con el estado actual (incluyendo tickets)
       crearBackupDiario(estado).catch((err) => console.error("Error en backup (Upstash Redis):", err))
 
       const ahora = new Date()
+      const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+
+      // Limpiar explícitamente las claves del día anterior para el nuevo día
+      await redis.del(TICKETS_LIST_KEY_PREFIX + estado.fechaInicio) // Eliminar lista de tickets del día anterior
+      await redis.del(COUNTER_KEY_PREFIX + estado.fechaInicio) // Eliminar contador del día anterior
+
       estado = {
+        // Actualizar el objeto estado localmente para el nuevo día
         numeroActual: 1,
         ultimoNumero: 0,
         totalAtendidos: 0,
         numerosLlamados: 0,
-        fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }),
+        fechaInicio: fechaHoy,
         ultimoReinicio: ahora.toISOString(),
-        tickets: [],
+        tickets: [], // Reiniciar tickets para el nuevo día
         lastSync: Date.now(),
       }
 
+      // Escribir el estado inicial del nuevo día (solo metadata)
       await escribirEstadoSistema(estado)
     }
 
@@ -118,25 +138,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Error de conexión a sistemaTurnosZOCO (Upstash Redis)" }, { status: 503 })
     }
 
-    let estado = await leerEstadoSistema() // Leer estado una vez al inicio del POST
+    let estado = await leerEstadoSistema() // Leer estado una vez al inicio del POST (incluye tickets)
 
     // Verificar si debe reiniciarse antes de cualquier operación
     if (debeReiniciarse(estado)) {
       console.log("🔄 Reinicio automático durante POST (Upstash Redis)")
 
-      // Crear backup en background
+      // Crear backup en background con el estado actual (incluyendo tickets)
       crearBackupDiario(estado).catch((err) => console.error("Error en backup (Upstash Redis):", err))
 
       const ahora = new Date()
+      const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+
+      // Limpiar explícitamente las claves del día anterior para el nuevo día
+      await redis.del(TICKETS_LIST_KEY_PREFIX + estado.fechaInicio) // Eliminar lista de tickets del día anterior
+      await redis.del(COUNTER_KEY_PREFIX + estado.fechaInicio) // Eliminar contador del día anterior
+
       estado = {
-        // Actualizar el objeto estado localmente
+        // Actualizar el objeto estado localmente para el nuevo día
         numeroActual: 1,
         ultimoNumero: 0,
         totalAtendidos: 0,
         numerosLlamados: 0,
-        fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }),
+        fechaInicio: fechaHoy,
         ultimoReinicio: ahora.toISOString(),
-        tickets: [],
+        tickets: [], // Reiniciar tickets para el nuevo día
         lastSync: Date.now(),
       }
       // No es necesario escribir el estado aquí, se hará si la acción lo requiere
@@ -158,7 +184,7 @@ export async function POST(request: NextRequest) {
 
         // Después de generar el ticket, volvemos a leer el estado para asegurar consistencia
         // Esto es importante porque generarTicketAtomico actualiza el estado directamente en Redis
-        const estadoActualizado = await leerEstadoSistema()
+        const estadoActualizado = await leerEstadoSistema() // Esto ya devuelve el estado con los tickets
 
         console.log("✅ Ticket generado exitosamente en sistemaTurnosZOCO (Upstash Redis)")
 
@@ -181,7 +207,7 @@ export async function POST(request: NextRequest) {
     // Acción para obtener estadísticas
     if (action === "OBTENER_ESTADISTICAS") {
       try {
-        const estadisticas = await obtenerEstadisticas(estado)
+        const estadisticas = await obtenerEstadisticas(estado) // 'estado' ya incluye tickets
 
         return NextResponse.json({
           ...estado,
@@ -204,21 +230,27 @@ export async function POST(request: NextRequest) {
       console.log("🗑️ Eliminando todos los registros (Upstash Redis)...")
 
       try {
-        // Crear backup antes de eliminar
+        // Crear backup antes de eliminar con el estado actual (incluyendo tickets)
         await crearBackupDiario(estado)
 
         const ahora = new Date()
+        const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
         const estadoLimpio: EstadoSistema = {
           numeroActual: 1,
           ultimoNumero: 0,
           totalAtendidos: 0,
           numerosLlamados: 0,
-          fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }),
+          fechaInicio: fechaHoy,
           ultimoReinicio: ahora.toISOString(),
-          tickets: [],
+          tickets: [], // Reiniciar tickets para el estado de retorno
           lastSync: Date.now(),
         }
 
+        // Eliminar explícitamente la lista de tickets y el contador del día actual
+        await redis.del(TICKETS_LIST_KEY_PREFIX + fechaHoy)
+        await redis.del(COUNTER_KEY_PREFIX + fechaHoy)
+
+        // Escribir el estado limpio (solo metadata)
         await escribirEstadoSistema(estadoLimpio)
         console.log("✅ Todos los registros eliminados exitosamente (Upstash Redis)")
 
@@ -244,21 +276,27 @@ export async function POST(request: NextRequest) {
       console.log("🔄 Reiniciando contador diario (Upstash Redis)...")
 
       try {
-        // Crear backup antes de reiniciar
+        // Crear backup antes de reiniciar con el estado actual (incluyendo tickets)
         await crearBackupDiario(estado)
 
         const ahora = new Date()
+        const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
         const estadoReiniciado: EstadoSistema = {
           numeroActual: 1,
           ultimoNumero: 0,
           totalAtendidos: 0,
           numerosLlamados: 0,
-          fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }),
+          fechaInicio: fechaHoy,
           ultimoReinicio: ahora.toISOString(),
-          tickets: [],
+          tickets: [], // Reiniciar tickets para el estado de retorno
           lastSync: Date.now(),
         }
 
+        // Eliminar explícitamente la lista de tickets y el contador del día actual
+        await redis.del(TICKETS_LIST_KEY_PREFIX + fechaHoy)
+        await redis.del(COUNTER_KEY_PREFIX + fechaHoy)
+
+        // Escribir el estado reiniciado (solo metadata)
         await escribirEstadoSistema(estadoReiniciado)
         console.log("✅ Contador diario reiniciado exitosamente (Upstash Redis)")
 
@@ -299,11 +337,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Validar datos para actualizaciones normales
+    // Nota: nuevoEstado.tickets ya no se usa para la escritura directa del estado principal
     if (
       typeof nuevoEstado.numeroActual !== "number" ||
       typeof nuevoEstado.totalAtendidos !== "number" ||
-      typeof nuevoEstado.numerosLlamados !== "number" ||
-      !Array.isArray(nuevoEstado.tickets)
+      typeof nuevoEstado.numerosLlamados !== "number"
+      // !Array.isArray(nuevoEstado.tickets) // Ya no se valida aquí
     ) {
       return NextResponse.json({ error: "Datos inválidos" }, { status: 400 })
     }
@@ -312,15 +351,21 @@ export async function POST(request: NextRequest) {
 
     // Actualizar estado manteniendo fechas originales
     const estadoActualizado = {
-      ...nuevoEstado,
-      fechaInicio: estado.fechaInicio,
-      ultimoReinicio: estado.ultimoReinicio,
+      numeroActual: nuevoEstado.numeroActual,
+      ultimoNumero: nuevoEstado.ultimoNumero,
+      totalAtendidos: nuevoEstado.totalAtendidos,
+      numerosLlamados: nuevoEstado.numerosLlamados,
+      fechaInicio: estado.fechaInicio, // Mantener la fecha de inicio original
+      ultimoReinicio: estado.ultimoReinicio, // Mantener la fecha de último reinicio original
       lastSync: Date.now(),
     }
 
+    // Escribir solo la metadata del estado
     await escribirEstadoSistema(estadoActualizado)
 
-    return NextResponse.json(estadoActualizado)
+    // Devolver el estado completo (metadata + tickets) después de la actualización
+    const estadoFinal = await leerEstadoSistema()
+    return NextResponse.json(estadoFinal)
   } catch (error) {
     console.error("❌ Error en POST /api/sistema (Upstash Redis):", error)
     return NextResponse.json(
