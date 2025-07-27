@@ -30,7 +30,7 @@ interface Estadisticas {
   ticketsUltimaHora: number
 }
 
-// Estado inicial
+// Estado inicial para evitar undefined durante SSR
 const estadoInicial: EstadoSistema = {
   numeroActual: 1,
   ultimoNumero: 0,
@@ -41,9 +41,6 @@ const estadoInicial: EstadoSistema = {
   tickets: [],
   lastSync: Date.now(),
 }
-
-// Clave para localStorage
-const STORAGE_KEY = "sistemaAtencion:v2"
 
 export function useSistemaEstado() {
   const [estado, setEstado] = useState<EstadoSistema>(estadoInicial)
@@ -58,50 +55,6 @@ export function useSistemaEstado() {
   useEffect(() => {
     setIsClient(true)
   }, [])
-
-  // Función para cargar desde localStorage
-  const cargarDesdeLocalStorage = useCallback(() => {
-    if (!isClient) return estadoInicial
-
-    try {
-      const estadoLocal = localStorage.getItem(STORAGE_KEY)
-      if (estadoLocal) {
-        const data = JSON.parse(estadoLocal)
-
-        // Migrar datos antiguos si no tienen campos requeridos
-        if (!data.tickets) data.tickets = []
-        if (!data.ultimoReinicio) data.ultimoReinicio = new Date().toISOString()
-        if (!data.lastSync) data.lastSync = Date.now()
-
-        console.log("📱 Estado cargado desde localStorage:", {
-          numeroActual: data.numeroActual,
-          totalAtendidos: data.totalAtendidos,
-          totalTickets: data.tickets?.length || 0,
-        })
-
-        return data
-      }
-    } catch (error) {
-      console.error("❌ Error al cargar desde localStorage:", error)
-    }
-
-    return estadoInicial
-  }, [isClient])
-
-  // Función para guardar en localStorage
-  const guardarEnLocalStorage = useCallback(
-    (nuevoEstado: EstadoSistema) => {
-      if (!isClient) return
-
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(nuevoEstado))
-        console.log("💾 Estado guardado en localStorage")
-      } catch (error) {
-        console.error("❌ Error al guardar en localStorage:", error)
-      }
-    },
-    [isClient],
-  )
 
   // Función para obtener información de debug
   const cargarDebugInfo = useCallback(async () => {
@@ -124,22 +77,12 @@ export function useSistemaEstado() {
     }
   }, [isClient])
 
-  // Función optimizada para cargar estado (con throttling)
+  // Función para cargar estado desde la API (base de datos)
   const cargarEstado = useCallback(
     async (incluirEstadisticas = false, reintentos = 2) => {
       if (!isClient) return
 
-      // Throttling: no hacer requests muy frecuentes
-      const ultimaRequest = localStorage.getItem("ultimaRequestAPI")
-      const ahora = Date.now()
-
-      if (ultimaRequest && ahora - Number.parseInt(ultimaRequest) < 5000) {
-        console.log("🚫 Request throttled, usando localStorage")
-        const estadoLocal = cargarDesdeLocalStorage()
-        setEstado(estadoLocal)
-        setLoading(false)
-        return
-      }
+      setLoading(true) // Siempre mostrar loading al cargar desde DB
 
       for (let intento = 1; intento <= reintentos; intento++) {
         try {
@@ -155,11 +98,9 @@ export function useSistemaEstado() {
           })
 
           if (response.status === 503) {
-            console.log("⏳ Sistema ocupado, usando localStorage")
-            const estadoLocal = cargarDesdeLocalStorage()
-            setEstado(estadoLocal)
-            setLoading(false)
-            return
+            console.log("⏳ Sistema ocupado, reintentando...")
+            await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
+            continue
           }
 
           if (response.ok) {
@@ -169,12 +110,6 @@ export function useSistemaEstado() {
             setEstado(data)
             setError(null)
             setUltimaSincronizacion(new Date())
-
-            // Guardar en localStorage como backup
-            guardarEnLocalStorage(data)
-
-            // Marcar timestamp de última request
-            localStorage.setItem("ultimaRequestAPI", ahora.toString())
 
             // Cargar estadísticas si se solicita
             if (incluirEstadisticas) {
@@ -194,34 +129,20 @@ export function useSistemaEstado() {
           console.error(`❌ Error al cargar estado (intento ${intento}):`, err)
 
           if (intento === reintentos) {
-            // Último intento fallido, usar localStorage
             setError(`Error de conexión: ${err instanceof Error ? err.message : "Error desconocido"}`)
-
-            const estadoLocal = cargarDesdeLocalStorage()
-            setEstado(estadoLocal)
             setLoading(false)
           } else {
-            // Esperar antes del siguiente intento
             await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
           }
         }
       }
     },
-    [isClient, cargarDesdeLocalStorage, guardarEnLocalStorage, cargarDebugInfo],
+    [isClient, cargarDebugInfo],
   )
 
-  // Función optimizada para cargar estadísticas (con throttling)
+  // Función para cargar estadísticas
   const cargarEstadisticas = useCallback(async () => {
     if (!isClient) return
-
-    // Throttling para estadísticas
-    const ultimaStatsRequest = localStorage.getItem("ultimaStatsRequest")
-    const ahora = Date.now()
-
-    if (ultimaStatsRequest && ahora - Number.parseInt(ultimaStatsRequest) < 30000) {
-      console.log("🚫 Stats request throttled")
-      return
-    }
 
     try {
       const response = await fetch("/api/sistema", {
@@ -240,23 +161,19 @@ export function useSistemaEstado() {
       if (response.ok) {
         const data = await response.json()
         setEstadisticas(data.estadisticas)
-        localStorage.setItem("ultimaStatsRequest", ahora.toString())
       }
     } catch (error) {
       console.error("❌ Error al cargar estadísticas:", error)
     }
   }, [isClient])
 
-  // Función optimizada para guardar estado
+  // Función para guardar estado en la API (base de datos)
   const guardarEstado = useCallback(
     async (nuevoEstado: EstadoSistema, reintentos = 2) => {
       if (!isClient) return
 
-      // Guardar inmediatamente en localStorage
-      guardarEnLocalStorage(nuevoEstado)
-      setEstado(nuevoEstado)
+      setEstado(nuevoEstado) // Actualizar UI inmediatamente
 
-      // Intentar sincronizar con servidor
       for (let intento = 1; intento <= reintentos; intento++) {
         try {
           console.log(`💾 Sincronizando con servidor (intento ${intento}/${reintentos})`)
@@ -273,8 +190,9 @@ export function useSistemaEstado() {
           })
 
           if (response.status === 503) {
-            console.log("⏳ Sistema ocupado, datos guardados localmente")
-            return // Los datos ya están en localStorage
+            console.log("⏳ Sistema ocupado, reintentando...")
+            await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
+            continue
           }
 
           if (response.ok) {
@@ -284,7 +202,6 @@ export function useSistemaEstado() {
             setEstado(data)
             setError(null)
             setUltimaSincronizacion(new Date())
-            guardarEnLocalStorage(data)
             return
           } else {
             const errorData = await response.json()
@@ -295,17 +212,16 @@ export function useSistemaEstado() {
 
           if (intento === reintentos) {
             setError(`Error de sincronización: ${err instanceof Error ? err.message : "Error desconocido"}`)
-            // Los datos siguen en localStorage
           } else {
             await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
           }
         }
       }
     },
-    [isClient, guardarEnLocalStorage],
+    [isClient],
   )
 
-  // Función optimizada para generar ticket
+  // Función para generar ticket
   const generarTicket = useCallback(
     async (nombre: string, reintentos = 2) => {
       if (!isClient) return null
@@ -341,7 +257,6 @@ export function useSistemaEstado() {
             setEstado(data)
             setError(null)
             setUltimaSincronizacion(new Date())
-            guardarEnLocalStorage(data)
             await cargarDebugInfo()
 
             return data.ticketGenerado
@@ -363,10 +278,10 @@ export function useSistemaEstado() {
 
       return null
     },
-    [isClient, guardarEnLocalStorage, cargarDebugInfo],
+    [isClient, cargarDebugInfo],
   )
 
-  // Función para obtener backups (con throttling)
+  // Función para obtener backups
   const obtenerBackups = useCallback(async () => {
     if (!isClient) return []
 
@@ -413,32 +328,23 @@ export function useSistemaEstado() {
     [isClient],
   )
 
-  // Cargar estado inicial
+  // Cargar estado inicial al montar el componente
   useEffect(() => {
     if (isClient) {
-      // Cargar inmediatamente desde localStorage
-      const estadoLocal = cargarDesdeLocalStorage()
-      setEstado(estadoLocal)
-      setLoading(false)
-
-      // Luego intentar sincronizar con servidor (sin bloquear UI)
-      cargarEstado(true).catch((err) => console.error("Error en sincronización inicial:", err))
+      cargarEstado(true).catch((err) => console.error("Error en carga inicial:", err))
     }
-  }, [isClient, cargarDesdeLocalStorage, cargarEstado])
+  }, [isClient, cargarEstado])
 
-  // Sincronización periódica muy reducida (solo cada 2 minutos)
+  // Sincronización periódica (cada 30 segundos)
   useEffect(() => {
     if (!isClient) return
 
     const interval = setInterval(() => {
-      // Solo sincronizar si no hay error de límite de requests
-      if (!error || !error.includes("max requests limit")) {
-        cargarEstado(false).catch((err) => console.error("Error en sincronización periódica:", err))
-      }
-    }, 120000) // 2 minutos
+      cargarEstado(false).catch((err) => console.error("Error en sincronización periódica:", err))
+    }, 30000) // 30 segundos
 
     return () => clearInterval(interval)
-  }, [cargarEstado, isClient, error])
+  }, [cargarEstado, isClient])
 
   // Verificar integridad de la numeración
   const verificarIntegridad = useCallback(() => {

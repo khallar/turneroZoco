@@ -197,7 +197,7 @@ export default function SistemaAtencion() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-lg text-gray-600">Cargando sistema...</p>
-          <p className="text-sm text-gray-500 mt-2">Conectando con Vercel KV (Redis)...</p>
+          <p className="text-sm text-gray-500 mt-2">Conectando con SISTEMATURNOSBD...</p>
         </div>
       </div>
     )
@@ -227,7 +227,7 @@ export default function SistemaAtencion() {
               className={`w-3 h-3 rounded-full ${isOnline && !error ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
             ></div>
             <span className="text-sm text-gray-600">
-              {error ? "Modo offline" : isOnline ? "Conectado a Vercel KV" : "Sin conexión"}
+              {error ? "Error de conexión" : isOnline ? "Conectado a SISTEMATURNOSBD" : "Sin conexión"}
             </span>
           </div>
 
@@ -251,7 +251,7 @@ export default function SistemaAtencion() {
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
                 <Bug className="h-4 w-4" />
-                Información de Debug - Vercel KV
+                Información de Debug - SISTEMATURNOSBD
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -264,30 +264,24 @@ export default function SistemaAtencion() {
                   <strong>Plataforma:</strong> {debugInfo.environment?.PLATFORM || "N/A"}
                 </div>
                 <div>
-                  <strong>Redis URL:</strong> {debugInfo.redis?.url || "No configurado"}
+                  <strong>DB URL:</strong> {debugInfo.database?.url || "No configurado"}
                 </div>
                 <div>
-                  <strong>Redis Token:</strong> {debugInfo.redis?.token || "No configurado"}
+                  <strong>DB Tipo:</strong> {debugInfo.database?.type || "N/A"}
                 </div>
                 <div>
-                  <strong>Conexión Redis:</strong>
-                  <span className={debugInfo.redis?.connection === "Exitosa" ? "text-green-600" : "text-red-600"}>
-                    {debugInfo.redis?.connection || "Desconocido"}
+                  <strong>DB Nombre:</strong> {debugInfo.database?.name || "N/A"}
+                </div>
+                <div>
+                  <strong>Conexión DB:</strong>
+                  <span className={debugInfo.database?.connection === "Exitosa" ? "text-green-600" : "text-red-600"}>
+                    {debugInfo.database?.connection || "Desconocido"}
                   </span>
                 </div>
-                <div>
-                  <strong>Estado en Redis:</strong> {debugInfo.redis?.estadoActual ? "Encontrado" : "No encontrado"}
-                </div>
-                <div>
-                  <strong>Lock Status:</strong> {debugInfo.redis?.lockStatus || "N/A"}
-                </div>
-                <div>
-                  <strong>Backups:</strong> {debugInfo.redis?.backupsCount || 0}
-                </div>
-                {debugInfo.redis?.estadoActual && (
+                {debugInfo.database?.estadoActual && (
                   <div className="mt-2 p-2 bg-blue-50 rounded">
                     <strong>Estado actual:</strong>
-                    <pre className="text-xs mt-1">{JSON.stringify(debugInfo.redis.estadoActual, null, 2)}</pre>
+                    <pre className="text-xs mt-1">{JSON.stringify(debugInfo.database.estadoActual, null, 2)}</pre>
                   </div>
                 )}
                 {error && (
@@ -310,8 +304,8 @@ export default function SistemaAtencion() {
             <Database className="h-4 w-4" />
             <span>
               {error
-                ? "Modo offline - Datos en localStorage"
-                : "Datos guardados en Vercel KV (Redis) - Persistencia garantizada"}
+                ? "Error de conexión a la base de datos"
+                : "Datos guardados en SISTEMATURNOSBD (PostgreSQL) - Persistencia garantizada"}
             </span>
           </div>
         </div>
@@ -399,7 +393,7 @@ export default function SistemaAtencion() {
         </button>
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="text-center text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 4.0 | Powered by Vercel KV</p>
+            <p>Develop by: Karim :) | Versión 4.0 | Powered by SISTEMATURNOSBD</p>
           </div>
         </div>
       </footer>

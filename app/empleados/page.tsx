@@ -36,7 +36,7 @@ export default function PaginaEmpleados() {
     setIsClient(true)
   }, [])
 
-  // Actualizar datos automáticamente cada 30 segundos (aumentado para reducir requests)
+  // Actualizar datos automáticamente cada 30 segundos
   useEffect(() => {
     if (!isClient) return
 
@@ -54,48 +54,11 @@ export default function PaginaEmpleados() {
     // Ejecutar inmediatamente al montar
     actualizarAutomaticamente()
 
-    // Configurar intervalo menos frecuente para evitar límite de requests
+    // Configurar intervalo
     const interval = setInterval(actualizarAutomaticamente, 30000) // 30 segundos
 
     return () => clearInterval(interval)
   }, [cargarEstado, isClient])
-
-  // Sistema de caché local inteligente en lugar de actualización agresiva
-  useEffect(() => {
-    if (!isClient) return
-
-    const proximoNumeroALlamar = estado?.numerosLlamados + 1
-    const hayNumerosParaLlamar = proximoNumeroALlamar <= (estado?.totalAtendidos || 0)
-
-    // En lugar de hacer requests frecuentes, usar datos locales y solo actualizar cuando sea crítico
-    if (!hayNumerosParaLlamar && (estado?.totalAtendidos || 0) >= 0) {
-      console.log("No hay tickets disponibles, usando caché local inteligente...")
-
-      // Solo hacer una request si han pasado más de 60 segundos desde la última
-      const ultimaActualizacion = localStorage.getItem("ultimaActualizacionEmpleados")
-      const ahora = Date.now()
-
-      if (!ultimaActualizacion || ahora - Number.parseInt(ultimaActualizacion) > 60000) {
-        console.log("Actualizando después de 60 segundos sin tickets...")
-        cargarEstado(true)
-        localStorage.setItem("ultimaActualizacionEmpleados", ahora.toString())
-      }
-    }
-  }, [estado?.numerosLlamados, estado?.totalAtendidos, cargarEstado, isClient])
-
-  // Actualizar datos cuando hay cambios en el estado (para detectar nuevos tickets más rápido)
-  useEffect(() => {
-    if (!isClient) return
-
-    // Si hay tickets nuevos y no hay números para llamar, forzar actualización
-    const proximoNumeroALlamar = estado?.numerosLlamados + 1
-    const hayNumerosParaLlamar = proximoNumeroALlamar <= (estado?.totalAtendidos || 0)
-
-    if (!hayNumerosParaLlamar && (estado?.totalAtendidos || 0) > 0) {
-      console.log("Detectados posibles tickets nuevos, forzando actualización...")
-      cargarEstado(true)
-    }
-  }, [estado?.totalAtendidos, estado?.numerosLlamados, cargarEstado, isClient])
 
   // Verificar el estado de conexión después del montaje
   useEffect(() => {
@@ -191,19 +154,7 @@ export default function PaginaEmpleados() {
     setActualizandoDatos(true)
     try {
       console.log("Actualizando datos manualmente...")
-
-      // Verificar throttling local
-      const ultimaActualizacionManual = localStorage.getItem("ultimaActualizacionManual")
-      const ahora = Date.now()
-
-      if (ultimaActualizacionManual && ahora - Number.parseInt(ultimaActualizacionManual) < 5000) {
-        console.log("Actualización manual muy frecuente, usando caché")
-        setActualizandoDatos(false)
-        return
-      }
-
       await cargarEstado(true) // Una sola llamada con estadísticas
-      localStorage.setItem("ultimaActualizacionManual", ahora.toString())
       setContadorActualizaciones((prev) => prev + 1)
     } catch (error) {
       console.error("Error al actualizar datos:", error)
@@ -314,7 +265,6 @@ export default function PaginaEmpleados() {
             <div className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>
             <span className="text-xs text-gray-600">
               Auto-actualización cada 30s {contadorActualizaciones > 0 && `(${contadorActualizaciones} updates)`}
-              {!hayNumerosParaLlamar && (estado?.totalAtendidos || 0) >= 0 && " - Caché inteligente activo"}
             </span>
           </div>
 
@@ -508,24 +458,6 @@ export default function PaginaEmpleados() {
                     >
                       <RefreshCw className="mr-2 h-4 w-4" />
                       Verificar Nuevos Tickets
-                    </Button>
-                    <Button
-                      onClick={async () => {
-                        // Una sola actualización forzada en lugar de triple
-                        setActualizandoDatos(true)
-                        try {
-                          await cargarEstado(true)
-                          // Forzar re-render del componente
-                          setContadorActualizaciones((prev) => prev + 1)
-                        } finally {
-                          setActualizandoDatos(false)
-                        }
-                      }}
-                      variant="outline"
-                      className="bg-orange-50 border-orange-300 text-orange-700 hover:bg-orange-100"
-                      disabled={actualizandoDatos}
-                    >
-                      🔄 Forzar Actualización
                     </Button>
                   </div>
                 )}
