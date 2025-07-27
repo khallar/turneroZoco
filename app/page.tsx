@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Phone, Users, Clock, ArrowRight, Wifi, WifiOff } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 import { NombreModal } from "@/components/NombreModal"
-import { TicketDisplay } from "@/components/TicketDisplay"
+import TicketDisplay from "@/components/TicketDisplay"
 
 export default function PaginaPrincipal() {
   const { estado, loading, error, generarTicket, cargarEstado, ultimaSincronizacion } = useSistemaEstado()
