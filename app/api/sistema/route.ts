@@ -153,22 +153,21 @@ async function generarNumeroAtomico(): Promise<number> {
   try {
     await ensureDirectories()
 
-    let contador = 1
+    // Leer el estado actual para obtener el próximo número a asignar
+    let estado: EstadoSistema
     try {
-      const data = await fs.readFile(CONTADOR_FILE, "utf8")
-      contador = JSON.parse(data).contador || 1
+      const data = await fs.readFile(ESTADO_FILE, "utf8")
+      estado = JSON.parse(data) as EstadoSistema
     } catch (error) {
-      // Archivo no existe, usar contador inicial
+      // Si no existe el archivo, usar estado inicial
+      estado = { ...estadoInicial }
     }
 
-    // Incrementar contador
-    contador++
+    // El número a asignar es el numeroActual del estado
+    const numeroAsignado = estado.numeroActual
 
-    // Guardar nuevo contador
-    await fs.writeFile(CONTADOR_FILE, JSON.stringify({ contador }, null, 2), "utf8")
-
-    console.log("Número generado atómicamente:", contador)
-    return contador
+    console.log("Número generado atómicamente:", numeroAsignado)
+    return numeroAsignado
   } catch (error) {
     console.error("Error al generar número atómico:", error)
     throw error
@@ -177,20 +176,8 @@ async function generarNumeroAtomico(): Promise<number> {
 
 // Función para inicializar contador si no existe
 async function inicializarContador(numeroActual: number): Promise<void> {
-  try {
-    await ensureDirectories()
-
-    try {
-      await fs.access(CONTADOR_FILE)
-      // El archivo existe, no hacer nada
-    } catch (error) {
-      // El archivo no existe, crearlo
-      await fs.writeFile(CONTADOR_FILE, JSON.stringify({ contador: numeroActual - 1 }, null, 2), "utf8")
-      console.log("Contador atómico inicializado en:", numeroActual - 1)
-    }
-  } catch (error) {
-    console.error("Error al inicializar contador:", error)
-  }
+  // Esta función ya no es necesaria con la nueva lógica
+  console.log("Inicialización de contador no requerida con nueva lógica")
 }
 
 export async function GET() {
@@ -209,24 +196,20 @@ export async function GET() {
       // Reiniciar estado
       const ahora = new Date()
       estado = {
-        numeroActual: 1,
+        numeroActual: 1, // Empezar desde 1
         ultimoNumero: 0,
         totalAtendidos: 0,
         numerosLlamados: 0,
-        fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }), // YYYY-MM-DD
+        fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }),
         ultimoReinicio: ahora.toISOString(),
         tickets: [],
       }
-
-      // Reiniciar contador atómico
-      await fs.unlink(CONTADOR_FILE).catch(() => {}) // Eliminar archivo de contador
-      await inicializarContador(estado.numeroActual)
 
       // Guardar estado reiniciado
       await escribirDatos(estado)
     } else {
       // Asegurar que el contador esté sincronizado
-      await inicializarContador(estado.numeroActual)
+      // await inicializarContador(estado.numeroActual)
     }
 
     console.log("Estado devuelto:", {
@@ -277,8 +260,8 @@ export async function POST(request: NextRequest) {
       }
 
       // Reiniciar contador atómico
-      await fs.unlink(CONTADOR_FILE).catch(() => {})
-      await inicializarContador(estado.numeroActual)
+      // await fs.unlink(CONTADOR_FILE).catch(() => {})
+      // await inicializarContador(estado.numeroActual)
     }
 
     // Acción especial para generar ticket de forma atómica
@@ -292,8 +275,8 @@ export async function POST(request: NextRequest) {
       console.log("Generando ticket para:", nombre)
 
       try {
-        // Generar número de forma atómica
-        const numeroAsignado = await generarNumeroAtomico()
+        // Usar el numeroActual del estado actual como el número a asignar
+        const numeroAsignado = estado.numeroActual
         const fecha = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
         const timestamp = Date.now()
 
@@ -312,7 +295,7 @@ export async function POST(request: NextRequest) {
           ticketsLength: estado.tickets.length,
         })
 
-        // Actualizar estado
+        // Actualizar estado - IMPORTANTE: incrementar numeroActual para el próximo ticket
         estado = {
           ...estado,
           numeroActual: numeroAsignado + 1, // El próximo número a asignar
@@ -384,7 +367,7 @@ export async function POST(request: NextRequest) {
         // Reiniciar completamente el estado
         const ahora = new Date()
         const estadoLimpio: EstadoSistema = {
-          numeroActual: 1,
+          numeroActual: 1, // Empezar desde 1
           ultimoNumero: 0,
           totalAtendidos: 0,
           numerosLlamados: 0,
@@ -399,7 +382,7 @@ export async function POST(request: NextRequest) {
 
         // Guardar estado limpio
         await escribirDatos(estadoLimpio)
-        await inicializarContador(estadoLimpio.numeroActual)
+        // await inicializarContador(estadoLimpio.numeroActual)
 
         console.log("Todos los registros eliminados exitosamente")
 
@@ -430,7 +413,7 @@ export async function POST(request: NextRequest) {
         // Reiniciar solo los contadores, mantener configuración
         const ahora = new Date()
         const estadoReiniciado: EstadoSistema = {
-          numeroActual: 1,
+          numeroActual: 1, // Empezar desde 1
           ultimoNumero: 0,
           totalAtendidos: 0,
           numerosLlamados: 0,
@@ -441,7 +424,7 @@ export async function POST(request: NextRequest) {
 
         // Reiniciar contador atómico
         await fs.unlink(CONTADOR_FILE).catch(() => {})
-        await inicializarContador(estadoReiniciado.numeroActual)
+        // await inicializarContador(estadoReiniciado.numeroActual)
 
         // Guardar estado reiniciado
         await escribirDatos(estadoReiniciado)

@@ -128,10 +128,20 @@ export default function SistemaAtencion() {
     try {
       setGenerandoTicket(true)
 
+      console.log("=== GENERANDO TICKET ===")
+      console.log("Nombre:", nombre)
+      console.log("Estado actual antes de generar:", {
+        numeroActual: estado?.numeroActual,
+        totalAtendidos: estado?.totalAtendidos,
+        ticketsLength: estado?.tickets?.length || 0,
+      })
+
       // Generar ticket de forma atómica en el servidor
       const ticketCreado = await generarTicket(nombre)
 
       if (ticketCreado) {
+        console.log("Ticket creado exitosamente:", ticketCreado)
+
         const fraseAleatoria = FRASES_ALEATORIAS[Math.floor(Math.random() * FRASES_ALEATORIAS.length)]
 
         // Cerrar modal y mostrar ticket
@@ -142,6 +152,9 @@ export default function SistemaAtencion() {
           frase: fraseAleatoria,
           fecha: ticketCreado.fecha,
         })
+      } else {
+        console.error("No se pudo crear el ticket")
+        alert("Error: No se pudo generar el ticket")
       }
     } catch (error) {
       console.error("Error al generar ticket:", error)

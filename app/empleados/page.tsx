@@ -159,6 +159,10 @@ export default function PaginaEmpleados() {
   const llamarSiguienteNumero = async () => {
     const proximoNumeroALlamar = estado.numerosLlamados + 1
 
+    console.log("Intentando llamar número:", proximoNumeroALlamar)
+    console.log("Total atendidos:", estado.totalAtendidos)
+    console.log("Números ya llamados:", estado.numerosLlamados)
+
     if (proximoNumeroALlamar > estado.totalAtendidos) {
       alert("No hay más números en espera para llamar")
       return
@@ -166,6 +170,7 @@ export default function PaginaEmpleados() {
 
     // Buscar el ticket correspondiente
     const ticketALlamar = estado.tickets.find((ticket) => ticket.numero === proximoNumeroALlamar)
+    console.log("Ticket encontrado:", ticketALlamar)
 
     const nuevoEstado = {
       ...estado,
