@@ -42,12 +42,12 @@ export default function PaginaEmpleados() {
 
     const actualizarAutomaticamente = async () => {
       try {
-        console.log("Actualizando datos automáticamente (empleados)...")
+        console.log("Actualizando datos automáticamente (empleados - Neon)...") // Actualizado
         setUltimaActualizacionAutomatica(new Date())
         setContadorActualizaciones((prev) => prev + 1)
         await cargarEstado(true) // Con estadísticas para el panel de empleados
       } catch (error) {
-        console.error("Error en actualización automática de empleados:", error)
+        console.error("Error en actualización automática de empleados (Neon):", error) // Actualizado
       }
     }
 
@@ -69,7 +69,7 @@ export default function PaginaEmpleados() {
     const handleOnline = () => {
       setIsOnline(true)
       // Cuando vuelve la conexión, actualizar inmediatamente
-      console.log("Conexión restaurada, actualizando datos...")
+      console.log("Conexión restaurada (Neon), actualizando datos...") // Actualizado
       cargarEstado(true)
     }
     const handleOffline = () => setIsOnline(false)
@@ -153,11 +153,11 @@ export default function PaginaEmpleados() {
   const actualizarDatosManual = async () => {
     setActualizandoDatos(true)
     try {
-      console.log("Actualizando datos manualmente...")
+      console.log("Actualizando datos manualmente (Neon)...") // Actualizado
       await cargarEstado(true) // Una sola llamada con estadísticas
       setContadorActualizaciones((prev) => prev + 1)
     } catch (error) {
-      console.error("Error al actualizar datos:", error)
+      console.error("Error al actualizar datos (Neon):", error) // Actualizado
     } finally {
       setActualizandoDatos(false)
     }
@@ -236,7 +236,8 @@ export default function PaginaEmpleados() {
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 md:h-32 md:w-32 border-b-2 border-green-600 mx-auto mb-4"></div>
-          <p className="text-base md:text-lg text-gray-600">Cargando panel de empleados...</p>
+          <p className="text-base md:text-lg text-gray-600">Cargando panel de empleados (Neon)...</p>{" "}
+          {/* Actualizado */}
         </div>
       </div>
     )
@@ -316,12 +317,12 @@ export default function PaginaEmpleados() {
               {isOnline ? (
                 <>
                   <Wifi className="h-3 w-3 md:h-4 md:w-4 text-green-500" />
-                  <span className="text-green-500">Online</span>
+                  <span className="text-green-500">Online (Neon)</span> {/* Actualizado */}
                 </>
               ) : (
                 <>
                   <WifiOff className="h-3 w-3 md:h-4 md:w-4 text-red-500" />
-                  <span className="text-red-500">Offline</span>
+                  <span className="text-red-500">Offline (Neon)</span> {/* Actualizado */}
                 </>
               )}
             </div>

@@ -1,4 +1,4 @@
-// Configuración de la base de datos sistemaTurnosZOCO
+// Configuración de la base de datos sistemaTurnosZOCO (usando Neon Serverless Postgres)
 import { Pool } from "pg"
 
 interface TicketInfo {
@@ -45,7 +45,7 @@ async function executeQuery(query: string, params: any[] = []) {
 // Función para leer el estado actual del sistema
 export async function leerEstadoSistema(): Promise<EstadoSistema> {
   try {
-    console.log("📖 Leyendo estado desde sistemaTurnosZOCO...")
+    console.log("📖 Leyendo estado desde sistemaTurnosZOCO (Neon)...")
 
     const fechaHoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
 
@@ -98,14 +98,14 @@ export async function leerEstadoSistema(): Promise<EstadoSistema> {
         lastSync: row.last_sync,
       }
 
-      console.log("✅ Estado cargado desde sistemaTurnosZOCO:", {
+      console.log("✅ Estado cargado desde sistemaTurnosZOCO (Neon):", {
         numeroActual: estado.numeroActual,
         totalAtendidos: estado.totalAtendidos,
         totalTickets: estado.tickets.length,
       })
     } else {
       // Crear estado inicial para el día
-      console.log("⚠️ No se encontró estado para hoy, creando inicial...")
+      console.log("⚠️ No se encontró estado para hoy, creando inicial en sistemaTurnosZOCO (Neon)...")
 
       estado = {
         numeroActual: 1,
@@ -123,7 +123,7 @@ export async function leerEstadoSistema(): Promise<EstadoSistema> {
 
     return estado
   } catch (error) {
-    console.error("❌ Error al leer estado del sistema:", error)
+    console.error("❌ Error al leer estado del sistema desde Neon:", error)
     throw error
   }
 }
@@ -133,7 +133,7 @@ export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void
   const client = await pool.connect()
 
   try {
-    console.log("💾 Escribiendo estado a sistemaTurnosZOCO...")
+    console.log("💾 Escribiendo estado a sistemaTurnosZOCO (Neon)...")
 
     await client.query("BEGIN")
 
@@ -181,10 +181,10 @@ export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void
 
     await client.query("COMMIT")
 
-    console.log("✅ Estado guardado exitosamente en sistemaTurnosZOCO")
+    console.log("✅ Estado guardado exitosamente en sistemaTurnosZOCO (Neon)")
   } catch (error) {
     await client.query("ROLLBACK")
-    console.error("❌ Error al escribir estado:", error)
+    console.error("❌ Error al escribir estado en Neon:", error)
     throw error
   } finally {
     client.release()
@@ -196,7 +196,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
   const client = await pool.connect()
 
   try {
-    console.log("🎫 Generando ticket atómico para:", nombre)
+    console.log("🎫 Generando ticket atómico para:", nombre, "en Neon...")
 
     await client.query("BEGIN")
 
@@ -218,7 +218,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
     const updateResult = await client.query(updateQuery, [fechaHoy, Date.now()])
 
     if (updateResult.rows.length === 0) {
-      throw new Error("No se pudo actualizar el estado del sistema")
+      throw new Error("No se pudo actualizar el estado del sistema en Neon")
     }
 
     const { numero_asignado } = updateResult.rows[0]
@@ -255,12 +255,12 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
       timestamp,
     }
 
-    console.log("✅ Ticket generado exitosamente:", nuevoTicket)
+    console.log("✅ Ticket generado exitosamente en sistemaTurnosZOCO (Neon):", nuevoTicket)
 
     return nuevoTicket
   } catch (error) {
     await client.query("ROLLBACK")
-    console.error("❌ Error al generar ticket:", error)
+    console.error("❌ Error al generar ticket en Neon:", error)
     throw error
   } finally {
     client.release()
@@ -270,7 +270,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
 // Función para crear backup diario
 export async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
   try {
-    console.log("📦 Creando backup diario...")
+    console.log("📦 Creando backup diario en Neon...")
 
     const fecha = estado.fechaInicio
 
@@ -305,9 +305,9 @@ export async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
       JSON.stringify(backup.tickets),
     ])
 
-    console.log("✅ Backup diario creado exitosamente")
+    console.log("✅ Backup diario creado exitosamente en Neon")
   } catch (error) {
-    console.error("❌ Error al crear backup diario:", error)
+    console.error("❌ Error al crear backup diario en Neon:", error)
     // No lanzar error para no bloquear otras operaciones
   }
 }
@@ -330,7 +330,7 @@ export async function obtenerBackups(): Promise<any[]> {
       createdAt: row.created_at,
     }))
   } catch (error) {
-    console.error("❌ Error al obtener backups:", error)
+    console.error("❌ Error al obtener backups desde Neon:", error)
     return []
   }
 }
@@ -359,7 +359,7 @@ export async function obtenerBackup(fecha: string): Promise<any | null> {
 
     return null
   } catch (error) {
-    console.error("❌ Error al obtener backup:", error)
+    console.error("❌ Error al obtener backup desde Neon:", error)
     return null
   }
 }
@@ -367,13 +367,13 @@ export async function obtenerBackup(fecha: string): Promise<any | null> {
 // Función para limpiar datos antiguos
 export async function limpiarDatosAntiguos(): Promise<void> {
   try {
-    console.log("🧹 Limpiando datos antiguos...")
+    console.log("🧹 Limpiando datos antiguos en Neon...")
 
     await executeQuery("SELECT limpiar_datos_antiguos()")
 
-    console.log("✅ Datos antiguos limpiados exitosamente")
+    console.log("✅ Datos antiguos limpiados exitosamente en Neon")
   } catch (error) {
-    console.error("❌ Error al limpiar datos antiguos:", error)
+    console.error("❌ Error al limpiar datos antiguos en Neon:", error)
   }
 }
 
@@ -398,7 +398,7 @@ export async function obtenerEstadisticas(estado: EstadoSistema) {
 
     return estadisticas
   } catch (error) {
-    console.error("❌ Error al obtener estadísticas:", error)
+    console.error("❌ Error al obtener estadísticas desde Neon:", error)
     throw error
   }
 }
@@ -407,10 +407,10 @@ export async function obtenerEstadisticas(estado: EstadoSistema) {
 export async function verificarConexionDB(): Promise<boolean> {
   try {
     const result = await executeQuery("SELECT NOW() as timestamp, version() as version")
-    console.log("✅ Conexión a sistemaTurnosZOCO exitosa:", result.rows[0])
+    console.log("✅ Conexión a sistemaTurnosZOCO (Neon) exitosa:", result.rows[0])
     return true
   } catch (error) {
-    console.error("❌ Error de conexión a sistemaTurnosZOCO:", error)
+    console.error("❌ Error de conexión a sistemaTurnosZOCO (Neon):", error)
     return false
   }
 }
@@ -418,5 +418,5 @@ export async function verificarConexionDB(): Promise<boolean> {
 // Cerrar pool de conexiones (para cleanup)
 export async function cerrarConexiones(): Promise<void> {
   await pool.end()
-  console.log("🔌 Pool de conexiones cerrado")
+  console.log("🔌 Pool de conexiones de Neon cerrado")
 }

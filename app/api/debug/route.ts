@@ -7,12 +7,12 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       environment: {
         NODE_ENV: process.env.NODE_ENV,
-        PLATFORM: "sistemaTurnosZOCO (PostgreSQL)",
+        PLATFORM: "sistemaTurnosZOCO (Neon Serverless Postgres)", // Actualizado
         VERCEL_ENV: process.env.VERCEL_ENV || "development",
       },
       database: {
         url: process.env.DATABASE_URL ? "Configurado" : "No configurado",
-        type: "PostgreSQL",
+        type: "Neon Serverless Postgres", // Actualizado
         name: "sistemaTurnosZOCO",
       },
     }
@@ -71,7 +71,7 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json(
       {
-        error: "Error en debug - sistemaTurnosZOCO",
+        error: "Error en debug - sistemaTurnosZOCO (Neon)",
         details: error instanceof Error ? error.message : "Error desconocido",
       },
       { status: 500 },

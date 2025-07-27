@@ -12,10 +12,10 @@ export async function GET(request: NextRequest) {
       try {
         const backups = await obtenerBackups()
 
-        console.log("📦 Backups encontrados en sistemaTurnosZOCO:", backups.length)
+        console.log("📦 Backups encontrados en sistemaTurnosZOCO (Neon):", backups.length)
         return NextResponse.json({ backups })
       } catch (error) {
-        console.error("❌ Error al listar backups:", error)
+        console.error("❌ Error al listar backups (Neon):", error)
         return NextResponse.json({ backups: [] })
       }
     }
@@ -31,15 +31,15 @@ export async function GET(request: NextRequest) {
           return NextResponse.json({ error: "Backup no encontrado" }, { status: 404 })
         }
       } catch (error) {
-        console.error("❌ Error al obtener backup:", error)
+        console.error("❌ Error al obtener backup (Neon):", error)
         return NextResponse.json({ error: "Backup no encontrado" }, { status: 404 })
       }
     }
 
     return NextResponse.json({ error: "Parámetros inválidos" }, { status: 400 })
   } catch (error) {
-    console.error("❌ Error en API de backup:", error)
-    return NextResponse.json({ error: "Error interno del servidor - sistemaTurnosZOCO" }, { status: 500 })
+    console.error("❌ Error en API de backup (Neon):", error)
+    return NextResponse.json({ error: "Error interno del servidor - sistemaTurnosZOCO (Neon)" }, { status: 500 })
   }
 }
 
@@ -53,19 +53,19 @@ export async function POST(request: NextRequest) {
       try {
         await limpiarDatosAntiguos()
 
-        console.log("🧹 Datos antiguos limpiados en sistemaTurnosZOCO")
+        console.log("🧹 Datos antiguos limpiados en sistemaTurnosZOCO (Neon)")
         return NextResponse.json({
           mensaje: "Datos antiguos limpiados exitosamente",
         })
       } catch (error) {
-        console.error("❌ Error al limpiar backups:", error)
+        console.error("❌ Error al limpiar backups (Neon):", error)
         return NextResponse.json({ error: "Error al limpiar backups" }, { status: 500 })
       }
     }
 
     return NextResponse.json({ error: "Acción no válida" }, { status: 400 })
   } catch (error) {
-    console.error("❌ Error en POST de backup:", error)
-    return NextResponse.json({ error: "Error interno del servidor - sistemaTurnosZOCO" }, { status: 500 })
+    console.error("❌ Error en POST de backup (Neon):", error)
+    return NextResponse.json({ error: "Error interno del servidor - sistemaTurnosZOCO (Neon)" }, { status: 500 })
   }
 }

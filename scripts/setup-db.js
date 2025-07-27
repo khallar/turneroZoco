@@ -1,10 +1,10 @@
-// Script para configurar la base de datos sistemaTurnosZOCO
+// Script para configurar la base de datos sistemaTurnosZOCO (usando Neon Serverless Postgres)
 const { Pool } = require("pg")
 const fs = require("fs")
 const path = require("path")
 
 async function setupDatabase() {
-  console.log("🚀 Configurando sistemaTurnosZOCO...")
+  console.log("🚀 Configurando sistemaTurnosZOCO con Neon Serverless Postgres...") // Actualizado
 
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -18,7 +18,7 @@ async function setupDatabase() {
     // Ejecutar el script
     await pool.query(sqlScript)
 
-    console.log("✅ sistemaTurnosZOCO configurado exitosamente")
+    console.log("✅ sistemaTurnosZOCO configurado exitosamente con Neon") // Actualizado
     console.log("📊 Tablas creadas:")
     console.log("   - sistema_estado (estado principal)")
     console.log("   - tickets (turnos de clientes)")
@@ -36,7 +36,7 @@ async function setupDatabase() {
 
     console.log("📈 Estado inicial:", result.rows[0])
   } catch (error) {
-    console.error("❌ Error al configurar sistemaTurnosZOCO:", error)
+    console.error("❌ Error al configurar sistemaTurnosZOCO con Neon:", error) // Actualizado
     process.exit(1)
   } finally {
     await pool.end()

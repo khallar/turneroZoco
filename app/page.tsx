@@ -209,7 +209,7 @@ export default function SistemaAtencion() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-lg text-gray-600">Cargando sistema...</p>
-          <p className="text-sm text-gray-500 mt-2">Conectando con sistemaTurnosZOCO...</p>
+          <p className="text-sm text-gray-500 mt-2">Conectando con Neon Serverless Postgres...</p> {/* Actualizado */}
         </div>
       </div>
     )
@@ -239,7 +239,8 @@ export default function SistemaAtencion() {
               className={`w-3 h-3 rounded-full ${isOnline && !error ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
             ></div>
             <span className="text-sm text-gray-600">
-              {error ? "Error de conexión" : isOnline ? "Conectado a sistemaTurnosZOCO" : "Sin conexión"}
+              {error ? "Error de conexión" : isOnline ? "Conectado a Neon Serverless Postgres" : "Sin conexión"}{" "}
+              {/* Actualizado */}
             </span>
           </div>
 
@@ -263,7 +264,7 @@ export default function SistemaAtencion() {
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
                 <Bug className="h-4 w-4" />
-                Información de Debug - sistemaTurnosZOCO
+                Información de Debug - sistemaTurnosZOCO (Neon) {/* Actualizado */}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -317,7 +318,8 @@ export default function SistemaAtencion() {
             <span>
               {error
                 ? "Error de conexión a la base de datos"
-                : "Datos guardados en sistemaTurnosZOCO (PostgreSQL) - Persistencia garantizada"}
+                : "Datos guardados en sistemaTurnosZOCO (Neon Serverless Postgres) - Persistencia garantizada"}{" "}
+              {/* Actualizado */}
             </span>
           </div>
         </div>
@@ -405,7 +407,7 @@ export default function SistemaAtencion() {
         </button>
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="text-center text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 4.0 | Powered by sistemaTurnosZOCO</p>
+            <p>Develop by: Karim :) | Versión 4.0 | Powered by sistemaTurnosZOCO (Neon)</p> {/* Actualizado */}
           </div>
         </div>
       </footer>
