@@ -25,7 +25,7 @@ const estadoInicial: EstadoSistema = {
   ultimoNumero: 0,
   totalAtendidos: 0,
   numerosLlamados: 0,
-  fechaInicio: new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }), // YYYY-MM-DD
+  fechaInicio: new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }),
   ultimoReinicio: new Date().toISOString(),
   tickets: [],
 }
@@ -34,6 +34,10 @@ const estadoInicial: EstadoSistema = {
 const DATA_DIR = path.join(process.cwd(), "data")
 const ESTADO_FILE = path.join(DATA_DIR, "estado.json")
 const BACKUP_DIR = path.join(DATA_DIR, "backups")
+const LOCK_FILE = path.join(DATA_DIR, "sistema.lock")
+
+// Variable para controlar acceso concurrente
+let operacionEnProceso = false
 
 // Asegurar que los directorios existan
 async function ensureDirectories() {
@@ -41,7 +45,50 @@ async function ensureDirectories() {
     await fs.mkdir(DATA_DIR, { recursive: true })
     await fs.mkdir(BACKUP_DIR, { recursive: true })
   } catch (error) {
-    console.error("Error creando directorios:", error)
+    console.error("❌ Error creando directorios:", error)
+  }
+}
+
+// Función para crear un lock simple
+async function adquirirLock(): Promise<boolean> {
+  try {
+    // Si ya hay una operación en proceso, esperar
+    if (operacionEnProceso) {
+      console.log("⏳ Esperando que termine operación en proceso...")
+      let intentos = 0
+      while (operacionEnProceso && intentos < 50) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        intentos++
+      }
+      if (operacionEnProceso) {
+        console.log("⚠️ Timeout esperando lock")
+        return false
+      }
+    }
+
+    operacionEnProceso = true
+    await ensureDirectories()
+
+    // Crear archivo de lock
+    await fs.writeFile(LOCK_FILE, Date.now().toString(), "utf8")
+    console.log("🔒 Lock adquirido")
+    return true
+  } catch (error) {
+    console.error("❌ Error adquiriendo lock:", error)
+    operacionEnProceso = false
+    return false
+  }
+}
+
+// Función para liberar el lock
+async function liberarLock() {
+  try {
+    await fs.unlink(LOCK_FILE).catch(() => {})
+    operacionEnProceso = false
+    console.log("🔓 Lock liberado")
+  } catch (error) {
+    console.error("❌ Error liberando lock:", error)
+    operacionEnProceso = false
   }
 }
 
@@ -55,17 +102,29 @@ async function leerDatos(): Promise<EstadoSistema> {
       const data = await fs.readFile(ESTADO_FILE, "utf8")
       const estado = JSON.parse(data) as EstadoSistema
 
-      console.log("✅ Estado encontrado:", {
+      console.log("✅ Estado leído del archivo:", {
         numeroActual: estado.numeroActual,
         ultimoNumero: estado.ultimoNumero,
         totalAtendidos: estado.totalAtendidos,
         numerosLlamados: estado.numerosLlamados,
         totalTickets: estado.tickets?.length || 0,
+        fechaInicio: estado.fechaInicio,
       })
 
       // Validar estructura de datos
       if (!estado.tickets) estado.tickets = []
       if (!estado.ultimoReinicio) estado.ultimoReinicio = new Date().toISOString()
+      if (typeof estado.numeroActual !== "number") estado.numeroActual = 1
+      if (typeof estado.ultimoNumero !== "number") estado.ultimoNumero = 0
+      if (typeof estado.totalAtendidos !== "number") estado.totalAtendidos = 0
+      if (typeof estado.numerosLlamados !== "number") estado.numerosLlamados = 0
+
+      // Verificar integridad de los datos
+      const ticketsCount = estado.tickets.length
+      if (ticketsCount !== estado.totalAtendidos) {
+        console.log("⚠️ Inconsistencia detectada: tickets.length !== totalAtendidos")
+        estado.totalAtendidos = ticketsCount
+      }
 
       return estado
     } catch (fileError) {
@@ -80,7 +139,7 @@ async function leerDatos(): Promise<EstadoSistema> {
   }
 }
 
-// Función para escribir datos al archivo con lock
+// Función para escribir datos al archivo con verificación
 async function escribirDatos(estado: EstadoSistema): Promise<void> {
   try {
     console.log("💾 Escribiendo datos al archivo:", {
@@ -93,38 +152,66 @@ async function escribirDatos(estado: EstadoSistema): Promise<void> {
 
     await ensureDirectories()
 
+    // Verificar integridad antes de guardar
+    if (estado.tickets.length !== estado.totalAtendidos) {
+      console.log("⚠️ Corrigiendo inconsistencia antes de guardar")
+      estado.totalAtendidos = estado.tickets.length
+    }
+
     // Escribir de forma atómica usando un archivo temporal
     const tempFile = ESTADO_FILE + ".tmp"
-    await fs.writeFile(tempFile, JSON.stringify(estado, null, 2), "utf8")
+    const dataToWrite = JSON.stringify(estado, null, 2)
+
+    await fs.writeFile(tempFile, dataToWrite, "utf8")
     await fs.rename(tempFile, ESTADO_FILE)
 
-    console.log("✅ Datos guardados exitosamente")
+    // Verificar que se escribió correctamente
+    const verificacion = await fs.readFile(ESTADO_FILE, "utf8")
+    const estadoVerificado = JSON.parse(verificacion)
+
+    if (estadoVerificado.numeroActual !== estado.numeroActual) {
+      throw new Error("Error de verificación: el archivo no se guardó correctamente")
+    }
+
+    console.log("✅ Datos guardados y verificados exitosamente")
   } catch (error) {
     console.error("❌ Error al escribir datos al archivo:", error)
     throw error
   }
 }
 
-// Función para verificar si debe reiniciarse
+// Función para verificar si debe reiniciarse (más conservadora)
 function debeReiniciarse(estado: EstadoSistema): boolean {
-  const ahora = new Date()
-  const fechaActualArgentina = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }))
-  const fechaHoyString = fechaActualArgentina.toISOString().split("T")[0]
-  const fechaInicioString = estado.fechaInicio
-  const esDiaDiferente = fechaHoyString !== fechaInicioString
+  try {
+    const ahora = new Date()
+    const fechaActualArgentina = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }))
+    const fechaHoyString = fechaActualArgentina.toISOString().split("T")[0]
+    const fechaInicioString = estado.fechaInicio
 
-  if (esDiaDiferente) {
-    console.log(`🔄 Reinicio automático: fecha actual ${fechaHoyString} vs fecha inicio ${fechaInicioString}`)
-    return true
+    console.log("🕐 Verificando reinicio:", {
+      fechaHoy: fechaHoyString,
+      fechaInicio: fechaInicioString,
+      esIgual: fechaHoyString === fechaInicioString,
+    })
+
+    const esDiaDiferente = fechaHoyString !== fechaInicioString
+
+    if (esDiaDiferente) {
+      console.log(`🔄 Reinicio automático necesario: ${fechaHoyString} vs ${fechaInicioString}`)
+      return true
+    }
+
+    return false
+  } catch (error) {
+    console.error("❌ Error verificando reinicio:", error)
+    return false
   }
-
-  return false
 }
 
 // Función para crear backup diario
 async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
   try {
-    const fecha = new Date().toISOString().split("T")[0]
+    const fecha = estado.fechaInicio // Usar la fecha del estado, no la actual
     const backupFile = path.join(BACKUP_DIR, `backup-${fecha}.json`)
 
     const backup = {
@@ -151,6 +238,11 @@ async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
 }
 
 export async function GET() {
+  const lockAdquirido = await adquirirLock()
+  if (!lockAdquirido) {
+    return NextResponse.json({ error: "Sistema ocupado, intente nuevamente" }, { status: 503 })
+  }
+
   try {
     console.log("\n=== 📥 GET /api/sistema ===")
 
@@ -158,7 +250,7 @@ export async function GET() {
 
     // Verificar si debe reiniciarse automáticamente
     if (debeReiniciarse(estado)) {
-      console.log("🔄 Ejecutando reinicio automático a medianoche")
+      console.log("🔄 Ejecutando reinicio automático")
       await crearBackupDiario(estado)
 
       const ahora = new Date()
@@ -193,10 +285,17 @@ export async function GET() {
       },
       { status: 500 },
     )
+  } finally {
+    await liberarLock()
   }
 }
 
 export async function POST(request: NextRequest) {
+  const lockAdquirido = await adquirirLock()
+  if (!lockAdquirido) {
+    return NextResponse.json({ error: "Sistema ocupado, intente nuevamente" }, { status: 503 })
+  }
+
   try {
     console.log("\n=== 📨 POST /api/sistema ===")
 
@@ -252,13 +351,14 @@ export async function POST(request: NextRequest) {
           numeroActual: estado.numeroActual,
           ultimoNumero: estado.ultimoNumero,
           totalAtendidos: estado.totalAtendidos,
+          numerosLlamados: estado.numerosLlamados,
           ticketsLength: estado.tickets.length,
         })
 
         // Actualizar estado de forma atómica
         const estadoActualizado: EstadoSistema = {
           ...estado,
-          numeroActual: numeroAsignado + 1, // IMPORTANTE: Incrementar para el próximo ticket
+          numeroActual: numeroAsignado + 1, // CRÍTICO: Incrementar para el próximo ticket
           ultimoNumero: numeroAsignado, // El que acabamos de asignar
           totalAtendidos: estado.totalAtendidos + 1,
           tickets: [...estado.tickets, nuevoTicket],
@@ -268,13 +368,27 @@ export async function POST(request: NextRequest) {
           numeroActual: estadoActualizado.numeroActual,
           ultimoNumero: estadoActualizado.ultimoNumero,
           totalAtendidos: estadoActualizado.totalAtendidos,
+          numerosLlamados: estadoActualizado.numerosLlamados,
           ticketsLength: estadoActualizado.tickets.length,
         })
 
         // Guardar inmediatamente de forma atómica
         await escribirDatos(estadoActualizado)
 
-        console.log("✅ Ticket generado y estado guardado exitosamente")
+        // Verificar que se guardó correctamente leyendo de nuevo
+        const estadoVerificado = await leerDatos()
+        console.log("🔍 Verificación post-guardado:", {
+          numeroActual: estadoVerificado.numeroActual,
+          ultimoNumero: estadoVerificado.ultimoNumero,
+          totalAtendidos: estadoVerificado.totalAtendidos,
+          ticketsLength: estadoVerificado.tickets.length,
+        })
+
+        if (estadoVerificado.numeroActual !== estadoActualizado.numeroActual) {
+          throw new Error("Error de consistencia: el estado no se guardó correctamente")
+        }
+
+        console.log("✅ Ticket generado y verificado exitosamente")
 
         return NextResponse.json({
           ...estadoActualizado,
@@ -426,5 +540,7 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 },
     )
+  } finally {
+    await liberarLock()
   }
 }

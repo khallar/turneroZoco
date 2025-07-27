@@ -59,92 +59,124 @@ export function useSistemaEstado() {
     if (!isClient) return
 
     try {
-      const response = await fetch("/api/debug")
+      const response = await fetch("/api/debug", {
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      })
       if (response.ok) {
         const data = await response.json()
         setDebugInfo(data)
-        console.log("🐛 Debug info:", data)
+        console.log("🐛 Debug info actualizada:", data)
       }
     } catch (error) {
       console.error("❌ Error al cargar debug info:", error)
     }
   }, [isClient])
 
-  // Cargar estado inicial
+  // Cargar estado inicial con reintentos
   const cargarEstado = useCallback(
-    async (incluirEstadisticas = false) => {
+    async (incluirEstadisticas = false, reintentos = 3) => {
       // Solo ejecutar en el cliente
       if (!isClient) return
 
-      try {
-        console.log("📥 Cargando estado desde API...")
+      for (let intento = 1; intento <= reintentos; intento++) {
+        try {
+          console.log(`📥 Cargando estado desde API (intento ${intento}/${reintentos})...`)
 
-        const response = await fetch("/api/sistema", {
-          method: "GET",
-          headers: {
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            Pragma: "no-cache",
-            Expires: "0",
-          },
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          console.log("✅ Estado cargado desde servidor:", {
-            numeroActual: data.numeroActual,
-            ultimoNumero: data.ultimoNumero,
-            totalAtendidos: data.totalAtendidos,
-            numerosLlamados: data.numerosLlamados,
-            totalTickets: data.tickets?.length || 0,
+          const response = await fetch("/api/sistema", {
+            method: "GET",
+            headers: {
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              Pragma: "no-cache",
+              Expires: "0",
+            },
           })
 
-          setEstado(data)
-          setError(null)
-          setUltimaSincronizacion(new Date())
-
-          // También guardar en localStorage como backup
-          if (typeof window !== "undefined") {
-            localStorage.setItem("sistemaAtencion", JSON.stringify(data))
+          if (response.status === 503) {
+            console.log("⏳ Sistema ocupado, reintentando...")
+            await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
+            continue
           }
 
-          // Si incluye estadísticas, cargarlas por separado
-          if (incluirEstadisticas) {
-            await cargarEstadisticas()
-          }
-        } else {
-          const errorData = await response.json()
-          console.error("❌ Error en respuesta:", errorData)
-          throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
-        }
-      } catch (err) {
-        console.error("❌ Error al cargar estado:", err)
-        setError(`Error de conexión: ${err instanceof Error ? err.message : "Error desconocido"}`)
+          if (response.ok) {
+            const data = await response.json()
+            console.log("✅ Estado cargado desde servidor:", {
+              numeroActual: data.numeroActual,
+              ultimoNumero: data.ultimoNumero,
+              totalAtendidos: data.totalAtendidos,
+              numerosLlamados: data.numerosLlamados,
+              totalTickets: data.tickets?.length || 0,
+              fechaInicio: data.fechaInicio,
+            })
 
-        // Fallback a localStorage solo si hay error de conexión
-        try {
-          const estadoLocal = localStorage.getItem("sistemaAtencion")
-          if (estadoLocal) {
-            const data = JSON.parse(estadoLocal)
-
-            // Migrar datos antiguos si no tienen campos requeridos
-            if (!data.tickets) data.tickets = []
-            if (!data.ultimoReinicio) data.ultimoReinicio = new Date().toISOString()
+            // Verificar integridad de los datos recibidos
+            if (data.tickets && data.tickets.length !== data.totalAtendidos) {
+              console.warn("⚠️ Inconsistencia detectada en datos recibidos")
+            }
 
             setEstado(data)
-            console.log("⚠️ Usando datos de localStorage como fallback")
+            setError(null)
+            setUltimaSincronizacion(new Date())
+
+            // También guardar en localStorage como backup
+            if (typeof window !== "undefined") {
+              localStorage.setItem("sistemaAtencion", JSON.stringify(data))
+            }
+
+            // Si incluye estadísticas, cargarlas por separado
+            if (incluirEstadisticas) {
+              await cargarEstadisticas()
+            }
+
+            // Cargar debug info después de cargar estado
+            await cargarDebugInfo()
+
+            return // Éxito, salir del bucle
+          } else {
+            const errorData = await response.json()
+            console.error("❌ Error en respuesta:", errorData)
+            throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
           }
-        } catch (parseError) {
-          console.error("❌ Error al parsear localStorage:", parseError)
-          setEstado(estadoInicial)
-          if (typeof window !== "undefined") {
-            localStorage.setItem("sistemaAtencion", JSON.stringify(estadoInicial))
+        } catch (err) {
+          console.error(`❌ Error al cargar estado (intento ${intento}):`, err)
+
+          if (intento === reintentos) {
+            // Último intento fallido
+            setError(`Error de conexión: ${err instanceof Error ? err.message : "Error desconocido"}`)
+
+            // Fallback a localStorage solo si hay error de conexión
+            try {
+              const estadoLocal = localStorage.getItem("sistemaAtencion")
+              if (estadoLocal) {
+                const data = JSON.parse(estadoLocal)
+
+                // Migrar datos antiguos si no tienen campos requeridos
+                if (!data.tickets) data.tickets = []
+                if (!data.ultimoReinicio) data.ultimoReinicio = new Date().toISOString()
+
+                setEstado(data)
+                console.log("⚠️ Usando datos de localStorage como fallback")
+              }
+            } catch (parseError) {
+              console.error("❌ Error al parsear localStorage:", parseError)
+              setEstado(estadoInicial)
+              if (typeof window !== "undefined") {
+                localStorage.setItem("sistemaAtencion", JSON.stringify(estadoInicial))
+              }
+            }
+          } else {
+            // Esperar antes del siguiente intento
+            await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
           }
         }
-      } finally {
-        setLoading(false)
       }
+
+      setLoading(false)
     },
-    [isClient],
+    [isClient, cargarDebugInfo],
   )
 
   // Cargar estadísticas del día
@@ -174,121 +206,158 @@ export function useSistemaEstado() {
     }
   }, [isClient])
 
-  // Guardar estado
+  // Guardar estado con reintentos
   const guardarEstado = useCallback(
-    async (nuevoEstado: EstadoSistema) => {
+    async (nuevoEstado: EstadoSistema, reintentos = 3) => {
       // Solo ejecutar en el cliente
       if (!isClient) return
 
-      try {
-        console.log("💾 Guardando estado:", {
-          numeroActual: nuevoEstado.numeroActual,
-          ultimoNumero: nuevoEstado.ultimoNumero,
-          totalAtendidos: nuevoEstado.totalAtendidos,
-          numerosLlamados: nuevoEstado.numerosLlamados,
-        })
-
-        const response = await fetch("/api/sistema", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            Pragma: "no-cache",
-            Expires: "0",
-          },
-          body: JSON.stringify(nuevoEstado),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          console.log("✅ Estado guardado exitosamente:", {
-            numeroActual: data.numeroActual,
-            ultimoNumero: data.ultimoNumero,
-            totalAtendidos: data.totalAtendidos,
-            numerosLlamados: data.numerosLlamados,
+      for (let intento = 1; intento <= reintentos; intento++) {
+        try {
+          console.log(`💾 Guardando estado (intento ${intento}/${reintentos}):`, {
+            numeroActual: nuevoEstado.numeroActual,
+            ultimoNumero: nuevoEstado.ultimoNumero,
+            totalAtendidos: nuevoEstado.totalAtendidos,
+            numerosLlamados: nuevoEstado.numerosLlamados,
           })
 
-          setEstado(data)
-          setError(null)
-          setUltimaSincronizacion(new Date())
+          const response = await fetch("/api/sistema", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              Pragma: "no-cache",
+              Expires: "0",
+            },
+            body: JSON.stringify(nuevoEstado),
+          })
 
-          // También guardar en localStorage como backup
-          if (typeof window !== "undefined") {
-            localStorage.setItem("sistemaAtencion", JSON.stringify(data))
+          if (response.status === 503) {
+            console.log("⏳ Sistema ocupado, reintentando...")
+            await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
+            continue
           }
-        } else {
-          const errorData = await response.json()
-          throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
-        }
-      } catch (err) {
-        console.error("❌ Error al guardar estado:", err)
-        setError(`Error de conexión: ${err instanceof Error ? err.message : "Error desconocido"}`)
 
-        // Fallback a localStorage
-        if (typeof window !== "undefined") {
-          localStorage.setItem("sistemaAtencion", JSON.stringify(nuevoEstado))
+          if (response.ok) {
+            const data = await response.json()
+            console.log("✅ Estado guardado exitosamente:", {
+              numeroActual: data.numeroActual,
+              ultimoNumero: data.ultimoNumero,
+              totalAtendidos: data.totalAtendidos,
+              numerosLlamados: data.numerosLlamados,
+            })
+
+            setEstado(data)
+            setError(null)
+            setUltimaSincronizacion(new Date())
+
+            // También guardar en localStorage como backup
+            if (typeof window !== "undefined") {
+              localStorage.setItem("sistemaAtencion", JSON.stringify(data))
+            }
+
+            return // Éxito
+          } else {
+            const errorData = await response.json()
+            throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
+          }
+        } catch (err) {
+          console.error(`❌ Error al guardar estado (intento ${intento}):`, err)
+
+          if (intento === reintentos) {
+            // Último intento fallido
+            setError(`Error de conexión: ${err instanceof Error ? err.message : "Error desconocido"}`)
+
+            // Fallback a localStorage
+            if (typeof window !== "undefined") {
+              localStorage.setItem("sistemaAtencion", JSON.stringify(nuevoEstado))
+            }
+            setEstado(nuevoEstado)
+          } else {
+            // Esperar antes del siguiente intento
+            await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
+          }
         }
-        setEstado(nuevoEstado)
       }
     },
     [isClient],
   )
 
-  // Nueva función para generar ticket de forma atómica
+  // Nueva función para generar ticket de forma atómica con reintentos
   const generarTicket = useCallback(
-    async (nombre: string) => {
+    async (nombre: string, reintentos = 3) => {
       // Solo ejecutar en el cliente
       if (!isClient) return null
 
-      try {
-        console.log("🎫 Generando ticket para:", nombre)
+      for (let intento = 1; intento <= reintentos; intento++) {
+        try {
+          console.log(`🎫 Generando ticket para: ${nombre} (intento ${intento}/${reintentos})`)
 
-        const response = await fetch("/api/sistema", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            Pragma: "no-cache",
-            Expires: "0",
-          },
-          body: JSON.stringify({
-            action: "GENERAR_TICKET",
-            nombre,
-          }),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          console.log("✅ Ticket generado exitosamente:", data.ticketGenerado)
-          console.log("📊 Estado actualizado:", {
-            numeroActual: data.numeroActual,
-            ultimoNumero: data.ultimoNumero,
-            totalAtendidos: data.totalAtendidos,
-            numerosLlamados: data.numerosLlamados,
+          const response = await fetch("/api/sistema", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-cache, no-store, must-revalidate",
+              Pragma: "no-cache",
+              Expires: "0",
+            },
+            body: JSON.stringify({
+              action: "GENERAR_TICKET",
+              nombre,
+            }),
           })
 
-          setEstado(data)
-          setError(null)
-          setUltimaSincronizacion(new Date())
-
-          // También guardar en localStorage como backup
-          if (typeof window !== "undefined") {
-            localStorage.setItem("sistemaAtencion", JSON.stringify(data))
+          if (response.status === 503) {
+            console.log("⏳ Sistema ocupado, reintentando...")
+            await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
+            continue
           }
 
-          return data.ticketGenerado
-        } else {
-          const errorData = await response.json()
-          console.error("❌ Error en respuesta al generar ticket:", errorData)
-          throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
+          if (response.ok) {
+            const data = await response.json()
+            console.log("✅ Ticket generado exitosamente:", data.ticketGenerado)
+            console.log("📊 Estado actualizado:", {
+              numeroActual: data.numeroActual,
+              ultimoNumero: data.ultimoNumero,
+              totalAtendidos: data.totalAtendidos,
+              numerosLlamados: data.numerosLlamados,
+            })
+
+            setEstado(data)
+            setError(null)
+            setUltimaSincronizacion(new Date())
+
+            // También guardar en localStorage como backup
+            if (typeof window !== "undefined") {
+              localStorage.setItem("sistemaAtencion", JSON.stringify(data))
+            }
+
+            // Actualizar debug info después de generar ticket
+            await cargarDebugInfo()
+
+            return data.ticketGenerado
+          } else {
+            const errorData = await response.json()
+            console.error("❌ Error en respuesta al generar ticket:", errorData)
+            throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
+          }
+        } catch (err) {
+          console.error(`❌ Error al generar ticket (intento ${intento}):`, err)
+
+          if (intento === reintentos) {
+            // Último intento fallido
+            setError(`Error al generar ticket: ${err instanceof Error ? err.message : "Error desconocido"}`)
+            throw err
+          } else {
+            // Esperar antes del siguiente intento
+            await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
+          }
         }
-      } catch (err) {
-        console.error("❌ Error al generar ticket:", err)
-        setError(`Error al generar ticket: ${err instanceof Error ? err.message : "Error desconocido"}`)
-        throw err
       }
+
+      return null
     },
-    [isClient],
+    [isClient, cargarDebugInfo],
   )
 
   // Función para obtener backups
@@ -341,10 +410,9 @@ export function useSistemaEstado() {
   // Cargar estado al montar el componente
   useEffect(() => {
     if (isClient) {
-      cargarDebugInfo()
       cargarEstado(true)
     }
-  }, [cargarEstado, cargarDebugInfo, isClient])
+  }, [cargarEstado, isClient])
 
   // Sincronizar cada 30 segundos para asegurar persistencia
   useEffect(() => {
