@@ -1,14 +1,18 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { Redis } from "@upstash/redis"
+import { promises as fs } from "fs"
+import path from "path"
 
-// Inicializar Redis
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL!,
-  token: process.env.KV_REST_API_TOKEN!,
-})
+const DATA_DIR = path.join(process.cwd(), "data")
+const BACKUP_DIR = path.join(DATA_DIR, "backups")
 
-const REDIS_KEYS = {
-  BACKUP_PREFIX: "sistema:backup:",
+// Asegurar que los directorios existan
+async function ensureDirectories() {
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true })
+    await fs.mkdir(BACKUP_DIR, { recursive: true })
+  } catch (error) {
+    console.error("Error creando directorios:", error)
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -17,17 +21,20 @@ export async function GET(request: NextRequest) {
     const fecha = searchParams.get("fecha") // YYYY-MM-DD
     const accion = searchParams.get("accion") // 'listar' o 'obtener'
 
-    if (accion === "listar") {
-      // Listar todos los backups disponibles usando SCAN
-      try {
-        const keys = await redis.keys(`${REDIS_KEYS.BACKUP_PREFIX}*`)
+    await ensureDirectories()
 
-        const backups = keys
-          .map((key) => {
-            const fecha = key.replace(REDIS_KEYS.BACKUP_PREFIX, "")
+    if (accion === "listar") {
+      // Listar todos los backups disponibles
+      try {
+        const files = await fs.readdir(BACKUP_DIR)
+        const backupFiles = files.filter((file) => file.startsWith("backup-") && file.endsWith(".json"))
+
+        const backups = backupFiles
+          .map((file) => {
+            const fecha = file.replace("backup-", "").replace(".json", "")
             return {
               fecha,
-              key,
+              key: file,
             }
           })
           .sort((a, b) => b.fecha.localeCompare(a.fecha)) // Más recientes primero
@@ -41,19 +48,16 @@ export async function GET(request: NextRequest) {
 
     if (fecha) {
       // Obtener backup específico
-      const backupKey = `${REDIS_KEYS.BACKUP_PREFIX}${fecha}`
+      const backupFile = path.join(BACKUP_DIR, `backup-${fecha}.json`)
 
       try {
-        const backup = await redis.get(backupKey)
+        const data = await fs.readFile(backupFile, "utf8")
+        const backup = JSON.parse(data)
 
-        if (backup) {
-          return NextResponse.json(backup)
-        } else {
-          return NextResponse.json({ error: "Backup no encontrado" }, { status: 404 })
-        }
+        return NextResponse.json(backup)
       } catch (error) {
         console.error("Error al obtener backup:", error)
-        return NextResponse.json({ error: "Error al obtener backup" }, { status: 500 })
+        return NextResponse.json({ error: "Backup no encontrado" }, { status: 404 })
       }
     }
 
@@ -69,20 +73,24 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { accion } = body
 
+    await ensureDirectories()
+
     if (accion === "limpiar_antiguos") {
       // Limpiar backups antiguos (más de 30 días)
       try {
-        const keys = await redis.keys(`${REDIS_KEYS.BACKUP_PREFIX}*`)
+        const files = await fs.readdir(BACKUP_DIR)
+        const backupFiles = files.filter((file) => file.startsWith("backup-") && file.endsWith(".json"))
+
         const ahora = new Date()
         const hace30Dias = new Date(ahora.getTime() - 30 * 24 * 60 * 60 * 1000)
 
         let eliminados = 0
-        for (const key of keys) {
-          const fecha = key.replace(REDIS_KEYS.BACKUP_PREFIX, "")
+        for (const file of backupFiles) {
+          const fecha = file.replace("backup-", "").replace(".json", "")
           const fechaBackup = new Date(fecha)
 
           if (fechaBackup < hace30Dias) {
-            await redis.del(key)
+            await fs.unlink(path.join(BACKUP_DIR, file))
             eliminados++
           }
         }

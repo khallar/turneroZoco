@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { Redis } from "@upstash/redis"
+import { promises as fs } from "fs"
+import path from "path"
 
 interface TicketInfo {
   numero: number
@@ -18,12 +19,6 @@ interface EstadoSistema {
   tickets: TicketInfo[]
 }
 
-// Inicializar Redis con las variables de entorno de Upstash
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL!,
-  token: process.env.KV_REST_API_TOKEN!,
-})
-
 // Estado inicial
 const estadoInicial: EstadoSistema = {
   numeroActual: 1,
@@ -35,24 +30,33 @@ const estadoInicial: EstadoSistema = {
   tickets: [],
 }
 
-// Claves de Redis
-const REDIS_KEYS = {
-  ESTADO: "sistema:estado",
-  TICKETS: "sistema:tickets",
-  BACKUP_PREFIX: "sistema:backup:",
-  CONTADOR_ATOMICO: "sistema:contador",
+// Rutas de archivos
+const DATA_DIR = path.join(process.cwd(), "data")
+const ESTADO_FILE = path.join(DATA_DIR, "estado.json")
+const CONTADOR_FILE = path.join(DATA_DIR, "contador.json")
+const BACKUP_DIR = path.join(DATA_DIR, "backups")
+
+// Asegurar que los directorios existan
+async function ensureDirectories() {
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true })
+    await fs.mkdir(BACKUP_DIR, { recursive: true })
+  } catch (error) {
+    console.error("Error creando directorios:", error)
+  }
 }
 
-// Función para leer datos de Redis
+// Función para leer datos del archivo
 async function leerDatos(): Promise<EstadoSistema> {
   try {
-    console.log("Leyendo datos de Redis...")
+    console.log("Leyendo datos del archivo...")
+    await ensureDirectories()
 
-    // Intentar obtener el estado completo
-    const estado = await redis.get<EstadoSistema>(REDIS_KEYS.ESTADO)
+    try {
+      const data = await fs.readFile(ESTADO_FILE, "utf8")
+      const estado = JSON.parse(data) as EstadoSistema
 
-    if (estado) {
-      console.log("Estado encontrado en Redis:", {
+      console.log("Estado encontrado en archivo:", {
         numeroActual: estado.numeroActual,
         totalTickets: estado.tickets?.length || 0,
       })
@@ -62,33 +66,30 @@ async function leerDatos(): Promise<EstadoSistema> {
       if (!estado.ultimoReinicio) estado.ultimoReinicio = new Date().toISOString()
 
       return estado
-    } else {
-      console.log("No se encontró estado en Redis, creando estado inicial")
+    } catch (fileError) {
+      console.log("No se encontró archivo de estado, creando estado inicial")
       return { ...estadoInicial }
     }
   } catch (error) {
-    console.error("Error al leer datos de Redis:", error)
+    console.error("Error al leer datos del archivo:", error)
     return { ...estadoInicial }
   }
 }
 
-// Función para escribir datos a Redis
+// Función para escribir datos al archivo
 async function escribirDatos(estado: EstadoSistema): Promise<void> {
   try {
-    console.log("Escribiendo datos a Redis...", {
+    console.log("Escribiendo datos al archivo...", {
       numeroActual: estado.numeroActual,
       totalTickets: estado.tickets?.length || 0,
     })
 
-    // Guardar estado completo
-    await redis.set(REDIS_KEYS.ESTADO, estado)
+    await ensureDirectories()
+    await fs.writeFile(ESTADO_FILE, JSON.stringify(estado, null, 2), "utf8")
 
-    // También guardar tickets por separado para consultas rápidas
-    await redis.set(REDIS_KEYS.TICKETS, estado.tickets)
-
-    console.log("Datos guardados exitosamente en Redis")
+    console.log("Datos guardados exitosamente en archivo")
   } catch (error) {
-    console.error("Error al escribir datos a Redis:", error)
+    console.error("Error al escribir datos al archivo:", error)
     throw error
   }
 }
@@ -116,11 +117,11 @@ function debeReiniciarse(estado: EstadoSistema): boolean {
   return false
 }
 
-// Función para crear backup diario en Redis
+// Función para crear backup diario
 async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
   try {
     const fecha = new Date().toISOString().split("T")[0] // YYYY-MM-DD
-    const backupKey = `${REDIS_KEYS.BACKUP_PREFIX}${fecha}`
+    const backupFile = path.join(BACKUP_DIR, `backup-${fecha}.json`)
 
     // Guardar backup con estadísticas del día
     const backup = {
@@ -138,12 +139,10 @@ async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
       tickets: estado.tickets,
     }
 
-    await redis.set(backupKey, backup)
+    await ensureDirectories()
+    await fs.writeFile(backupFile, JSON.stringify(backup, null, 2), "utf8")
 
-    // Establecer expiración del backup a 30 días
-    await redis.expire(backupKey, 30 * 24 * 60 * 60) // 30 días en segundos
-
-    console.log(`Backup diario creado en Redis: ${backupKey}`)
+    console.log(`Backup diario creado: ${backupFile}`)
   } catch (error) {
     console.error("Error al crear backup diario:", error)
   }
@@ -152,10 +151,24 @@ async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
 // Función para generar número de forma atómica
 async function generarNumeroAtomico(): Promise<number> {
   try {
-    // Usar INCR de Redis para operación atómica
-    const numero = await redis.incr(REDIS_KEYS.CONTADOR_ATOMICO)
-    console.log("Número generado atómicamente:", numero)
-    return numero
+    await ensureDirectories()
+
+    let contador = 1
+    try {
+      const data = await fs.readFile(CONTADOR_FILE, "utf8")
+      contador = JSON.parse(data).contador || 1
+    } catch (error) {
+      // Archivo no existe, usar contador inicial
+    }
+
+    // Incrementar contador
+    contador++
+
+    // Guardar nuevo contador
+    await fs.writeFile(CONTADOR_FILE, JSON.stringify({ contador }, null, 2), "utf8")
+
+    console.log("Número generado atómicamente:", contador)
+    return contador
   } catch (error) {
     console.error("Error al generar número atómico:", error)
     throw error
@@ -165,9 +178,14 @@ async function generarNumeroAtomico(): Promise<number> {
 // Función para inicializar contador si no existe
 async function inicializarContador(numeroActual: number): Promise<void> {
   try {
-    const contadorExiste = await redis.exists(REDIS_KEYS.CONTADOR_ATOMICO)
-    if (!contadorExiste) {
-      await redis.set(REDIS_KEYS.CONTADOR_ATOMICO, numeroActual - 1)
+    await ensureDirectories()
+
+    try {
+      await fs.access(CONTADOR_FILE)
+      // El archivo existe, no hacer nada
+    } catch (error) {
+      // El archivo no existe, crearlo
+      await fs.writeFile(CONTADOR_FILE, JSON.stringify({ contador: numeroActual - 1 }, null, 2), "utf8")
       console.log("Contador atómico inicializado en:", numeroActual - 1)
     }
   } catch (error) {
@@ -201,7 +219,7 @@ export async function GET() {
       }
 
       // Reiniciar contador atómico
-      await redis.del(REDIS_KEYS.CONTADOR_ATOMICO)
+      await fs.unlink(CONTADOR_FILE).catch(() => {}) // Eliminar archivo de contador
       await inicializarContador(estado.numeroActual)
 
       // Guardar estado reiniciado
@@ -259,7 +277,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Reiniciar contador atómico
-      await redis.del(REDIS_KEYS.CONTADOR_ATOMICO)
+      await fs.unlink(CONTADOR_FILE).catch(() => {})
       await inicializarContador(estado.numeroActual)
     }
 
@@ -274,7 +292,7 @@ export async function POST(request: NextRequest) {
       console.log("Generando ticket para:", nombre)
 
       try {
-        // Generar número de forma atómica usando Redis INCR
+        // Generar número de forma atómica
         const numeroAsignado = await generarNumeroAtomico()
         const fecha = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
         const timestamp = Date.now()
@@ -310,7 +328,7 @@ export async function POST(request: NextRequest) {
           ultimoTicket: estado.tickets[estado.tickets.length - 1],
         })
 
-        // Guardar inmediatamente en Redis
+        // Guardar inmediatamente en archivo
         await escribirDatos(estado)
 
         console.log("Estado actualizado y guardado")
@@ -375,10 +393,9 @@ export async function POST(request: NextRequest) {
           tickets: [],
         }
 
-        // Limpiar Redis completamente
-        await redis.del(REDIS_KEYS.ESTADO)
-        await redis.del(REDIS_KEYS.TICKETS)
-        await redis.del(REDIS_KEYS.CONTADOR_ATOMICO)
+        // Limpiar archivos
+        await fs.unlink(ESTADO_FILE).catch(() => {})
+        await fs.unlink(CONTADOR_FILE).catch(() => {})
 
         // Guardar estado limpio
         await escribirDatos(estadoLimpio)
@@ -423,7 +440,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Reiniciar contador atómico
-        await redis.del(REDIS_KEYS.CONTADOR_ATOMICO)
+        await fs.unlink(CONTADOR_FILE).catch(() => {})
         await inicializarContador(estadoReiniciado.numeroActual)
 
         // Guardar estado reiniciado
@@ -464,7 +481,7 @@ export async function POST(request: NextRequest) {
       ultimoReinicio: estado.ultimoReinicio, // Mantener el último reinicio
     }
 
-    // Guardar en Redis
+    // Guardar en archivo
     await escribirDatos(estado)
 
     return NextResponse.json(estado)

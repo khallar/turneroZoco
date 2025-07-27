@@ -76,14 +76,6 @@ export function useSistemaEstado() {
       // Solo ejecutar en el cliente
       if (!isClient) return
 
-      // Implementar throttling - no más de una llamada cada 10 segundos
-      const ahora = Date.now()
-      const ultimaLlamada = localStorage.getItem("ultimaLlamadaAPI")
-      if (ultimaLlamada && ahora - Number.parseInt(ultimaLlamada) < 10000) {
-        console.log("Throttling: usando datos de caché local")
-        return
-      }
-
       try {
         console.log("Cargando estado desde API...")
 
@@ -104,9 +96,10 @@ export function useSistemaEstado() {
           setError(null)
           setUltimaSincronizacion(new Date())
 
-          // Guardar timestamp de la última llamada exitosa
-          localStorage.setItem("ultimaLlamadaAPI", ahora.toString())
-          localStorage.setItem("sistemaAtencion", JSON.stringify(data))
+          // También guardar en localStorage como backup
+          if (typeof window !== "undefined") {
+            localStorage.setItem("sistemaAtencion", JSON.stringify(data))
+          }
 
           // Si incluye estadísticas, cargarlas por separado
           if (incluirEstadisticas) {
@@ -327,22 +320,22 @@ export function useSistemaEstado() {
     }
   }, [cargarEstado, cargarDebugInfo, isClient])
 
-  // Sincronizar cada 2 minutos para asegurar persistencia (aumentado para reducir requests)
+  // Sincronizar cada 30 segundos para asegurar persistencia
   useEffect(() => {
     if (!isClient) return
 
     const interval = setInterval(() => {
       cargarEstado(false) // Sin estadísticas para ser más rápido
-    }, 120000) // 2 minutos (aumentado de 1 minuto)
+    }, 30000) // 30 segundos
 
     return () => clearInterval(interval)
   }, [cargarEstado, isClient])
 
-  // Cargar estadísticas cada 5 minutos (aumentado de 3)
+  // Cargar estadísticas cada 2 minutos
   useEffect(() => {
     if (!isClient) return
 
-    const interval = setInterval(cargarEstadisticas, 300000) // 5 minutos
+    const interval = setInterval(cargarEstadisticas, 120000) // 2 minutos
     return () => clearInterval(interval)
   }, [cargarEstadisticas, isClient])
 
