@@ -1,76 +1,41 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { obtenerBackups, obtenerBackup, limpiarDatosAntiguos } from "@/lib/database"
+import { obtenerBackups, obtenerBackup, verificarConexionDB } from "@/lib/database"
 
 export async function GET(request: NextRequest) {
   try {
+    console.log("\n=== 📥 GET /api/backup - sistemaTurnosZOCO (Upstash Redis) ===")
     const { searchParams } = new URL(request.url)
-    const fecha = searchParams.get("fecha") // YYYY-MM-DD
-    const accion = searchParams.get("accion") // 'listar' o 'obtener'
+    const fecha = searchParams.get("fecha")
 
-    if (accion === "listar") {
-      // Listar todos los backups disponibles
-      try {
-        const backups = await obtenerBackups()
-
-        console.log("📦 Backups encontrados en sistemaTurnosZOCO (Upstash Redis):", backups.length)
-        return NextResponse.json({ backups })
-      } catch (error) {
-        console.error("❌ Error al listar backups (Upstash Redis):", error)
-        return NextResponse.json({ backups: [] })
-      }
+    // Verificar conexión a la base de datos
+    const conexionOK = await verificarConexionDB()
+    if (!conexionOK) {
+      return NextResponse.json({ error: "Error de conexión a sistemaTurnosZOCO (Upstash Redis)" }, { status: 503 })
     }
 
     if (fecha) {
-      // Obtener backup específico
-      try {
-        const backup = await obtenerBackup(fecha)
-
-        if (backup) {
-          return NextResponse.json(backup)
-        } else {
-          return NextResponse.json({ error: "Backup no encontrado" }, { status: 404 })
-        }
-      } catch (error) {
-        console.error("❌ Error al obtener backup (Upstash Redis):", error)
+      console.log(`🔍 Obteniendo backup para la fecha: ${fecha} (Upstash Redis)`)
+      const backup = await obtenerBackup(fecha)
+      if (backup) {
+        console.log("✅ Backup encontrado y devuelto (Upstash Redis).")
+        return NextResponse.json(backup)
+      } else {
+        console.log("⚠️ Backup no encontrado para la fecha (Upstash Redis).")
         return NextResponse.json({ error: "Backup no encontrado" }, { status: 404 })
       }
+    } else {
+      console.log("📋 Obteniendo lista de todos los backups (Upstash Redis)")
+      const backups = await obtenerBackups()
+      console.log(`✅ Se encontraron ${backups.length} backups (Upstash Redis).`)
+      return NextResponse.json(backups)
     }
-
-    return NextResponse.json({ error: "Parámetros inválidos" }, { status: 400 })
   } catch (error) {
-    console.error("❌ Error en API de backup (Upstash Redis):", error)
+    console.error("❌ Error en GET /api/backup (Upstash Redis):", error)
     return NextResponse.json(
-      { error: "Error interno del servidor - sistemaTurnosZOCO (Upstash Redis)" },
-      { status: 500 },
-    )
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { accion } = body
-
-    if (accion === "limpiar_antiguos") {
-      // Limpiar backups antiguos (más de 30 días)
-      try {
-        await limpiarDatosAntiguos()
-
-        console.log("🧹 Datos antiguos limpiados en sistemaTurnosZOCO (Upstash Redis)")
-        return NextResponse.json({
-          mensaje: "Datos antiguos limpiados exitosamente",
-        })
-      } catch (error) {
-        console.error("❌ Error al limpiar backups (Upstash Redis):", error)
-        return NextResponse.json({ error: "Error al limpiar backups" }, { status: 500 })
-      }
-    }
-
-    return NextResponse.json({ error: "Acción no válida" }, { status: 400 })
-  } catch (error) {
-    console.error("❌ Error en POST de backup (Upstash Redis):", error)
-    return NextResponse.json(
-      { error: "Error interno del servidor - sistemaTurnosZOCO (Upstash Redis)" },
+      {
+        error: "Error interno del servidor - sistemaTurnosZOCO (Upstash Redis)",
+        details: error instanceof Error ? error.message : "Error desconocido",
+      },
       { status: 500 },
     )
   }
