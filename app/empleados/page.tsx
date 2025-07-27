@@ -36,18 +36,18 @@ export default function PaginaEmpleados() {
     setIsClient(true)
   }, [])
 
-  // Actualizar datos automáticamente cada 30 segundos (específico para empleados)
+  // Actualizar datos automáticamente cada 10 segundos (específico para empleados)
   useEffect(() => {
     if (!isClient) return
 
     const actualizarAutomaticamente = async () => {
       try {
-        console.log("Actualizando datos automáticamente (empleados - Upstash Redis)...") // Actualizado
+        console.log("Actualizando datos automáticamente (empleados - Upstash Redis)...")
         setUltimaActualizacionAutomatica(new Date())
         setContadorActualizaciones((prev) => prev + 1)
         await cargarEstado(true) // Con estadísticas para el panel de empleados
       } catch (error) {
-        console.error("Error en actualización automática de empleados (Upstash Redis):", error) // Actualizado
+        console.error("Error en actualización automática de empleados (Upstash Redis):", error)
       }
     }
 
@@ -55,7 +55,7 @@ export default function PaginaEmpleados() {
     actualizarAutomaticamente()
 
     // Configurar intervalo
-    const interval = setInterval(actualizarAutomaticamente, 30000) // 30 segundos
+    const interval = setInterval(actualizarAutomaticamente, 10000) // 10 segundos
 
     return () => clearInterval(interval)
   }, [cargarEstado, isClient])
@@ -69,7 +69,7 @@ export default function PaginaEmpleados() {
     const handleOnline = () => {
       setIsOnline(true)
       // Cuando vuelve la conexión, actualizar inmediatamente
-      console.log("Conexión restaurada (Upstash Redis), actualizando datos...") // Actualizado
+      console.log("Conexión restaurada (Upstash Redis), actualizando datos...")
       cargarEstado(true)
     }
     const handleOffline = () => setIsOnline(false)
@@ -144,20 +144,18 @@ export default function PaginaEmpleados() {
     setNumeroEnAtencion(proximoNumeroALlamar)
     setNombreEnAtencion(ticketALlamar?.nombre || "Cliente ZOCO")
 
-    // Actualizar datos inmediatamente después de llamar
-    setTimeout(() => {
-      cargarEstado(true)
-    }, 500)
+    // Actualizar datos inmediatamente después de llamar (sin setTimeout)
+    await cargarEstado(true)
   }
 
   const actualizarDatosManual = async () => {
     setActualizandoDatos(true)
     try {
-      console.log("Actualizando datos manualmente (Upstash Redis)...") // Actualizado
+      console.log("Actualizando datos manualmente (Upstash Redis)...")
       await cargarEstado(true) // Una sola llamada con estadísticas
       setContadorActualizaciones((prev) => prev + 1)
     } catch (error) {
-      console.error("Error al actualizar datos (Upstash Redis):", error) // Actualizado
+      console.error("Error al actualizar datos (Upstash Redis):", error)
     } finally {
       setActualizandoDatos(false)
     }
@@ -236,8 +234,7 @@ export default function PaginaEmpleados() {
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 md:h-32 md:w-32 border-b-2 border-green-600 mx-auto mb-4"></div>
-          <p className="text-base md:text-lg text-gray-600">Cargando panel de empleados (Upstash Redis)...</p>{" "}
-          {/* Actualizado */}
+          <p className="text-base md:text-lg text-gray-600">Cargando panel de empleados (Upstash Redis)...</p>
         </div>
       </div>
     )
@@ -265,7 +262,7 @@ export default function PaginaEmpleados() {
           <div className="flex justify-center items-center gap-2 mb-2">
             <div className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>
             <span className="text-xs text-gray-600">
-              Auto-actualización cada 30s {contadorActualizaciones > 0 && `(${contadorActualizaciones} updates)`}
+              Auto-actualización cada 10s {contadorActualizaciones > 0 && `(${contadorActualizaciones} updates)`}
             </span>
           </div>
 
@@ -317,12 +314,12 @@ export default function PaginaEmpleados() {
               {isOnline ? (
                 <>
                   <Wifi className="h-3 w-3 md:h-4 md:w-4 text-green-500" />
-                  <span className="text-green-500">Online (Upstash Redis)</span> {/* Actualizado */}
+                  <span className="text-green-500">Online (Upstash Redis)</span>
                 </>
               ) : (
                 <>
                   <WifiOff className="h-3 w-3 md:h-4 md:w-4 text-red-500" />
-                  <span className="text-red-500">Offline (Upstash Redis)</span> {/* Actualizado */}
+                  <span className="text-red-500">Offline (Upstash Redis)</span>
                 </>
               )}
             </div>
@@ -502,6 +499,13 @@ export default function PaginaEmpleados() {
                 {Array.from({ length: Math.min(5, estado?.numerosLlamados || 0) }, (_, i) => {
                   const numero = (estado?.numerosLlamados || 0) - i
                   const ticket = estado?.tickets?.find((t) => t.numero === numero)
+                  const horaEmision = ticket?.timestamp
+                    ? new Date(ticket.timestamp).toLocaleTimeString("es-AR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        timeZone: "America/Argentina/Buenos_Aires",
+                      })
+                    : "N/A"
                   return (
                     <div key={numero} className="flex justify-between items-center p-2 bg-gray-50 rounded text-sm">
                       <div className="min-w-0 flex-1">
@@ -510,9 +514,10 @@ export default function PaginaEmpleados() {
                           <div className="text-xs md:text-sm text-blue-600 font-medium truncate">{ticket.nombre}</div>
                         )}
                       </div>
-                      <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
-                        {i === 0 ? "Atendiendo" : "Atendido"}
-                      </span>
+                      <div className="flex flex-col items-end ml-2 flex-shrink-0">
+                        <span className="text-xs text-gray-500">{horaEmision}</span>
+                        <span className="text-xs text-gray-500">{i === 0 ? "Atendiendo" : "Atendido"}</span>
+                      </div>
                     </div>
                   )
                 })}
@@ -542,7 +547,7 @@ export default function PaginaEmpleados() {
                   <strong>Persistencia:</strong> Los números se mantienen hasta las 12:00 AM
                 </li>
                 <li>
-                  <strong>Actualización:</strong> Se actualiza automáticamente cada 30 segundos
+                  <strong>Actualización:</strong> Se actualiza automáticamente cada 10 segundos
                 </li>
                 <li>
                   <strong>Manual:</strong> Use "Actualizar Ahora" si no ve tickets nuevos
@@ -666,7 +671,7 @@ export default function PaginaEmpleados() {
       {/* Footer */}
       <footer className="text-center mt-8 pt-4 border-t border-gray-200">
         <div className="text-xs text-gray-400">
-          <p>Develop by: Karim :) | Versión 4.0</p>
+          <p>Develop by: Karim :) | Versión 5.0</p>
         </div>
       </footer>
     </div>
