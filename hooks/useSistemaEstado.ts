@@ -122,8 +122,16 @@ export function useSistemaEstado() {
             setLoading(false)
             return
           } else {
-            const errorData = await response.json()
-            throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
+            // Manejo de errores más robusto: intentar parsear como JSON, si falla, usar texto plano
+            let errorDetails = "Error desconocido"
+            try {
+              const errorData = await response.json()
+              errorDetails = errorData.error || errorData.details || "Error desconocido"
+            } catch (jsonError) {
+              errorDetails = await response.text()
+              console.error("Failed to parse error response as JSON, falling back to text:", jsonError)
+            }
+            throw new Error(`Error ${response.status}: ${errorDetails}`)
           }
         } catch (err) {
           console.error(`❌ Error al cargar estado (intento ${intento}):`, err)
@@ -161,6 +169,17 @@ export function useSistemaEstado() {
       if (response.ok) {
         const data = await response.json()
         setEstadisticas(data.estadisticas)
+      } else {
+        // Manejo de errores más robusto para estadísticas
+        let errorDetails = "Error desconocido"
+        try {
+          const errorData = await response.json()
+          errorDetails = errorData.error || errorData.details || "Error desconocido"
+        } catch (jsonError) {
+          errorDetails = await response.text()
+          console.error("Failed to parse stats error response as JSON, falling back to text:", jsonError)
+        }
+        console.error(`❌ Error al cargar estadísticas: ${response.status} - ${errorDetails}`)
       }
     } catch (error) {
       console.error("❌ Error al cargar estadísticas:", error)
@@ -204,8 +223,16 @@ export function useSistemaEstado() {
             setUltimaSincronizacion(new Date())
             return
           } else {
-            const errorData = await response.json()
-            throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
+            // Manejo de errores más robusto
+            let errorDetails = "Error desconocido"
+            try {
+              const errorData = await response.json()
+              errorDetails = errorData.error || errorData.details || "Error desconocido"
+            } catch (jsonError) {
+              errorDetails = await response.text()
+              console.error("Failed to parse save error response as JSON, falling back to text:", jsonError)
+            }
+            throw new Error(`Error ${response.status}: ${errorDetails}`)
           }
         } catch (err) {
           console.error(`❌ Error al sincronizar (intento ${intento}):`, err)
@@ -261,8 +288,19 @@ export function useSistemaEstado() {
 
             return data.ticketGenerado
           } else {
-            const errorData = await response.json()
-            throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
+            // Manejo de errores más robusto
+            let errorDetails = "Error desconocido"
+            try {
+              const errorData = await response.json()
+              errorDetails = errorData.error || errorData.details || "Error desconocido"
+            } catch (jsonError) {
+              errorDetails = await response.text()
+              console.error(
+                "Failed to parse ticket generation error response as JSON, falling back to text:",
+                jsonError,
+              )
+            }
+            throw new Error(`Error ${response.status}: ${errorDetails}`)
           }
         } catch (err) {
           console.error(`❌ Error al generar ticket (intento ${intento}):`, err)
@@ -296,6 +334,17 @@ export function useSistemaEstado() {
       if (response.ok) {
         const data = await response.json()
         return data.backups || []
+      } else {
+        // Manejo de errores más robusto
+        let errorDetails = "Error desconocido"
+        try {
+          const errorData = await response.json()
+          errorDetails = errorData.error || errorData.details || "Error desconocido"
+        } catch (jsonError) {
+          errorDetails = await response.text()
+          console.error("Failed to parse backups error response as JSON, falling back to text:", jsonError)
+        }
+        console.error(`❌ Error al obtener backups: ${response.status} - ${errorDetails}`)
       }
     } catch (error) {
       console.error("❌ Error al obtener backups:", error)
@@ -319,6 +368,17 @@ export function useSistemaEstado() {
         if (response.ok) {
           const data = await response.json()
           return data
+        } else {
+          // Manejo de errores más robusto
+          let errorDetails = "Error desconocido"
+          try {
+            const errorData = await response.json()
+            errorDetails = errorData.error || errorData.details || "Error desconocido"
+          } catch (jsonError) {
+            errorDetails = await response.text()
+            console.error("Failed to parse specific backup error response as JSON, falling back to text:", jsonError)
+          }
+          console.error(`❌ Error al obtener backup específico: ${response.status} - ${errorDetails}`)
         }
       } catch (error) {
         console.error("❌ Error al obtener backup:", error)
