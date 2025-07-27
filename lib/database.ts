@@ -69,10 +69,16 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
     if (Array.isArray(rawTicketsStrings)) {
       tickets = rawTicketsStrings.map((ticketStr) => {
         try {
+          // Manejar explícitamente nulls y la cadena literal "[object Object]"
+          if (ticketStr === null || typeof ticketStr !== "string" || ticketStr === "[object Object]") {
+            console.warn(
+              `⚠️ Saltando cadena de ticket malformada o nula (tipo: ${typeof ticketStr}, valor: ${ticketStr}).`,
+            )
+            return { numero: 0, nombre: "Datos corruptos", fecha: new Date().toLocaleString(), timestamp: Date.now() }
+          }
           return JSON.parse(ticketStr) as TicketInfo
         } catch (parseError) {
-          console.error(`❌ Error parsing ticket string: ${ticketStr}`, parseError)
-          // Return a fallback ticket or handle as appropriate for corrupted data
+          console.error(`❌ Error al analizar la cadena del ticket: ${ticketStr}`, parseError)
           return { numero: 0, nombre: "Error de datos", fecha: new Date().toLocaleString(), timestamp: Date.now() }
         }
       })
