@@ -16,6 +16,7 @@ interface EstadoSistema {
   fechaInicio: string
   ultimoReinicio: string
   tickets: TicketInfo[]
+  lastSync?: number // Timestamp de última sincronización
 }
 
 // Estado inicial
@@ -27,65 +28,27 @@ const estadoInicial: EstadoSistema = {
   fechaInicio: new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }),
   ultimoReinicio: new Date().toISOString(),
   tickets: [],
+  lastSync: Date.now(),
 }
 
-// Claves de Redis
-const ESTADO_KEY = "sistema:estado"
-const LOCK_KEY = "sistema:lock"
+// Claves de Redis - reducidas al mínimo
+const ESTADO_KEY = "sistema:estado:v2"
 const BACKUP_PREFIX = "sistema:backup:"
 
-// Función para adquirir lock usando Redis
-async function adquirirLock(): Promise<boolean> {
+// Cache en memoria del servidor (para reducir calls a Redis)
+let serverCache: EstadoSistema | null = null
+let lastCacheUpdate = 0
+const CACHE_TTL = 30000 // 30 segundos de caché en servidor
+
+// Función simplificada para leer datos (con caché)
+async function leerDatos(forzarRedis = false): Promise<EstadoSistema> {
   try {
-    console.log("🔒 Intentando adquirir lock...")
-
-    // Intentar establecer lock con TTL de 30 segundos
-    const lockAdquirido = await kv.set(LOCK_KEY, Date.now(), {
-      nx: true, // Solo establecer si no existe
-      ex: 30, // Expira en 30 segundos
-    })
-
-    if (lockAdquirido === "OK") {
-      console.log("✅ Lock adquirido exitosamente")
-      return true
+    // Usar caché del servidor si es reciente y no se fuerza Redis
+    if (!forzarRedis && serverCache && Date.now() - lastCacheUpdate < CACHE_TTL) {
+      console.log("📋 Usando caché del servidor")
+      return { ...serverCache }
     }
 
-    // Si no se pudo adquirir, esperar un poco y reintentar
-    console.log("⏳ Lock ocupado, esperando...")
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-
-    // Segundo intento
-    const segundoIntento = await kv.set(LOCK_KEY, Date.now(), {
-      nx: true,
-      ex: 30,
-    })
-
-    if (segundoIntento === "OK") {
-      console.log("✅ Lock adquirido en segundo intento")
-      return true
-    }
-
-    console.log("❌ No se pudo adquirir lock después de reintentos")
-    return false
-  } catch (error) {
-    console.error("❌ Error adquiriendo lock:", error)
-    return false
-  }
-}
-
-// Función para liberar lock
-async function liberarLock() {
-  try {
-    await kv.del(LOCK_KEY)
-    console.log("🔓 Lock liberado")
-  } catch (error) {
-    console.error("❌ Error liberando lock:", error)
-  }
-}
-
-// Función para leer datos de Redis
-async function leerDatos(): Promise<EstadoSistema> {
-  try {
     console.log("📖 Leyendo datos de Redis...")
 
     const data = await kv.get<EstadoSistema>(ESTADO_KEY)
@@ -93,14 +56,12 @@ async function leerDatos(): Promise<EstadoSistema> {
     if (data) {
       console.log("✅ Estado encontrado en Redis:", {
         numeroActual: data.numeroActual,
-        ultimoNumero: data.ultimoNumero,
         totalAtendidos: data.totalAtendidos,
         numerosLlamados: data.numerosLlamados,
         totalTickets: data.tickets?.length || 0,
-        fechaInicio: data.fechaInicio,
       })
 
-      // Validar estructura de datos
+      // Validar y limpiar datos
       if (!data.tickets) data.tickets = []
       if (!data.ultimoReinicio) data.ultimoReinicio = new Date().toISOString()
       if (typeof data.numeroActual !== "number") data.numeroActual = 1
@@ -108,32 +69,57 @@ async function leerDatos(): Promise<EstadoSistema> {
       if (typeof data.totalAtendidos !== "number") data.totalAtendidos = 0
       if (typeof data.numerosLlamados !== "number") data.numerosLlamados = 0
 
-      // Verificar integridad de los datos
-      const ticketsCount = data.tickets.length
-      if (ticketsCount !== data.totalAtendidos) {
-        console.log("⚠️ Inconsistencia detectada: tickets.length !== totalAtendidos")
-        data.totalAtendidos = ticketsCount
+      // Verificar integridad
+      if (data.tickets.length !== data.totalAtendidos) {
+        console.log("⚠️ Corrigiendo inconsistencia")
+        data.totalAtendidos = data.tickets.length
       }
+
+      data.lastSync = Date.now()
+
+      // Actualizar caché del servidor
+      serverCache = { ...data }
+      lastCacheUpdate = Date.now()
 
       return data
     } else {
-      console.log("⚠️ No se encontró estado en Redis, creando estado inicial")
+      console.log("⚠️ No se encontró estado en Redis, creando inicial")
       const estadoNuevo = { ...estadoInicial }
-      await escribirDatos(estadoNuevo)
+      await escribirDatos(estadoNuevo, true) // Forzar escritura inicial
       return estadoNuevo
     }
   } catch (error) {
     console.error("❌ Error al leer datos de Redis:", error)
+
+    // Si hay caché del servidor, usarlo como fallback
+    if (serverCache) {
+      console.log("🔄 Usando caché del servidor como fallback")
+      return { ...serverCache }
+    }
+
     return { ...estadoInicial }
   }
 }
 
-// Función para escribir datos a Redis
-async function escribirDatos(estado: EstadoSistema): Promise<void> {
+// Función optimizada para escribir datos (solo cuando hay cambios)
+async function escribirDatos(estado: EstadoSistema, forzar = false): Promise<void> {
   try {
+    // Verificar si realmente hay cambios comparando con caché
+    if (!forzar && serverCache) {
+      const haycambios =
+        serverCache.numeroActual !== estado.numeroActual ||
+        serverCache.totalAtendidos !== estado.totalAtendidos ||
+        serverCache.numerosLlamados !== estado.numerosLlamados ||
+        serverCache.tickets.length !== estado.tickets.length
+
+      if (!haycambios) {
+        console.log("📝 No hay cambios, omitiendo escritura a Redis")
+        return
+      }
+    }
+
     console.log("💾 Escribiendo datos a Redis:", {
       numeroActual: estado.numeroActual,
-      ultimoNumero: estado.ultimoNumero,
       totalAtendidos: estado.totalAtendidos,
       numerosLlamados: estado.numerosLlamados,
       totalTickets: estado.tickets?.length || 0,
@@ -145,19 +131,23 @@ async function escribirDatos(estado: EstadoSistema): Promise<void> {
       estado.totalAtendidos = estado.tickets.length
     }
 
+    estado.lastSync = Date.now()
+
     // Guardar en Redis con TTL de 7 días
     await kv.set(ESTADO_KEY, estado, { ex: 7 * 24 * 60 * 60 })
 
-    // Verificar que se escribió correctamente
-    const verificacion = await kv.get<EstadoSistema>(ESTADO_KEY)
+    // Actualizar caché del servidor
+    serverCache = { ...estado }
+    lastCacheUpdate = Date.now()
 
-    if (!verificacion || verificacion.numeroActual !== estado.numeroActual) {
-      throw new Error("Error de verificación: el estado no se guardó correctamente en Redis")
-    }
-
-    console.log("✅ Datos guardados y verificados exitosamente en Redis")
+    console.log("✅ Datos guardados exitosamente en Redis")
   } catch (error) {
     console.error("❌ Error al escribir datos a Redis:", error)
+
+    // Si falla Redis, al menos actualizar caché del servidor
+    serverCache = { ...estado }
+    lastCacheUpdate = Date.now()
+
     throw error
   }
 }
@@ -169,12 +159,6 @@ function debeReiniciarse(estado: EstadoSistema): boolean {
     const fechaActualArgentina = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }))
     const fechaHoyString = fechaActualArgentina.toISOString().split("T")[0]
     const fechaInicioString = estado.fechaInicio
-
-    console.log("🕐 Verificando reinicio:", {
-      fechaHoy: fechaHoyString,
-      fechaInicio: fechaInicioString,
-      esIgual: fechaHoyString === fechaInicioString,
-    })
 
     const esDiaDiferente = fechaHoyString !== fechaInicioString
 
@@ -190,11 +174,18 @@ function debeReiniciarse(estado: EstadoSistema): boolean {
   }
 }
 
-// Función para crear backup diario en Redis
+// Función optimizada para crear backup (solo una vez por día)
 async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
   try {
     const fecha = estado.fechaInicio
     const backupKey = `${BACKUP_PREFIX}${fecha}`
+
+    // Verificar si ya existe el backup para evitar duplicados
+    const backupExistente = await kv.exists(backupKey)
+    if (backupExistente) {
+      console.log(`📦 Backup ya existe para ${fecha}, omitiendo`)
+      return
+    }
 
     const backup = {
       fecha,
@@ -213,40 +204,14 @@ async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
 
     // Guardar backup con TTL de 30 días
     await kv.set(backupKey, backup, { ex: 30 * 24 * 60 * 60 })
-    console.log(`📦 Backup diario creado en Redis: ${backupKey}`)
+    console.log(`📦 Backup diario creado: ${backupKey}`)
   } catch (error) {
     console.error("❌ Error al crear backup diario:", error)
-  }
-}
-
-// Función para obtener información de conexión Redis
-async function obtenerInfoRedis() {
-  try {
-    // Intentar una operación simple para verificar conexión
-    await kv.set("test:connection", "ok", { ex: 10 })
-    const test = await kv.get("test:connection")
-    await kv.del("test:connection")
-
-    return {
-      conectado: test === "ok",
-      url: process.env.KV_REST_API_URL ? "Configurado" : "No configurado",
-      timestamp: new Date().toISOString(),
-    }
-  } catch (error) {
-    return {
-      conectado: false,
-      error: error instanceof Error ? error.message : "Error desconocido",
-      timestamp: new Date().toISOString(),
-    }
+    // No lanzar error para no bloquear otras operaciones
   }
 }
 
 export async function GET() {
-  const lockAdquirido = await adquirirLock()
-  if (!lockAdquirido) {
-    return NextResponse.json({ error: "Sistema ocupado, intente nuevamente" }, { status: 503 })
-  }
-
   try {
     console.log("\n=== 📥 GET /api/sistema ===")
 
@@ -255,7 +220,9 @@ export async function GET() {
     // Verificar si debe reiniciarse automáticamente
     if (debeReiniciarse(estado)) {
       console.log("🔄 Ejecutando reinicio automático")
-      await crearBackupDiario(estado)
+
+      // Crear backup en background (no bloquear)
+      crearBackupDiario(estado).catch((err) => console.error("Error en backup:", err))
 
       const ahora = new Date()
       estado = {
@@ -266,18 +233,11 @@ export async function GET() {
         fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }),
         ultimoReinicio: ahora.toISOString(),
         tickets: [],
+        lastSync: Date.now(),
       }
 
-      await escribirDatos(estado)
+      await escribirDatos(estado, true) // Forzar escritura del reinicio
     }
-
-    console.log("📤 Estado devuelto:", {
-      numeroActual: estado.numeroActual,
-      ultimoNumero: estado.ultimoNumero,
-      totalAtendidos: estado.totalAtendidos,
-      numerosLlamados: estado.numerosLlamados,
-      totalTickets: estado.tickets?.length || 0,
-    })
 
     return NextResponse.json(estado)
   } catch (error) {
@@ -289,17 +249,10 @@ export async function GET() {
       },
       { status: 500 },
     )
-  } finally {
-    await liberarLock()
   }
 }
 
 export async function POST(request: NextRequest) {
-  const lockAdquirido = await adquirirLock()
-  if (!lockAdquirido) {
-    return NextResponse.json({ error: "Sistema ocupado, intente nuevamente" }, { status: 503 })
-  }
-
   try {
     console.log("\n=== 📨 POST /api/sistema ===")
 
@@ -313,7 +266,9 @@ export async function POST(request: NextRequest) {
     // Verificar si debe reiniciarse antes de cualquier operación
     if (debeReiniciarse(estado)) {
       console.log("🔄 Reinicio automático durante POST")
-      await crearBackupDiario(estado)
+
+      // Crear backup en background
+      crearBackupDiario(estado).catch((err) => console.error("Error en backup:", err))
 
       const ahora = new Date()
       estado = {
@@ -324,6 +279,7 @@ export async function POST(request: NextRequest) {
         fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }),
         ultimoReinicio: ahora.toISOString(),
         tickets: [],
+        lastSync: Date.now(),
       }
     }
 
@@ -350,49 +306,20 @@ export async function POST(request: NextRequest) {
           timestamp,
         }
 
-        console.log("🎫 Ticket a crear:", nuevoTicket)
-        console.log("📊 Estado ANTES de actualizar:", {
-          numeroActual: estado.numeroActual,
-          ultimoNumero: estado.ultimoNumero,
-          totalAtendidos: estado.totalAtendidos,
-          numerosLlamados: estado.numerosLlamados,
-          ticketsLength: estado.tickets.length,
-        })
-
         // Actualizar estado de forma atómica
         const estadoActualizado: EstadoSistema = {
           ...estado,
-          numeroActual: numeroAsignado + 1, // CRÍTICO: Incrementar para el próximo ticket
-          ultimoNumero: numeroAsignado, // El que acabamos de asignar
+          numeroActual: numeroAsignado + 1,
+          ultimoNumero: numeroAsignado,
           totalAtendidos: estado.totalAtendidos + 1,
           tickets: [...estado.tickets, nuevoTicket],
+          lastSync: Date.now(),
         }
 
-        console.log("📊 Estado DESPUÉS de actualizar:", {
-          numeroActual: estadoActualizado.numeroActual,
-          ultimoNumero: estadoActualizado.ultimoNumero,
-          totalAtendidos: estadoActualizado.totalAtendidos,
-          numerosLlamados: estadoActualizado.numerosLlamados,
-          ticketsLength: estadoActualizado.tickets.length,
-        })
+        // Guardar inmediatamente
+        await escribirDatos(estadoActualizado, true) // Forzar escritura para tickets
 
-        // Guardar inmediatamente de forma atómica
-        await escribirDatos(estadoActualizado)
-
-        // Verificar que se guardó correctamente leyendo de nuevo
-        const estadoVerificado = await leerDatos()
-        console.log("🔍 Verificación post-guardado:", {
-          numeroActual: estadoVerificado.numeroActual,
-          ultimoNumero: estadoVerificado.ultimoNumero,
-          totalAtendidos: estadoVerificado.totalAtendidos,
-          ticketsLength: estadoVerificado.tickets.length,
-        })
-
-        if (estadoVerificado.numeroActual !== estadoActualizado.numeroActual) {
-          throw new Error("Error de consistencia: el estado no se guardó correctamente")
-        }
-
-        console.log("✅ Ticket generado y verificado exitosamente")
+        console.log("✅ Ticket generado exitosamente")
 
         return NextResponse.json({
           ...estadoActualizado,
@@ -410,7 +337,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Acción para obtener estadísticas del día
+    // Acción para obtener estadísticas (sin escribir a Redis)
     if (action === "OBTENER_ESTADISTICAS") {
       const estadisticas = {
         totalTicketsHoy: estado.totalAtendidos,
@@ -439,7 +366,8 @@ export async function POST(request: NextRequest) {
       console.log("🗑️ Eliminando todos los registros...")
 
       try {
-        await crearBackupDiario(estado)
+        // Crear backup en background
+        crearBackupDiario(estado).catch((err) => console.error("Error en backup:", err))
 
         const ahora = new Date()
         const estadoLimpio: EstadoSistema = {
@@ -450,9 +378,10 @@ export async function POST(request: NextRequest) {
           fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }),
           ultimoReinicio: ahora.toISOString(),
           tickets: [],
+          lastSync: Date.now(),
         }
 
-        await escribirDatos(estadoLimpio)
+        await escribirDatos(estadoLimpio, true)
         console.log("✅ Todos los registros eliminados exitosamente")
 
         return NextResponse.json({
@@ -476,7 +405,8 @@ export async function POST(request: NextRequest) {
       console.log("🔄 Reiniciando contador diario...")
 
       try {
-        await crearBackupDiario(estado)
+        // Crear backup en background
+        crearBackupDiario(estado).catch((err) => console.error("Error en backup:", err))
 
         const ahora = new Date()
         const estadoReiniciado: EstadoSistema = {
@@ -487,9 +417,10 @@ export async function POST(request: NextRequest) {
           fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }),
           ultimoReinicio: ahora.toISOString(),
           tickets: [],
+          lastSync: Date.now(),
         }
 
-        await escribirDatos(estadoReiniciado)
+        await escribirDatos(estadoReiniciado, true)
         console.log("✅ Contador diario reiniciado exitosamente")
 
         return NextResponse.json({
@@ -508,7 +439,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Validar que los datos sean correctos para actualizaciones normales
+    // Validar datos para actualizaciones normales
     if (
       typeof nuevoEstado.numeroActual !== "number" ||
       typeof nuevoEstado.totalAtendidos !== "number" ||
@@ -518,18 +449,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Datos inválidos" }, { status: 400 })
     }
 
-    console.log("📝 Actualizando estado normal:", {
-      numeroActualAntes: estado.numeroActual,
-      numeroActualNuevo: nuevoEstado.numeroActual,
-      numerosLlamadosAntes: estado.numerosLlamados,
-      numerosLlamadosNuevo: nuevoEstado.numerosLlamados,
-    })
+    console.log("📝 Actualizando estado normal")
 
-    // Actualizar estado global manteniendo las fechas originales del día
+    // Actualizar estado manteniendo fechas originales
     const estadoActualizado = {
       ...nuevoEstado,
-      fechaInicio: estado.fechaInicio, // Mantener la fecha original del día
-      ultimoReinicio: estado.ultimoReinicio, // Mantener el último reinicio
+      fechaInicio: estado.fechaInicio,
+      ultimoReinicio: estado.ultimoReinicio,
+      lastSync: Date.now(),
     }
 
     await escribirDatos(estadoActualizado)
@@ -544,7 +471,5 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 },
     )
-  } finally {
-    await liberarLock()
   }
 }

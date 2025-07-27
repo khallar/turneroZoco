@@ -17,6 +17,7 @@ interface EstadoSistema {
   fechaInicio: string
   ultimoReinicio?: string
   tickets: TicketInfo[]
+  lastSync?: number
 }
 
 interface Estadisticas {
@@ -29,7 +30,7 @@ interface Estadisticas {
   ticketsUltimaHora: number
 }
 
-// Estado inicial para evitar undefined durante SSR
+// Estado inicial
 const estadoInicial: EstadoSistema = {
   numeroActual: 1,
   ultimoNumero: 0,
@@ -38,7 +39,11 @@ const estadoInicial: EstadoSistema = {
   fechaInicio: new Date().toDateString(),
   ultimoReinicio: new Date().toISOString(),
   tickets: [],
+  lastSync: Date.now(),
 }
+
+// Clave para localStorage
+const STORAGE_KEY = "sistemaAtencion:v2"
 
 export function useSistemaEstado() {
   const [estado, setEstado] = useState<EstadoSistema>(estadoInicial)
@@ -53,6 +58,50 @@ export function useSistemaEstado() {
   useEffect(() => {
     setIsClient(true)
   }, [])
+
+  // Función para cargar desde localStorage
+  const cargarDesdeLocalStorage = useCallback(() => {
+    if (!isClient) return estadoInicial
+
+    try {
+      const estadoLocal = localStorage.getItem(STORAGE_KEY)
+      if (estadoLocal) {
+        const data = JSON.parse(estadoLocal)
+
+        // Migrar datos antiguos si no tienen campos requeridos
+        if (!data.tickets) data.tickets = []
+        if (!data.ultimoReinicio) data.ultimoReinicio = new Date().toISOString()
+        if (!data.lastSync) data.lastSync = Date.now()
+
+        console.log("📱 Estado cargado desde localStorage:", {
+          numeroActual: data.numeroActual,
+          totalAtendidos: data.totalAtendidos,
+          totalTickets: data.tickets?.length || 0,
+        })
+
+        return data
+      }
+    } catch (error) {
+      console.error("❌ Error al cargar desde localStorage:", error)
+    }
+
+    return estadoInicial
+  }, [isClient])
+
+  // Función para guardar en localStorage
+  const guardarEnLocalStorage = useCallback(
+    (nuevoEstado: EstadoSistema) => {
+      if (!isClient) return
+
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(nuevoEstado))
+        console.log("💾 Estado guardado en localStorage")
+      } catch (error) {
+        console.error("❌ Error al guardar en localStorage:", error)
+      }
+    },
+    [isClient],
+  )
 
   // Función para obtener información de debug
   const cargarDebugInfo = useCallback(async () => {
@@ -69,18 +118,28 @@ export function useSistemaEstado() {
       if (response.ok) {
         const data = await response.json()
         setDebugInfo(data)
-        console.log("🐛 Debug info actualizada:", data)
       }
     } catch (error) {
       console.error("❌ Error al cargar debug info:", error)
     }
   }, [isClient])
 
-  // Cargar estado inicial con reintentos
+  // Función optimizada para cargar estado (con throttling)
   const cargarEstado = useCallback(
-    async (incluirEstadisticas = false, reintentos = 3) => {
-      // Solo ejecutar en el cliente
+    async (incluirEstadisticas = false, reintentos = 2) => {
       if (!isClient) return
+
+      // Throttling: no hacer requests muy frecuentes
+      const ultimaRequest = localStorage.getItem("ultimaRequestAPI")
+      const ahora = Date.now()
+
+      if (ultimaRequest && ahora - Number.parseInt(ultimaRequest) < 5000) {
+        console.log("🚫 Request throttled, usando localStorage")
+        const estadoLocal = cargarDesdeLocalStorage()
+        setEstado(estadoLocal)
+        setLoading(false)
+        return
+      }
 
       for (let intento = 1; intento <= reintentos; intento++) {
         try {
@@ -96,92 +155,73 @@ export function useSistemaEstado() {
           })
 
           if (response.status === 503) {
-            console.log("⏳ Sistema ocupado, reintentando...")
-            await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
-            continue
+            console.log("⏳ Sistema ocupado, usando localStorage")
+            const estadoLocal = cargarDesdeLocalStorage()
+            setEstado(estadoLocal)
+            setLoading(false)
+            return
           }
 
           if (response.ok) {
             const data = await response.json()
-            console.log("✅ Estado cargado desde servidor:", {
-              numeroActual: data.numeroActual,
-              ultimoNumero: data.ultimoNumero,
-              totalAtendidos: data.totalAtendidos,
-              numerosLlamados: data.numerosLlamados,
-              totalTickets: data.tickets?.length || 0,
-              fechaInicio: data.fechaInicio,
-            })
-
-            // Verificar integridad de los datos recibidos
-            if (data.tickets && data.tickets.length !== data.totalAtendidos) {
-              console.warn("⚠️ Inconsistencia detectada en datos recibidos")
-            }
+            console.log("✅ Estado cargado desde servidor")
 
             setEstado(data)
             setError(null)
             setUltimaSincronizacion(new Date())
 
-            // También guardar en localStorage como backup
-            if (typeof window !== "undefined") {
-              localStorage.setItem("sistemaAtencion", JSON.stringify(data))
-            }
+            // Guardar en localStorage como backup
+            guardarEnLocalStorage(data)
 
-            // Si incluye estadísticas, cargarlas por separado
+            // Marcar timestamp de última request
+            localStorage.setItem("ultimaRequestAPI", ahora.toString())
+
+            // Cargar estadísticas si se solicita
             if (incluirEstadisticas) {
               await cargarEstadisticas()
             }
 
-            // Cargar debug info después de cargar estado
+            // Cargar debug info
             await cargarDebugInfo()
 
-            return // Éxito, salir del bucle
+            setLoading(false)
+            return
           } else {
             const errorData = await response.json()
-            console.error("❌ Error en respuesta:", errorData)
             throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
           }
         } catch (err) {
           console.error(`❌ Error al cargar estado (intento ${intento}):`, err)
 
           if (intento === reintentos) {
-            // Último intento fallido
+            // Último intento fallido, usar localStorage
             setError(`Error de conexión: ${err instanceof Error ? err.message : "Error desconocido"}`)
 
-            // Fallback a localStorage solo si hay error de conexión
-            try {
-              const estadoLocal = localStorage.getItem("sistemaAtencion")
-              if (estadoLocal) {
-                const data = JSON.parse(estadoLocal)
-
-                // Migrar datos antiguos si no tienen campos requeridos
-                if (!data.tickets) data.tickets = []
-                if (!data.ultimoReinicio) data.ultimoReinicio = new Date().toISOString()
-
-                setEstado(data)
-                console.log("⚠️ Usando datos de localStorage como fallback")
-              }
-            } catch (parseError) {
-              console.error("❌ Error al parsear localStorage:", parseError)
-              setEstado(estadoInicial)
-              if (typeof window !== "undefined") {
-                localStorage.setItem("sistemaAtencion", JSON.stringify(estadoInicial))
-              }
-            }
+            const estadoLocal = cargarDesdeLocalStorage()
+            setEstado(estadoLocal)
+            setLoading(false)
           } else {
             // Esperar antes del siguiente intento
             await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
           }
         }
       }
-
-      setLoading(false)
     },
-    [isClient, cargarDebugInfo],
+    [isClient, cargarDesdeLocalStorage, guardarEnLocalStorage, cargarDebugInfo],
   )
 
-  // Cargar estadísticas del día
+  // Función optimizada para cargar estadísticas (con throttling)
   const cargarEstadisticas = useCallback(async () => {
     if (!isClient) return
+
+    // Throttling para estadísticas
+    const ultimaStatsRequest = localStorage.getItem("ultimaStatsRequest")
+    const ahora = Date.now()
+
+    if (ultimaStatsRequest && ahora - Number.parseInt(ultimaStatsRequest) < 30000) {
+      console.log("🚫 Stats request throttled")
+      return
+    }
 
     try {
       const response = await fetch("/api/sistema", {
@@ -200,26 +240,26 @@ export function useSistemaEstado() {
       if (response.ok) {
         const data = await response.json()
         setEstadisticas(data.estadisticas)
+        localStorage.setItem("ultimaStatsRequest", ahora.toString())
       }
     } catch (error) {
       console.error("❌ Error al cargar estadísticas:", error)
     }
   }, [isClient])
 
-  // Guardar estado con reintentos
+  // Función optimizada para guardar estado
   const guardarEstado = useCallback(
-    async (nuevoEstado: EstadoSistema, reintentos = 3) => {
-      // Solo ejecutar en el cliente
+    async (nuevoEstado: EstadoSistema, reintentos = 2) => {
       if (!isClient) return
 
+      // Guardar inmediatamente en localStorage
+      guardarEnLocalStorage(nuevoEstado)
+      setEstado(nuevoEstado)
+
+      // Intentar sincronizar con servidor
       for (let intento = 1; intento <= reintentos; intento++) {
         try {
-          console.log(`💾 Guardando estado (intento ${intento}/${reintentos}):`, {
-            numeroActual: nuevoEstado.numeroActual,
-            ultimoNumero: nuevoEstado.ultimoNumero,
-            totalAtendidos: nuevoEstado.totalAtendidos,
-            numerosLlamados: nuevoEstado.numerosLlamados,
-          })
+          console.log(`💾 Sincronizando con servidor (intento ${intento}/${reintentos})`)
 
           const response = await fetch("/api/sistema", {
             method: "POST",
@@ -233,60 +273,41 @@ export function useSistemaEstado() {
           })
 
           if (response.status === 503) {
-            console.log("⏳ Sistema ocupado, reintentando...")
-            await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
-            continue
+            console.log("⏳ Sistema ocupado, datos guardados localmente")
+            return // Los datos ya están en localStorage
           }
 
           if (response.ok) {
             const data = await response.json()
-            console.log("✅ Estado guardado exitosamente:", {
-              numeroActual: data.numeroActual,
-              ultimoNumero: data.ultimoNumero,
-              totalAtendidos: data.totalAtendidos,
-              numerosLlamados: data.numerosLlamados,
-            })
+            console.log("✅ Estado sincronizado con servidor")
 
             setEstado(data)
             setError(null)
             setUltimaSincronizacion(new Date())
-
-            // También guardar en localStorage como backup
-            if (typeof window !== "undefined") {
-              localStorage.setItem("sistemaAtencion", JSON.stringify(data))
-            }
-
-            return // Éxito
+            guardarEnLocalStorage(data)
+            return
           } else {
             const errorData = await response.json()
             throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
           }
         } catch (err) {
-          console.error(`❌ Error al guardar estado (intento ${intento}):`, err)
+          console.error(`❌ Error al sincronizar (intento ${intento}):`, err)
 
           if (intento === reintentos) {
-            // Último intento fallido
-            setError(`Error de conexión: ${err instanceof Error ? err.message : "Error desconocido"}`)
-
-            // Fallback a localStorage
-            if (typeof window !== "undefined") {
-              localStorage.setItem("sistemaAtencion", JSON.stringify(nuevoEstado))
-            }
-            setEstado(nuevoEstado)
+            setError(`Error de sincronización: ${err instanceof Error ? err.message : "Error desconocido"}`)
+            // Los datos siguen en localStorage
           } else {
-            // Esperar antes del siguiente intento
             await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
           }
         }
       }
     },
-    [isClient],
+    [isClient, guardarEnLocalStorage],
   )
 
-  // Nueva función para generar ticket de forma atómica con reintentos
+  // Función optimizada para generar ticket
   const generarTicket = useCallback(
-    async (nombre: string, reintentos = 3) => {
-      // Solo ejecutar en el cliente
+    async (nombre: string, reintentos = 2) => {
       if (!isClient) return null
 
       for (let intento = 1; intento <= reintentos; intento++) {
@@ -309,58 +330,43 @@ export function useSistemaEstado() {
 
           if (response.status === 503) {
             console.log("⏳ Sistema ocupado, reintentando...")
-            await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
+            await new Promise((resolve) => setTimeout(resolve, 2000 * intento))
             continue
           }
 
           if (response.ok) {
             const data = await response.json()
-            console.log("✅ Ticket generado exitosamente:", data.ticketGenerado)
-            console.log("📊 Estado actualizado:", {
-              numeroActual: data.numeroActual,
-              ultimoNumero: data.ultimoNumero,
-              totalAtendidos: data.totalAtendidos,
-              numerosLlamados: data.numerosLlamados,
-            })
+            console.log("✅ Ticket generado exitosamente")
 
             setEstado(data)
             setError(null)
             setUltimaSincronizacion(new Date())
-
-            // También guardar en localStorage como backup
-            if (typeof window !== "undefined") {
-              localStorage.setItem("sistemaAtencion", JSON.stringify(data))
-            }
-
-            // Actualizar debug info después de generar ticket
+            guardarEnLocalStorage(data)
             await cargarDebugInfo()
 
             return data.ticketGenerado
           } else {
             const errorData = await response.json()
-            console.error("❌ Error en respuesta al generar ticket:", errorData)
             throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
           }
         } catch (err) {
           console.error(`❌ Error al generar ticket (intento ${intento}):`, err)
 
           if (intento === reintentos) {
-            // Último intento fallido
             setError(`Error al generar ticket: ${err instanceof Error ? err.message : "Error desconocido"}`)
             throw err
           } else {
-            // Esperar antes del siguiente intento
-            await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
+            await new Promise((resolve) => setTimeout(resolve, 2000 * intento))
           }
         }
       }
 
       return null
     },
-    [isClient, cargarDebugInfo],
+    [isClient, guardarEnLocalStorage, cargarDebugInfo],
   )
 
-  // Función para obtener backups
+  // Función para obtener backups (con throttling)
   const obtenerBackups = useCallback(async () => {
     if (!isClient) return []
 
@@ -407,47 +413,44 @@ export function useSistemaEstado() {
     [isClient],
   )
 
-  // Cargar estado al montar el componente
+  // Cargar estado inicial
   useEffect(() => {
     if (isClient) {
-      cargarEstado(true)
-    }
-  }, [cargarEstado, isClient])
+      // Cargar inmediatamente desde localStorage
+      const estadoLocal = cargarDesdeLocalStorage()
+      setEstado(estadoLocal)
+      setLoading(false)
 
-  // Sincronizar cada 30 segundos para asegurar persistencia
+      // Luego intentar sincronizar con servidor (sin bloquear UI)
+      cargarEstado(true).catch((err) => console.error("Error en sincronización inicial:", err))
+    }
+  }, [isClient, cargarDesdeLocalStorage, cargarEstado])
+
+  // Sincronización periódica muy reducida (solo cada 2 minutos)
   useEffect(() => {
     if (!isClient) return
 
     const interval = setInterval(() => {
-      cargarEstado(false) // Sin estadísticas para ser más rápido
-    }, 30000) // 30 segundos
+      // Solo sincronizar si no hay error de límite de requests
+      if (!error || !error.includes("max requests limit")) {
+        cargarEstado(false).catch((err) => console.error("Error en sincronización periódica:", err))
+      }
+    }, 120000) // 2 minutos
 
     return () => clearInterval(interval)
-  }, [cargarEstado, isClient])
-
-  // Cargar estadísticas cada 2 minutos
-  useEffect(() => {
-    if (!isClient) return
-
-    const interval = setInterval(cargarEstadisticas, 120000) // 2 minutos
-    return () => clearInterval(interval)
-  }, [cargarEstadisticas, isClient])
+  }, [cargarEstado, isClient, error])
 
   // Verificar integridad de la numeración
   const verificarIntegridad = useCallback(() => {
     if (!isClient || !estado.tickets || estado.tickets.length === 0) return { ok: true }
 
-    // Ordenar tickets por número
     const ticketsOrdenados = [...estado.tickets].sort((a, b) => a.numero - b.numero)
-
-    // Verificar que no hay saltos
     let numeroAnterior = ticketsOrdenados[0].numero
     const saltos = []
 
     for (let i = 1; i < ticketsOrdenados.length; i++) {
       const numeroActual = ticketsOrdenados[i].numero
       if (numeroActual - numeroAnterior > 1) {
-        // Hay un salto
         saltos.push({
           desde: numeroAnterior,
           hasta: numeroActual,
