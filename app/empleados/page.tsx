@@ -229,6 +229,28 @@ export default function PaginaEmpleados() {
   // Obtener información del próximo ticket
   const proximoTicket = estado?.tickets?.find((ticket) => ticket.numero === proximoNumeroALlamar)
 
+  // DEBUG: Log de estado y detección de inconsistencias
+  useEffect(() => {
+    if (isClient && estado) {
+      const ticketsLength = estado.tickets?.length || 0
+      if (estado.totalAtendidos !== ticketsLength) {
+        console.warn(
+          `DEBUG: Mismatch detectado! totalAtendidos (${estado.totalAtendidos}) != tickets.length (${ticketsLength}). Forzando recarga.`,
+        )
+        cargarEstado(true) // Forzar recarga si hay inconsistencia
+      }
+      console.log("DEBUG: Estado en empleados (on change):", {
+        numeroActual: estado.numeroActual,
+        ultimoNumero: estado.ultimoNumero,
+        totalAtendidos: estado.totalAtendidos,
+        numerosLlamados: estado.numerosLlamados,
+        ticketsLength: ticketsLength,
+        proximoNumeroALlamar: estado.numerosLlamados + 1,
+        proximoTicketExists: !!estado.tickets?.find((ticket) => ticket.numero === estado.numerosLlamados + 1),
+      })
+    }
+  }, [estado, isClient, cargarEstado])
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center p-4">
@@ -415,12 +437,17 @@ export default function PaginaEmpleados() {
                 </div>
 
                 {/* Nombre del cliente - responsive */}
-                {proximoTicket && (
+                {proximoTicket ? (
                   <div className="mb-3 md:mb-4">
                     <div className="flex items-center justify-center gap-2 text-lg md:text-2xl font-bold text-blue-600 bg-blue-50 p-3 md:p-4 rounded-lg max-w-sm md:max-w-md mx-auto">
                       <User className="h-4 w-4 md:h-6 md:w-6 flex-shrink-0" />
                       <span className="truncate">{proximoTicket.nombre}</span>
                     </div>
+                  </div>
+                ) : (
+                  <div className="mb-3 md:mb-4 text-center text-orange-600 text-lg font-semibold">
+                    Cargando información del ticket...
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500 mx-auto mt-2"></div>
                   </div>
                 )}
 
@@ -429,6 +456,7 @@ export default function PaginaEmpleados() {
                   onClick={llamarSiguienteNumero}
                   size="lg"
                   className="text-lg md:text-2xl px-8 md:px-16 py-4 md:py-8 h-auto bg-green-600 hover:bg-green-700 shadow-lg transform transition-transform hover:scale-105 w-full sm:w-auto"
+                  disabled={!proximoTicket || actualizandoDatos} // Deshabilitar si proximoTicket no está cargado o si se está actualizando
                 >
                   <Phone className="mr-2 md:mr-4 h-5 w-5 md:h-8 md:w-8" />
                   <span className="truncate">
@@ -641,7 +669,7 @@ export default function PaginaEmpleados() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                   <div>
                     <span className="text-gray-600">Última hora:</span>
-                    <p className="font-bold text-blue-600">{estadisticas.ticketsUltimaHora} tickets</p>
+                    <p className="font-bold text-blue-600">{estadisticas.ticketsUltimaHora}</p>
                   </div>
                   <div>
                     <span className="text-gray-600">Inicio:</span>
