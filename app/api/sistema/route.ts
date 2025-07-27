@@ -38,35 +38,35 @@ function debeReiniciarse(estado: EstadoSistema): boolean {
     const esDiaDiferente = fechaHoyString !== fechaInicioString
 
     if (esDiaDiferente) {
-      console.log(`🔄 Reinicio automático necesario (Neon): ${fechaHoyString} vs ${fechaInicioString}`)
+      console.log(`🔄 Reinicio automático necesario (Upstash Redis): ${fechaHoyString} vs ${fechaInicioString}`)
       return true
     }
 
     return false
   } catch (error) {
-    console.error("❌ Error verificando reinicio (Neon):", error)
+    console.error("❌ Error verificando reinicio (Upstash Redis):", error)
     return false
   }
 }
 
 export async function GET() {
   try {
-    console.log("\n=== 📥 GET /api/sistema - sistemaTurnosZOCO (Neon) ===")
+    console.log("\n=== 📥 GET /api/sistema - sistemaTurnosZOCO (Upstash Redis) ===")
 
     // Verificar conexión a la base de datos
     const conexionOK = await verificarConexionDB()
     if (!conexionOK) {
-      return NextResponse.json({ error: "Error de conexión a sistemaTurnosZOCO (Neon)" }, { status: 503 })
+      return NextResponse.json({ error: "Error de conexión a sistemaTurnosZOCO (Upstash Redis)" }, { status: 503 })
     }
 
     let estado = await leerEstadoSistema()
 
     // Verificar si debe reiniciarse automáticamente
     if (debeReiniciarse(estado)) {
-      console.log("🔄 Ejecutando reinicio automático (Neon)")
+      console.log("🔄 Ejecutando reinicio automático (Upstash Redis)")
 
       // Crear backup en background
-      crearBackupDiario(estado).catch((err) => console.error("Error en backup (Neon):", err))
+      crearBackupDiario(estado).catch((err) => console.error("Error en backup (Upstash Redis):", err))
 
       const ahora = new Date()
       estado = {
@@ -83,7 +83,7 @@ export async function GET() {
       await escribirEstadoSistema(estado)
     }
 
-    console.log("📤 Estado devuelto desde sistemaTurnosZOCO (Neon):", {
+    console.log("📤 Estado devuelto desde sistemaTurnosZOCO (Upstash Redis):", {
       numeroActual: estado.numeroActual,
       totalAtendidos: estado.totalAtendidos,
       numerosLlamados: estado.numerosLlamados,
@@ -92,10 +92,10 @@ export async function GET() {
 
     return NextResponse.json(estado)
   } catch (error) {
-    console.error("❌ Error en GET /api/sistema (Neon):", error)
+    console.error("❌ Error en GET /api/sistema (Upstash Redis):", error)
     return NextResponse.json(
       {
-        error: "Error interno del servidor - sistemaTurnosZOCO (Neon)",
+        error: "Error interno del servidor - sistemaTurnosZOCO (Upstash Redis)",
         details: error instanceof Error ? error.message : "Error desconocido",
       },
       { status: 500 },
@@ -105,27 +105,27 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("\n=== 📨 POST /api/sistema - sistemaTurnosZOCO (Neon) ===")
+    console.log("\n=== 📨 POST /api/sistema - sistemaTurnosZOCO (Upstash Redis) ===")
 
     const body = await request.json()
     const { action, ...nuevoEstado } = body
 
-    console.log("🎯 Acción recibida (Neon):", action)
+    console.log("🎯 Acción recibida (Upstash Redis):", action)
 
     // Verificar conexión a la base de datos
     const conexionOK = await verificarConexionDB()
     if (!conexionOK) {
-      return NextResponse.json({ error: "Error de conexión a sistemaTurnosZOCO (Neon)" }, { status: 503 })
+      return NextResponse.json({ error: "Error de conexión a sistemaTurnosZOCO (Upstash Redis)" }, { status: 503 })
     }
 
     let estado = await leerEstadoSistema() // Leer estado una vez al inicio del POST
 
     // Verificar si debe reiniciarse antes de cualquier operación
     if (debeReiniciarse(estado)) {
-      console.log("🔄 Reinicio automático durante POST (Neon)")
+      console.log("🔄 Reinicio automático durante POST (Upstash Redis)")
 
       // Crear backup en background
-      crearBackupDiario(estado).catch((err) => console.error("Error en backup (Neon):", err))
+      crearBackupDiario(estado).catch((err) => console.error("Error en backup (Upstash Redis):", err))
 
       const ahora = new Date()
       estado = {
@@ -150,33 +150,27 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Nombre requerido" }, { status: 400 })
       }
 
-      console.log("🎫 Generando ticket para:", nombre, "(Neon)")
+      console.log("🎫 Generando ticket para:", nombre, "(Upstash Redis)")
 
       try {
         // Generar ticket de forma atómica en la base de datos
         const nuevoTicket = await generarTicketAtomico(nombre)
 
-        // Construir el estado actualizado en memoria, evitando una nueva lectura completa de la DB
-        const estadoActualizado: EstadoSistema = {
-          ...estado, // Base del estado actual
-          numeroActual: nuevoTicket.numero + 1, // El siguiente número a emitir
-          ultimoNumero: nuevoTicket.numero, // El último número emitido
-          totalAtendidos: estado.totalAtendidos + 1, // Incrementa el total de tickets emitidos
-          tickets: [...estado.tickets, nuevoTicket], // Agrega el nuevo ticket a la lista
-          lastSync: Date.now(), // Actualiza el timestamp de sincronización
-        }
+        // Después de generar el ticket, volvemos a leer el estado para asegurar consistencia
+        // Esto es importante porque generarTicketAtomico actualiza el estado directamente en Redis
+        const estadoActualizado = await leerEstadoSistema()
 
-        console.log("✅ Ticket generado exitosamente en sistemaTurnosZOCO (Neon)")
+        console.log("✅ Ticket generado exitosamente en sistemaTurnosZOCO (Upstash Redis)")
 
         return NextResponse.json({
           ...estadoActualizado,
           ticketGenerado: nuevoTicket,
         })
       } catch (error) {
-        console.error("❌ Error al generar ticket (Neon):", error)
+        console.error("❌ Error al generar ticket (Upstash Redis):", error)
         return NextResponse.json(
           {
-            error: "Error al generar ticket en sistemaTurnosZOCO (Neon)",
+            error: "Error al generar ticket en sistemaTurnosZOCO (Upstash Redis)",
             details: error instanceof Error ? error.message : "Error desconocido",
           },
           { status: 500 },
@@ -194,7 +188,7 @@ export async function POST(request: NextRequest) {
           estadisticas,
         })
       } catch (error) {
-        console.error("❌ Error al obtener estadísticas (Neon):", error)
+        console.error("❌ Error al obtener estadísticas (Upstash Redis):", error)
         return NextResponse.json(
           {
             error: "Error al obtener estadísticas",
@@ -207,7 +201,7 @@ export async function POST(request: NextRequest) {
 
     // Acción administrativa: Eliminar todos los registros
     if (action === "ELIMINAR_TODOS_REGISTROS") {
-      console.log("🗑️ Eliminando todos los registros (Neon)...")
+      console.log("🗑️ Eliminando todos los registros (Upstash Redis)...")
 
       try {
         // Crear backup antes de eliminar
@@ -226,7 +220,7 @@ export async function POST(request: NextRequest) {
         }
 
         await escribirEstadoSistema(estadoLimpio)
-        console.log("✅ Todos los registros eliminados exitosamente (Neon)")
+        console.log("✅ Todos los registros eliminados exitosamente (Upstash Redis)")
 
         // Devolver el estado limpio directamente, sin una nueva lectura de DB
         return NextResponse.json({
@@ -234,7 +228,7 @@ export async function POST(request: NextRequest) {
           mensaje: "Todos los registros han sido eliminados exitosamente",
         })
       } catch (error) {
-        console.error("❌ Error al eliminar registros (Neon):", error)
+        console.error("❌ Error al eliminar registros (Upstash Redis):", error)
         return NextResponse.json(
           {
             error: "Error al eliminar registros",
@@ -247,7 +241,7 @@ export async function POST(request: NextRequest) {
 
     // Acción administrativa: Reiniciar contador diario
     if (action === "REINICIAR_CONTADOR_DIARIO") {
-      console.log("🔄 Reiniciando contador diario (Neon)...")
+      console.log("🔄 Reiniciando contador diario (Upstash Redis)...")
 
       try {
         // Crear backup antes de reiniciar
@@ -266,7 +260,7 @@ export async function POST(request: NextRequest) {
         }
 
         await escribirEstadoSistema(estadoReiniciado)
-        console.log("✅ Contador diario reiniciado exitosamente (Neon)")
+        console.log("✅ Contador diario reiniciado exitosamente (Upstash Redis)")
 
         // Devolver el estado reiniciado directamente, sin una nueva lectura de DB
         return NextResponse.json({
@@ -274,7 +268,7 @@ export async function POST(request: NextRequest) {
           mensaje: "Contador diario reiniciado exitosamente",
         })
       } catch (error) {
-        console.error("❌ Error al reiniciar contador (Neon):", error)
+        console.error("❌ Error al reiniciar contador (Upstash Redis):", error)
         return NextResponse.json(
           {
             error: "Error al reiniciar contador",
@@ -293,7 +287,7 @@ export async function POST(request: NextRequest) {
           mensaje: "Datos antiguos limpiados exitosamente",
         })
       } catch (error) {
-        console.error("❌ Error al limpiar datos antiguos (Neon):", error)
+        console.error("❌ Error al limpiar datos antiguos (Upstash Redis):", error)
         return NextResponse.json(
           {
             error: "Error al limpiar datos antiguos",
@@ -314,7 +308,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Datos inválidos" }, { status: 400 })
     }
 
-    console.log("📝 Actualizando estado normal en sistemaTurnosZOCO (Neon)")
+    console.log("📝 Actualizando estado normal en sistemaTurnosZOCO (Upstash Redis)")
 
     // Actualizar estado manteniendo fechas originales
     const estadoActualizado = {
@@ -328,10 +322,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(estadoActualizado)
   } catch (error) {
-    console.error("❌ Error en POST /api/sistema (Neon):", error)
+    console.error("❌ Error en POST /api/sistema (Upstash Redis):", error)
     return NextResponse.json(
       {
-        error: "Error interno del servidor - sistemaTurnosZOCO (Neon)",
+        error: "Error interno del servidor - sistemaTurnosZOCO (Upstash Redis)",
         details: error instanceof Error ? error.message : "Error desconocido",
       },
       { status: 500 },

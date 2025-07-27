@@ -7,12 +7,12 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       environment: {
         NODE_ENV: process.env.NODE_ENV,
-        PLATFORM: "sistemaTurnosZOCO (Neon Serverless Postgres)", // Actualizado
+        PLATFORM: "sistemaTurnosZOCO (Upstash Redis)", // Actualizado
         VERCEL_ENV: process.env.VERCEL_ENV || "development",
       },
       database: {
-        url: process.env.DATABASE_URL ? "Configurado" : "No configurado",
-        type: "Neon Serverless Postgres", // Actualizado
+        url: process.env.KV_REST_API_URL ? "Configurado" : "No configurado",
+        type: "Upstash Redis", // Actualizado
         name: "sistemaTurnosZOCO",
       },
     }
@@ -36,7 +36,7 @@ export async function GET() {
           lastSync: estado.lastSync ? new Date(estado.lastSync).toISOString() : "N/A",
         }
 
-        // Verificar integridad
+        // Verificar integridad (adaptado para Redis)
         debug.database.integridad = {
           ticketsCountMatch: estado.tickets?.length === estado.totalAtendidos,
           numeroActualValido: estado.numeroActual > estado.ultimoNumero,
@@ -52,13 +52,13 @@ export async function GET() {
           }))
         }
 
-        // Información de optimización
+        // Información de optimización (adaptado para Redis)
         debug.database.optimizaciones = {
-          transaccionesAtomicas: "Activo (ACID compliance)",
-          poolConexiones: "Activo (max 20 conexiones)",
-          indices: "Optimizados para consultas frecuentes",
-          backupsAutomaticos: "Diarios con limpieza automática",
-          logs: "Sistema de auditoría completo",
+          transaccionesAtomicas: "Activo (MULTI/EXEC para contadores)",
+          persistencia: "En memoria con persistencia de Upstash",
+          escalabilidad: "Horizontal con Upstash",
+          backupsAutomaticos: "Diarios con limpieza automática (en Redis)",
+          logs: "Sistema de auditoría básico (en Redis)",
         }
       } else {
         debug.database.estadoActual = "No se pudo conectar"
@@ -71,7 +71,7 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json(
       {
-        error: "Error en debug - sistemaTurnosZOCO (Neon)",
+        error: "Error en debug - sistemaTurnosZOCO (Upstash Redis)",
         details: error instanceof Error ? error.message : "Error desconocido",
       },
       { status: 500 },

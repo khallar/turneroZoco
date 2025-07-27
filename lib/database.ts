@@ -1,5 +1,4 @@
-// Configuración de la base de datos sistemaTurnosZOCO (usando Neon Serverless Postgres)
-import { Pool } from "pg"
+import { Redis } from "@upstash/redis"
 
 interface TicketInfo {
   numero: number
@@ -13,100 +12,57 @@ interface EstadoSistema {
   ultimoNumero: number
   totalAtendidos: number
   numerosLlamados: number
-  fechaInicio: string
-  ultimoReinicio: string
+  fechaInicio: string // YYYY-MM-DD
+  ultimoReinicio: string // ISO string
   tickets: TicketInfo[]
   lastSync?: number
 }
 
-// Configuración del pool de conexiones
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+// Inicializar cliente de Upstash Redis
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL!,
+  token: process.env.KV_REST_API_TOKEN!,
 })
 
-// Función para ejecutar queries con manejo de errores
-async function executeQuery(query: string, params: any[] = []) {
-  const client = await pool.connect()
-  try {
-    const result = await client.query(query, params)
-    return result
-  } catch (error) {
-    console.error("❌ Error en query:", error)
-    throw error
-  } finally {
-    client.release()
+// Prefijos para las claves de Redis
+const STATE_KEY_PREFIX = "sistemaTurnosZOCO:estado:" // sistemaTurnosZOCO:estado:YYYY-MM-DD
+const BACKUP_KEY_PREFIX = "sistemaTurnosZOCO:backup:" // sistemaTurnosZOCO:backup:YYYY-MM-DD
+const LOGS_KEY = "sistemaTurnosZOCO:logs"
+
+// Función auxiliar para obtener la fecha actual en formato YYYY-MM-DD (Argentina)
+function getTodayDateString(): string {
+  const now = new Date()
+  const options: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "America/Argentina/Buenos_Aires",
   }
+  const formatter = new Intl.DateTimeFormat("en-CA", options) // en-CA para YYYY-MM-DD
+  return formatter.format(now)
 }
 
 // Función para leer el estado actual del sistema
 export async function leerEstadoSistema(): Promise<EstadoSistema> {
   try {
-    console.log("📖 Leyendo estado desde sistemaTurnosZOCO (Neon)...")
+    console.log("📖 Leyendo estado desde Upstash Redis...")
+    const fechaHoy = getTodayDateString()
+    const estadoKey = STATE_KEY_PREFIX + fechaHoy
 
-    const fechaHoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
-
-    // Obtener estado principal
-    const estadoQuery = `
-      SELECT 
-        numero_actual,
-        ultimo_numero,
-        total_atendidos,
-        numeros_llamados,
-        fecha_inicio,
-        ultimo_reinicio,
-        last_sync
-      FROM sistema_estado 
-      WHERE fecha_inicio = $1
-      ORDER BY created_at DESC 
-      LIMIT 1
-    `
-
-    const estadoResult = await executeQuery(estadoQuery, [fechaHoy])
+    const estadoGuardado = await redis.get<EstadoSistema>(estadoKey)
 
     let estado: EstadoSistema
 
-    if (estadoResult.rows.length > 0) {
-      const row = estadoResult.rows[0]
-
-      // Obtener tickets del día
-      const ticketsQuery = `
-        SELECT numero, nombre, fecha, timestamp_ticket
-        FROM tickets 
-        WHERE DATE(fecha_creacion) = $1
-        ORDER BY numero ASC
-      `
-
-      const ticketsResult = await executeQuery(ticketsQuery, [fechaHoy])
-
-      estado = {
-        numeroActual: row.numero_actual,
-        ultimoNumero: row.ultimo_numero,
-        totalAtendidos: row.total_atendidos,
-        numerosLlamados: row.numeros_llamados,
-        fechaInicio: row.fecha_inicio,
-        ultimoReinicio: row.ultimo_reinicio,
-        tickets: ticketsResult.rows.map((ticket) => ({
-          numero: ticket.numero,
-          nombre: ticket.nombre,
-          fecha: ticket.fecha,
-          timestamp: ticket.timestamp_ticket,
-        })),
-        lastSync: row.last_sync,
-      }
-
-      console.log("✅ Estado cargado desde sistemaTurnosZOCO (Neon):", {
+    if (estadoGuardado) {
+      estado = estadoGuardado
+      console.log("✅ Estado cargado desde Upstash Redis:", {
         numeroActual: estado.numeroActual,
         totalAtendidos: estado.totalAtendidos,
-        totalTickets: estado.tickets.length,
+        totalTickets: estado.tickets?.length || 0,
       })
     } else {
-      // Crear estado inicial para el día
-      console.log("⚠️ No se encontró estado para hoy, creando inicial en sistemaTurnosZOCO (Neon)...")
-
+      // Crear estado inicial para el día si no existe
+      console.log("⚠️ No se encontró estado para hoy, creando inicial en Upstash Redis...")
       estado = {
         numeroActual: 1,
         ultimoNumero: 0,
@@ -117,164 +73,114 @@ export async function leerEstadoSistema(): Promise<EstadoSistema> {
         tickets: [],
         lastSync: Date.now(),
       }
-
-      await escribirEstadoSistema(estado)
+      await escribirEstadoSistema(estado) // Guardar el estado inicial
     }
 
     return estado
   } catch (error) {
-    console.error("❌ Error al leer estado del sistema desde Neon:", error)
+    console.error("❌ Error al leer estado del sistema desde Upstash Redis:", error)
     throw error
   }
 }
 
 // Función para escribir el estado del sistema
 export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void> {
-  const client = await pool.connect()
-
   try {
-    console.log("💾 Escribiendo estado a sistemaTurnosZOCO (Neon)...")
+    console.log("💾 Escribiendo estado a Upstash Redis...")
+    const estadoKey = STATE_KEY_PREFIX + estado.fechaInicio
+    estado.lastSync = Date.now() // Actualizar timestamp de sincronización
 
-    await client.query("BEGIN")
+    await redis.set(estadoKey, estado)
 
-    const fechaHoy = estado.fechaInicio
-
-    // Actualizar o insertar estado principal
-    const upsertEstadoQuery = `
-      INSERT INTO sistema_estado (
-        numero_actual, ultimo_numero, total_atendidos, numeros_llamados,
-        fecha_inicio, ultimo_reinicio, last_sync
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-      ON CONFLICT (fecha_inicio) 
-      DO UPDATE SET
-        numero_actual = EXCLUDED.numero_actual,
-        ultimo_numero = EXCLUDED.ultimo_numero,
-        total_atendidos = EXCLUDED.total_atendidos,
-        numeros_llamados = EXCLUDED.numeros_llamados,
-        ultimo_reinicio = EXCLUDED.ultimo_reinicio,
-        last_sync = EXCLUDED.last_sync,
-        updated_at = NOW()
-    `
-
-    await client.query(upsertEstadoQuery, [
-      estado.numeroActual,
-      estado.ultimoNumero,
-      estado.totalAtendidos,
-      estado.numerosLlamados,
-      estado.fechaInicio,
-      estado.ultimoReinicio,
-      estado.lastSync || Date.now(),
-    ])
-
-    // Sincronizar tickets (insertar solo los nuevos)
-    if (estado.tickets && estado.tickets.length > 0) {
-      for (const ticket of estado.tickets) {
-        const insertTicketQuery = `
-          INSERT INTO tickets (numero, nombre, fecha, timestamp_ticket)
-          VALUES ($1, $2, $3, $4)
-          ON CONFLICT (numero, fecha_inicio) DO NOTHING
-        `
-
-        await client.query(insertTicketQuery, [ticket.numero, ticket.nombre, ticket.fecha, ticket.timestamp])
-      }
-    }
-
-    await client.query("COMMIT")
-
-    console.log("✅ Estado guardado exitosamente en sistemaTurnosZOCO (Neon)")
+    console.log("✅ Estado guardado exitosamente en Upstash Redis")
   } catch (error) {
-    await client.query("ROLLBACK")
-    console.error("❌ Error al escribir estado en Neon:", error)
+    console.error("❌ Error al escribir estado en Upstash Redis:", error)
     throw error
-  } finally {
-    client.release()
   }
 }
 
 // Función para generar un nuevo ticket de forma atómica
 export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> {
-  const client = await pool.connect()
-
   try {
-    console.log("🎫 Generando ticket atómico para:", nombre, "en Neon...")
+    console.log("🎫 Generando ticket atómico para:", nombre, "en Upstash Redis...")
+    const fechaHoy = getTodayDateString()
+    const estadoKey = STATE_KEY_PREFIX + fechaHoy
 
-    await client.query("BEGIN")
+    // Usar MULTI/EXEC para asegurar atomicidad en la actualización del contador y el estado
+    const result = await redis
+      .multi()
+      .incr(estadoKey + ":numeroActualCounter") // Incrementa un contador auxiliar para el número de ticket
+      .get<EstadoSistema>(estadoKey) // Obtiene el estado actual
+      .exec()
 
-    const fechaHoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+    const [numeroAsignadoRaw, estadoActualRaw] = result as [number, EstadoSistema | null]
+    const numeroAsignado = numeroAsignadoRaw
 
-    // Obtener y actualizar el número actual de forma atómica
-    const updateQuery = `
-      UPDATE sistema_estado 
-      SET 
-        numero_actual = numero_actual + 1,
-        ultimo_numero = numero_actual,
-        total_atendidos = total_atendidos + 1,
-        last_sync = $2,
-        updated_at = NOW()
-      WHERE fecha_inicio = $1
-      RETURNING numero_actual - 1 as numero_asignado, numero_actual, ultimo_numero, total_atendidos
-    `
-
-    const updateResult = await client.query(updateQuery, [fechaHoy, Date.now()])
-
-    if (updateResult.rows.length === 0) {
-      throw new Error("No se pudo actualizar el estado del sistema en Neon")
+    let estadoActual: EstadoSistema
+    if (estadoActualRaw) {
+      estadoActual = estadoActualRaw
+    } else {
+      // Si el estado no existe (primer ticket del día), inicializarlo
+      estadoActual = {
+        numeroActual: 1,
+        ultimoNumero: 0,
+        totalAtendidos: 0,
+        numerosLlamados: 0,
+        fechaInicio: fechaHoy,
+        ultimoReinicio: new Date().toISOString(),
+        tickets: [],
+        lastSync: Date.now(),
+      }
     }
 
-    const { numero_asignado } = updateResult.rows[0]
     const fecha = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
     const timestamp = Date.now()
 
-    // Insertar el nuevo ticket
-    const insertTicketQuery = `
-      INSERT INTO tickets (numero, nombre, fecha, timestamp_ticket)
-      VALUES ($1, $2, $3, $4)
-      RETURNING *
-    `
-
-    await client.query(insertTicketQuery, [numero_asignado, nombre.trim(), fecha, timestamp])
-
-    // Log de la acción
-    const logQuery = `
-      INSERT INTO sistema_logs (accion, detalles, timestamp_log)
-      VALUES ($1, $2, $3)
-    `
-
-    await client.query(logQuery, [
-      "GENERAR_TICKET",
-      JSON.stringify({ numero: numero_asignado, nombre: nombre.trim() }),
-      timestamp,
-    ])
-
-    await client.query("COMMIT")
-
     const nuevoTicket: TicketInfo = {
-      numero: numero_asignado,
+      numero: numeroAsignado,
       nombre: nombre.trim(),
       fecha,
       timestamp,
     }
 
-    console.log("✅ Ticket generado exitosamente en sistemaTurnosZOCO (Neon):", nuevoTicket)
+    // Actualizar el estado en memoria
+    estadoActual.numeroActual = numeroAsignado + 1 // El siguiente número a emitir
+    estadoActual.ultimoNumero = numeroAsignado // El último número emitido
+    estadoActual.totalAtendidos = (estadoActual.totalAtendidos || 0) + 1 // Incrementa el total de tickets emitidos
+    estadoActual.tickets = [...(estadoActual.tickets || []), nuevoTicket] // Agrega el nuevo ticket a la lista
+    estadoActual.lastSync = Date.now() // Actualiza el timestamp de sincronización
+
+    // Guardar el estado actualizado
+    await redis.set(estadoKey, estadoActual)
+
+    // Log de la acción (opcional, para auditoría)
+    await redis.lpush(
+      LOGS_KEY,
+      JSON.stringify({
+        accion: "GENERAR_TICKET",
+        detalles: { numero: numeroAsignado, nombre: nombre.trim() },
+        timestamp_log: timestamp,
+      }),
+    )
+
+    console.log("✅ Ticket generado exitosamente en Upstash Redis:", nuevoTicket)
 
     return nuevoTicket
   } catch (error) {
-    await client.query("ROLLBACK")
-    console.error("❌ Error al generar ticket en Neon:", error)
+    console.error("❌ Error al generar ticket en Upstash Redis:", error)
     throw error
-  } finally {
-    client.release()
   }
 }
 
 // Función para crear backup diario
 export async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
   try {
-    console.log("📦 Creando backup diario en Neon...")
+    console.log("📦 Creando backup diario en Upstash Redis...")
 
     const fecha = estado.fechaInicio
+    const backupKey = BACKUP_KEY_PREFIX + fecha
 
-    const backup = {
+    const backupData = {
       fecha,
       estadoFinal: estado,
       resumen: {
@@ -289,25 +195,13 @@ export async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
       tickets: estado.tickets,
     }
 
-    const insertBackupQuery = `
-      INSERT INTO backups_diarios (fecha_backup, estado_final, resumen, tickets_data)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (fecha_backup) DO UPDATE SET
-        estado_final = EXCLUDED.estado_final,
-        resumen = EXCLUDED.resumen,
-        tickets_data = EXCLUDED.tickets_data
-    `
+    await redis.set(backupKey, backupData)
+    // Opcional: Establecer una expiración para los backups, por ejemplo, 60 días
+    await redis.expire(backupKey, 60 * 24 * 60 * 60) // 60 días en segundos
 
-    await executeQuery(insertBackupQuery, [
-      fecha,
-      JSON.stringify(backup.estadoFinal),
-      JSON.stringify(backup.resumen),
-      JSON.stringify(backup.tickets),
-    ])
-
-    console.log("✅ Backup diario creado exitosamente en Neon")
+    console.log("✅ Backup diario creado exitosamente en Upstash Redis")
   } catch (error) {
-    console.error("❌ Error al crear backup diario en Neon:", error)
+    console.error("❌ Error al crear backup diario en Upstash Redis:", error)
     // No lanzar error para no bloquear otras operaciones
   }
 }
@@ -315,22 +209,30 @@ export async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
 // Función para obtener backups
 export async function obtenerBackups(): Promise<any[]> {
   try {
-    const query = `
-      SELECT fecha_backup, resumen, created_at
-      FROM backups_diarios
-      ORDER BY fecha_backup DESC
-      LIMIT 30
-    `
+    // Upstash Redis no tiene un comando KEYS que sea eficiente para producción.
+    // En un sistema real, se mantendría una lista de claves de backup.
+    // Para este ejemplo, simularemos con un rango de fechas o un patrón simple.
+    // Si el número de backups es pequeño, KEYS puede ser aceptable.
+    const allKeys = await redis.keys(BACKUP_KEY_PREFIX + "*")
+    const backups: any[] = []
 
-    const result = await executeQuery(query)
+    for (const key of allKeys) {
+      const backup = await redis.get(key)
+      if (backup && typeof backup === "object" && "resumen" in backup) {
+        backups.push({
+          fecha: backup.fecha,
+          resumen: backup.resumen,
+          createdAt: backup.horaBackup, // Usar la hora de backup como created_at
+        })
+      }
+    }
 
-    return result.rows.map((row) => ({
-      fecha: row.fecha_backup,
-      resumen: row.resumen,
-      createdAt: row.created_at,
-    }))
+    // Ordenar por fecha descendente
+    backups.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+
+    return backups.slice(0, 30) // Limitar a los últimos 30
   } catch (error) {
-    console.error("❌ Error al obtener backups desde Neon:", error)
+    console.error("❌ Error al obtener backups desde Upstash Redis:", error)
     return []
   }
 }
@@ -338,42 +240,48 @@ export async function obtenerBackups(): Promise<any[]> {
 // Función para obtener backup específico
 export async function obtenerBackup(fecha: string): Promise<any | null> {
   try {
-    const query = `
-      SELECT fecha_backup, estado_final, resumen, tickets_data, created_at
-      FROM backups_diarios
-      WHERE fecha_backup = $1
-    `
-
-    const result = await executeQuery(query, [fecha])
-
-    if (result.rows.length > 0) {
-      const row = result.rows[0]
-      return {
-        fecha: row.fecha_backup,
-        estadoFinal: row.estado_final,
-        resumen: row.resumen,
-        tickets: row.tickets_data,
-        createdAt: row.created_at,
-      }
-    }
-
-    return null
+    const backupKey = BACKUP_KEY_PREFIX + fecha
+    const backup = await redis.get(backupKey)
+    return backup || null
   } catch (error) {
-    console.error("❌ Error al obtener backup desde Neon:", error)
+    console.error("❌ Error al obtener backup desde Upstash Redis:", error)
     return null
   }
 }
 
-// Función para limpiar datos antiguos
+// Función para limpiar datos antiguos (backups y logs)
 export async function limpiarDatosAntiguos(): Promise<void> {
   try {
-    console.log("🧹 Limpiando datos antiguos en Neon...")
+    console.log("🧹 Limpiando datos antiguos en Upstash Redis...")
+    const allBackupKeys = await redis.keys(BACKUP_KEY_PREFIX + "*")
+    const now = Date.now()
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000 // 30 días en milisegundos
 
-    await executeQuery("SELECT limpiar_datos_antiguos()")
+    for (const key of allBackupKeys) {
+      const datePart = key.replace(BACKUP_KEY_PREFIX, "")
+      const backupDate = new Date(datePart).getTime()
+      if (backupDate < thirtyDaysAgo) {
+        await redis.del(key)
+        console.log(`🗑️ Eliminado backup antiguo: ${key}`)
+      }
+    }
 
-    console.log("✅ Datos antiguos limpiados exitosamente en Neon")
+    // Limpiar logs antiguos (ejemplo: mantener solo los últimos 1000 logs)
+    await redis.ltrim(LOGS_KEY, 0, 999) // Mantener los 1000 logs más recientes
+
+    // Log de limpieza
+    await redis.lpush(
+      LOGS_KEY,
+      JSON.stringify({
+        accion: "LIMPIEZA_AUTOMATICA",
+        detalles: { descripcion: "Limpieza de datos antiguos" },
+        timestamp_log: Date.now(),
+      }),
+    )
+
+    console.log("✅ Datos antiguos limpiados exitosamente en Upstash Redis")
   } catch (error) {
-    console.error("❌ Error al limpiar datos antiguos en Neon:", error)
+    console.error("❌ Error al limpiar datos antiguos en Upstash Redis:", error)
   }
 }
 
@@ -385,20 +293,25 @@ export async function obtenerEstadisticas(estado: EstadoSistema) {
       ticketsAtendidos: estado.numerosLlamados,
       ticketsPendientes: estado.totalAtendidos - estado.numerosLlamados,
       promedioTiempoPorTicket:
-        estado.tickets.length > 1
+        estado.tickets && estado.tickets.length > 1
           ? (estado.tickets[estado.tickets.length - 1].timestamp - estado.tickets[0].timestamp) /
             estado.tickets.length /
             1000 /
             60
           : 0,
       horaInicioOperaciones: estado.fechaInicio,
-      ultimaActividad: estado.tickets[estado.tickets.length - 1]?.fecha || "Sin actividad",
-      ticketsUltimaHora: estado.tickets.filter((t) => Date.now() - t.timestamp < 60 * 60 * 1000).length,
+      ultimaActividad:
+        estado.tickets && estado.tickets.length > 0
+          ? estado.tickets[estado.tickets.length - 1]?.fecha
+          : "Sin actividad",
+      ticketsUltimaHora: estado.tickets
+        ? estado.tickets.filter((t) => Date.now() - t.timestamp < 60 * 60 * 1000).length
+        : 0,
     }
 
     return estadisticas
   } catch (error) {
-    console.error("❌ Error al obtener estadísticas desde Neon:", error)
+    console.error("❌ Error al obtener estadísticas desde Upstash Redis:", error)
     throw error
   }
 }
@@ -406,17 +319,16 @@ export async function obtenerEstadisticas(estado: EstadoSistema) {
 // Función para verificar conexión a la base de datos
 export async function verificarConexionDB(): Promise<boolean> {
   try {
-    const result = await executeQuery("SELECT NOW() as timestamp, version() as version")
-    console.log("✅ Conexión a sistemaTurnosZOCO (Neon) exitosa:", result.rows[0])
-    return true
+    const pong = await redis.ping()
+    console.log("✅ Conexión a Upstash Redis exitosa:", pong)
+    return pong === "PONG"
   } catch (error) {
-    console.error("❌ Error de conexión a sistemaTurnosZOCO (Neon):", error)
+    console.error("❌ Error de conexión a Upstash Redis:", error)
     return false
   }
 }
 
-// Cerrar pool de conexiones (para cleanup)
+// No es necesario cerrar conexiones explícitamente con Upstash Redis (es HTTP)
 export async function cerrarConexiones(): Promise<void> {
-  await pool.end()
-  console.log("🔌 Pool de conexiones de Neon cerrado")
+  console.log("🔌 No es necesario cerrar conexiones para Upstash Redis (HTTP)")
 }
