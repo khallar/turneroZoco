@@ -122,13 +122,14 @@ export function useSistemaEstado() {
             setLoading(false)
             return
           } else {
-            // Manejo de errores más robusto: intentar parsear como JSON, si falla, usar texto plano
+            // Leer el cuerpo de la respuesta una sola vez
+            const responseText = await response.text()
             let errorDetails = "Error desconocido"
             try {
-              const errorData = await response.json()
+              const errorData = JSON.parse(responseText)
               errorDetails = errorData.error || errorData.details || "Error desconocido"
             } catch (jsonError) {
-              errorDetails = await response.text()
+              errorDetails = responseText // Usar el texto completo si no es JSON
               console.error("Failed to parse error response as JSON, falling back to text:", jsonError)
             }
             throw new Error(`Error ${response.status}: ${errorDetails}`)
@@ -170,13 +171,13 @@ export function useSistemaEstado() {
         const data = await response.json()
         setEstadisticas(data.estadisticas)
       } else {
-        // Manejo de errores más robusto para estadísticas
+        const responseText = await response.text()
         let errorDetails = "Error desconocido"
         try {
-          const errorData = await response.json()
+          const errorData = JSON.parse(responseText)
           errorDetails = errorData.error || errorData.details || "Error desconocido"
         } catch (jsonError) {
-          errorDetails = await response.text()
+          errorDetails = responseText
           console.error("Failed to parse stats error response as JSON, falling back to text:", jsonError)
         }
         console.error(`❌ Error al cargar estadísticas: ${response.status} - ${errorDetails}`)
@@ -223,13 +224,13 @@ export function useSistemaEstado() {
             setUltimaSincronizacion(new Date())
             return
           } else {
-            // Manejo de errores más robusto
+            const responseText = await response.text()
             let errorDetails = "Error desconocido"
             try {
-              const errorData = await response.json()
+              const errorData = JSON.parse(responseText)
               errorDetails = errorData.error || errorData.details || "Error desconocido"
             } catch (jsonError) {
-              errorDetails = await response.text()
+              errorDetails = responseText
               console.error("Failed to parse save error response as JSON, falling back to text:", jsonError)
             }
             throw new Error(`Error ${response.status}: ${errorDetails}`)
@@ -288,13 +289,13 @@ export function useSistemaEstado() {
 
             return data.ticketGenerado
           } else {
-            // Manejo de errores más robusto
+            const responseText = await response.text()
             let errorDetails = "Error desconocido"
             try {
-              const errorData = await response.json()
+              const errorData = JSON.parse(responseText)
               errorDetails = errorData.error || errorData.details || "Error desconocido"
             } catch (jsonError) {
-              errorDetails = await response.text()
+              errorDetails = responseText
               console.error(
                 "Failed to parse ticket generation error response as JSON, falling back to text:",
                 jsonError,
@@ -335,13 +336,13 @@ export function useSistemaEstado() {
         const data = await response.json()
         return data.backups || []
       } else {
-        // Manejo de errores más robusto
+        const responseText = await response.text()
         let errorDetails = "Error desconocido"
         try {
-          const errorData = await response.json()
+          const errorData = JSON.parse(responseText)
           errorDetails = errorData.error || errorData.details || "Error desconocido"
         } catch (jsonError) {
-          errorDetails = await response.text()
+          errorDetails = responseText
           console.error("Failed to parse backups error response as JSON, falling back to text:", jsonError)
         }
         console.error(`❌ Error al obtener backups: ${response.status} - ${errorDetails}`)
@@ -369,13 +370,13 @@ export function useSistemaEstado() {
           const data = await response.json()
           return data
         } else {
-          // Manejo de errores más robusto
+          const responseText = await response.text()
           let errorDetails = "Error desconocido"
           try {
-            const errorData = await response.json()
+            const errorData = JSON.parse(responseText)
             errorDetails = errorData.error || errorData.details || "Error desconocido"
           } catch (jsonError) {
-            errorDetails = await response.text()
+            errorDetails = responseText
             console.error("Failed to parse specific backup error response as JSON, falling back to text:", jsonError)
           }
           console.error(`❌ Error al obtener backup específico: ${response.status} - ${errorDetails}`)
