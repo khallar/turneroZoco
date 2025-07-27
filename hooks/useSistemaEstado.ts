@@ -63,10 +63,10 @@ export function useSistemaEstado() {
       if (response.ok) {
         const data = await response.json()
         setDebugInfo(data)
-        console.log("Debug info:", data)
+        console.log("🐛 Debug info:", data)
       }
     } catch (error) {
-      console.error("Error al cargar debug info:", error)
+      console.error("❌ Error al cargar debug info:", error)
     }
   }, [isClient])
 
@@ -77,7 +77,7 @@ export function useSistemaEstado() {
       if (!isClient) return
 
       try {
-        console.log("Cargando estado desde API...")
+        console.log("📥 Cargando estado desde API...")
 
         const response = await fetch("/api/sistema", {
           method: "GET",
@@ -90,7 +90,13 @@ export function useSistemaEstado() {
 
         if (response.ok) {
           const data = await response.json()
-          console.log("Estado cargado:", data)
+          console.log("✅ Estado cargado desde servidor:", {
+            numeroActual: data.numeroActual,
+            ultimoNumero: data.ultimoNumero,
+            totalAtendidos: data.totalAtendidos,
+            numerosLlamados: data.numerosLlamados,
+            totalTickets: data.tickets?.length || 0,
+          })
 
           setEstado(data)
           setError(null)
@@ -107,11 +113,11 @@ export function useSistemaEstado() {
           }
         } else {
           const errorData = await response.json()
-          console.error("Error en respuesta:", errorData)
+          console.error("❌ Error en respuesta:", errorData)
           throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
         }
       } catch (err) {
-        console.error("Error al cargar estado:", err)
+        console.error("❌ Error al cargar estado:", err)
         setError(`Error de conexión: ${err instanceof Error ? err.message : "Error desconocido"}`)
 
         // Fallback a localStorage solo si hay error de conexión
@@ -125,10 +131,10 @@ export function useSistemaEstado() {
             if (!data.ultimoReinicio) data.ultimoReinicio = new Date().toISOString()
 
             setEstado(data)
-            console.log("Usando datos de localStorage como fallback")
+            console.log("⚠️ Usando datos de localStorage como fallback")
           }
         } catch (parseError) {
-          console.error("Error al parsear localStorage:", parseError)
+          console.error("❌ Error al parsear localStorage:", parseError)
           setEstado(estadoInicial)
           if (typeof window !== "undefined") {
             localStorage.setItem("sistemaAtencion", JSON.stringify(estadoInicial))
@@ -164,7 +170,7 @@ export function useSistemaEstado() {
         setEstadisticas(data.estadisticas)
       }
     } catch (error) {
-      console.error("Error al cargar estadísticas:", error)
+      console.error("❌ Error al cargar estadísticas:", error)
     }
   }, [isClient])
 
@@ -175,6 +181,13 @@ export function useSistemaEstado() {
       if (!isClient) return
 
       try {
+        console.log("💾 Guardando estado:", {
+          numeroActual: nuevoEstado.numeroActual,
+          ultimoNumero: nuevoEstado.ultimoNumero,
+          totalAtendidos: nuevoEstado.totalAtendidos,
+          numerosLlamados: nuevoEstado.numerosLlamados,
+        })
+
         const response = await fetch("/api/sistema", {
           method: "POST",
           headers: {
@@ -188,6 +201,13 @@ export function useSistemaEstado() {
 
         if (response.ok) {
           const data = await response.json()
+          console.log("✅ Estado guardado exitosamente:", {
+            numeroActual: data.numeroActual,
+            ultimoNumero: data.ultimoNumero,
+            totalAtendidos: data.totalAtendidos,
+            numerosLlamados: data.numerosLlamados,
+          })
+
           setEstado(data)
           setError(null)
           setUltimaSincronizacion(new Date())
@@ -201,7 +221,7 @@ export function useSistemaEstado() {
           throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
         }
       } catch (err) {
-        console.error("Error al guardar estado:", err)
+        console.error("❌ Error al guardar estado:", err)
         setError(`Error de conexión: ${err instanceof Error ? err.message : "Error desconocido"}`)
 
         // Fallback a localStorage
@@ -221,7 +241,7 @@ export function useSistemaEstado() {
       if (!isClient) return null
 
       try {
-        console.log("Generando ticket para:", nombre)
+        console.log("🎫 Generando ticket para:", nombre)
 
         const response = await fetch("/api/sistema", {
           method: "POST",
@@ -239,7 +259,13 @@ export function useSistemaEstado() {
 
         if (response.ok) {
           const data = await response.json()
-          console.log("Ticket generado exitosamente:", data.ticketGenerado)
+          console.log("✅ Ticket generado exitosamente:", data.ticketGenerado)
+          console.log("📊 Estado actualizado:", {
+            numeroActual: data.numeroActual,
+            ultimoNumero: data.ultimoNumero,
+            totalAtendidos: data.totalAtendidos,
+            numerosLlamados: data.numerosLlamados,
+          })
 
           setEstado(data)
           setError(null)
@@ -253,11 +279,11 @@ export function useSistemaEstado() {
           return data.ticketGenerado
         } else {
           const errorData = await response.json()
-          console.error("Error en respuesta al generar ticket:", errorData)
+          console.error("❌ Error en respuesta al generar ticket:", errorData)
           throw new Error(`Error ${response.status}: ${errorData.error || "Error desconocido"}`)
         }
       } catch (err) {
-        console.error("Error al generar ticket:", err)
+        console.error("❌ Error al generar ticket:", err)
         setError(`Error al generar ticket: ${err instanceof Error ? err.message : "Error desconocido"}`)
         throw err
       }
@@ -282,7 +308,7 @@ export function useSistemaEstado() {
         return data.backups || []
       }
     } catch (error) {
-      console.error("Error al obtener backups:", error)
+      console.error("❌ Error al obtener backups:", error)
     }
     return []
   }, [isClient])
@@ -305,7 +331,7 @@ export function useSistemaEstado() {
           return data
         }
       } catch (error) {
-        console.error("Error al obtener backup:", error)
+        console.error("❌ Error al obtener backup:", error)
       }
       return null
     },

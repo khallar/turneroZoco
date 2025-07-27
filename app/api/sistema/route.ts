@@ -33,7 +33,6 @@ const estadoInicial: EstadoSistema = {
 // Rutas de archivos
 const DATA_DIR = path.join(process.cwd(), "data")
 const ESTADO_FILE = path.join(DATA_DIR, "estado.json")
-const CONTADOR_FILE = path.join(DATA_DIR, "contador.json")
 const BACKUP_DIR = path.join(DATA_DIR, "backups")
 
 // Asegurar que los directorios existan
@@ -46,18 +45,21 @@ async function ensureDirectories() {
   }
 }
 
-// Función para leer datos del archivo
+// Función para leer datos del archivo con lock
 async function leerDatos(): Promise<EstadoSistema> {
   try {
-    console.log("Leyendo datos del archivo...")
+    console.log("📖 Leyendo datos del archivo...")
     await ensureDirectories()
 
     try {
       const data = await fs.readFile(ESTADO_FILE, "utf8")
       const estado = JSON.parse(data) as EstadoSistema
 
-      console.log("Estado encontrado en archivo:", {
+      console.log("✅ Estado encontrado:", {
         numeroActual: estado.numeroActual,
+        ultimoNumero: estado.ultimoNumero,
+        totalAtendidos: estado.totalAtendidos,
+        numerosLlamados: estado.numerosLlamados,
         totalTickets: estado.tickets?.length || 0,
       })
 
@@ -67,50 +69,52 @@ async function leerDatos(): Promise<EstadoSistema> {
 
       return estado
     } catch (fileError) {
-      console.log("No se encontró archivo de estado, creando estado inicial")
-      return { ...estadoInicial }
+      console.log("⚠️ No se encontró archivo de estado, creando estado inicial")
+      const estadoNuevo = { ...estadoInicial }
+      await escribirDatos(estadoNuevo)
+      return estadoNuevo
     }
   } catch (error) {
-    console.error("Error al leer datos del archivo:", error)
+    console.error("❌ Error al leer datos del archivo:", error)
     return { ...estadoInicial }
   }
 }
 
-// Función para escribir datos al archivo
+// Función para escribir datos al archivo con lock
 async function escribirDatos(estado: EstadoSistema): Promise<void> {
   try {
-    console.log("Escribiendo datos al archivo...", {
+    console.log("💾 Escribiendo datos al archivo:", {
       numeroActual: estado.numeroActual,
+      ultimoNumero: estado.ultimoNumero,
+      totalAtendidos: estado.totalAtendidos,
+      numerosLlamados: estado.numerosLlamados,
       totalTickets: estado.tickets?.length || 0,
     })
 
     await ensureDirectories()
-    await fs.writeFile(ESTADO_FILE, JSON.stringify(estado, null, 2), "utf8")
 
-    console.log("Datos guardados exitosamente en archivo")
+    // Escribir de forma atómica usando un archivo temporal
+    const tempFile = ESTADO_FILE + ".tmp"
+    await fs.writeFile(tempFile, JSON.stringify(estado, null, 2), "utf8")
+    await fs.rename(tempFile, ESTADO_FILE)
+
+    console.log("✅ Datos guardados exitosamente")
   } catch (error) {
-    console.error("Error al escribir datos al archivo:", error)
+    console.error("❌ Error al escribir datos al archivo:", error)
     throw error
   }
 }
 
 // Función para verificar si debe reiniciarse
 function debeReiniciarse(estado: EstadoSistema): boolean {
-  // Obtener fecha actual en Argentina
   const ahora = new Date()
   const fechaActualArgentina = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }))
-
-  // Obtener solo la fecha (sin hora) como string para comparar
-  const fechaHoyString = fechaActualArgentina.toISOString().split("T")[0] // YYYY-MM-DD
-
-  // Comparar con la fecha de inicio del estado
+  const fechaHoyString = fechaActualArgentina.toISOString().split("T")[0]
   const fechaInicioString = estado.fechaInicio
-
-  // Si las fechas son diferentes, necesita reiniciarse
   const esDiaDiferente = fechaHoyString !== fechaInicioString
 
   if (esDiaDiferente) {
-    console.log(`Reinicio automático: fecha actual ${fechaHoyString} vs fecha inicio ${fechaInicioString}`)
+    console.log(`🔄 Reinicio automático: fecha actual ${fechaHoyString} vs fecha inicio ${fechaInicioString}`)
     return true
   }
 
@@ -120,10 +124,9 @@ function debeReiniciarse(estado: EstadoSistema): boolean {
 // Función para crear backup diario
 async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
   try {
-    const fecha = new Date().toISOString().split("T")[0] // YYYY-MM-DD
+    const fecha = new Date().toISOString().split("T")[0]
     const backupFile = path.join(BACKUP_DIR, `backup-${fecha}.json`)
 
-    // Guardar backup con estadísticas del día
     const backup = {
       fecha,
       estadoFinal: estado,
@@ -141,62 +144,26 @@ async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
 
     await ensureDirectories()
     await fs.writeFile(backupFile, JSON.stringify(backup, null, 2), "utf8")
-
-    console.log(`Backup diario creado: ${backupFile}`)
+    console.log(`📦 Backup diario creado: ${backupFile}`)
   } catch (error) {
-    console.error("Error al crear backup diario:", error)
+    console.error("❌ Error al crear backup diario:", error)
   }
-}
-
-// Función para generar número de forma atómica
-async function generarNumeroAtomico(): Promise<number> {
-  try {
-    await ensureDirectories()
-
-    // Leer el estado actual para obtener el próximo número a asignar
-    let estado: EstadoSistema
-    try {
-      const data = await fs.readFile(ESTADO_FILE, "utf8")
-      estado = JSON.parse(data) as EstadoSistema
-    } catch (error) {
-      // Si no existe el archivo, usar estado inicial
-      estado = { ...estadoInicial }
-    }
-
-    // El número a asignar es el numeroActual del estado
-    const numeroAsignado = estado.numeroActual
-
-    console.log("Número generado atómicamente:", numeroAsignado)
-    return numeroAsignado
-  } catch (error) {
-    console.error("Error al generar número atómico:", error)
-    throw error
-  }
-}
-
-// Función para inicializar contador si no existe
-async function inicializarContador(numeroActual: number): Promise<void> {
-  // Esta función ya no es necesaria con la nueva lógica
-  console.log("Inicialización de contador no requerida con nueva lógica")
 }
 
 export async function GET() {
   try {
-    console.log("=== GET /api/sistema ===")
+    console.log("\n=== 📥 GET /api/sistema ===")
 
     let estado = await leerDatos()
 
     // Verificar si debe reiniciarse automáticamente
     if (debeReiniciarse(estado)) {
-      console.log("Ejecutando reinicio automático a medianoche")
-
-      // Crear backup del día anterior antes de reiniciar
+      console.log("🔄 Ejecutando reinicio automático a medianoche")
       await crearBackupDiario(estado)
 
-      // Reiniciar estado
       const ahora = new Date()
       estado = {
-        numeroActual: 1, // Empezar desde 1
+        numeroActual: 1,
         ultimoNumero: 0,
         totalAtendidos: 0,
         numerosLlamados: 0,
@@ -205,21 +172,20 @@ export async function GET() {
         tickets: [],
       }
 
-      // Guardar estado reiniciado
       await escribirDatos(estado)
-    } else {
-      // Asegurar que el contador esté sincronizado
-      // await inicializarContador(estado.numeroActual)
     }
 
-    console.log("Estado devuelto:", {
+    console.log("📤 Estado devuelto:", {
       numeroActual: estado.numeroActual,
+      ultimoNumero: estado.ultimoNumero,
+      totalAtendidos: estado.totalAtendidos,
+      numerosLlamados: estado.numerosLlamados,
       totalTickets: estado.tickets?.length || 0,
     })
 
     return NextResponse.json(estado)
   } catch (error) {
-    console.error("Error en GET /api/sistema:", error)
+    console.error("❌ Error en GET /api/sistema:", error)
     return NextResponse.json(
       {
         error: "Error interno del servidor",
@@ -232,20 +198,18 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("=== POST /api/sistema ===")
+    console.log("\n=== 📨 POST /api/sistema ===")
 
     const body = await request.json()
     const { action, ...nuevoEstado } = body
 
-    console.log("Acción recibida:", action)
+    console.log("🎯 Acción recibida:", action)
 
     let estado = await leerDatos()
 
     // Verificar si debe reiniciarse antes de cualquier operación
     if (debeReiniciarse(estado)) {
-      console.log("Reinicio automático durante POST - nuevo día detectado")
-
-      // Crear backup del día anterior
+      console.log("🔄 Reinicio automático durante POST")
       await crearBackupDiario(estado)
 
       const ahora = new Date()
@@ -254,14 +218,10 @@ export async function POST(request: NextRequest) {
         ultimoNumero: 0,
         totalAtendidos: 0,
         numerosLlamados: 0,
-        fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }), // YYYY-MM-DD
+        fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }),
         ultimoReinicio: ahora.toISOString(),
         tickets: [],
       }
-
-      // Reiniciar contador atómico
-      // await fs.unlink(CONTADOR_FILE).catch(() => {})
-      // await inicializarContador(estado.numeroActual)
     }
 
     // Acción especial para generar ticket de forma atómica
@@ -272,10 +232,10 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Nombre requerido" }, { status: 400 })
       }
 
-      console.log("Generando ticket para:", nombre)
+      console.log("🎫 Generando ticket para:", nombre)
 
       try {
-        // Usar el numeroActual del estado actual como el número a asignar
+        // Usar el numeroActual del estado como el número a asignar
         const numeroAsignado = estado.numeroActual
         const fecha = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
         const timestamp = Date.now()
@@ -287,41 +247,41 @@ export async function POST(request: NextRequest) {
           timestamp,
         }
 
-        console.log("Ticket generado:", nuevoTicket)
-
-        console.log("Estado antes de actualizar:", {
+        console.log("🎫 Ticket a crear:", nuevoTicket)
+        console.log("📊 Estado ANTES de actualizar:", {
           numeroActual: estado.numeroActual,
+          ultimoNumero: estado.ultimoNumero,
           totalAtendidos: estado.totalAtendidos,
           ticketsLength: estado.tickets.length,
         })
 
-        // Actualizar estado - IMPORTANTE: incrementar numeroActual para el próximo ticket
-        estado = {
+        // Actualizar estado de forma atómica
+        const estadoActualizado: EstadoSistema = {
           ...estado,
-          numeroActual: numeroAsignado + 1, // El próximo número a asignar
+          numeroActual: numeroAsignado + 1, // IMPORTANTE: Incrementar para el próximo ticket
           ultimoNumero: numeroAsignado, // El que acabamos de asignar
           totalAtendidos: estado.totalAtendidos + 1,
           tickets: [...estado.tickets, nuevoTicket],
         }
 
-        console.log("Estado después de actualizar:", {
-          numeroActual: estado.numeroActual,
-          totalAtendidos: estado.totalAtendidos,
-          ticketsLength: estado.tickets.length,
-          ultimoTicket: estado.tickets[estado.tickets.length - 1],
+        console.log("📊 Estado DESPUÉS de actualizar:", {
+          numeroActual: estadoActualizado.numeroActual,
+          ultimoNumero: estadoActualizado.ultimoNumero,
+          totalAtendidos: estadoActualizado.totalAtendidos,
+          ticketsLength: estadoActualizado.tickets.length,
         })
 
-        // Guardar inmediatamente en archivo
-        await escribirDatos(estado)
+        // Guardar inmediatamente de forma atómica
+        await escribirDatos(estadoActualizado)
 
-        console.log("Estado actualizado y guardado")
+        console.log("✅ Ticket generado y estado guardado exitosamente")
 
         return NextResponse.json({
-          ...estado,
-          ticketGenerado: nuevoTicket, // Devolver el ticket generado
+          ...estadoActualizado,
+          ticketGenerado: nuevoTicket,
         })
       } catch (error) {
-        console.error("Error al generar ticket atómico:", error)
+        console.error("❌ Error al generar ticket:", error)
         return NextResponse.json(
           {
             error: "Error al generar ticket",
@@ -358,40 +318,31 @@ export async function POST(request: NextRequest) {
 
     // Acción administrativa: Eliminar todos los registros
     if (action === "ELIMINAR_TODOS_REGISTROS") {
-      console.log("Eliminando todos los registros...")
+      console.log("🗑️ Eliminando todos los registros...")
 
       try {
-        // Crear backup antes de eliminar
         await crearBackupDiario(estado)
 
-        // Reiniciar completamente el estado
         const ahora = new Date()
         const estadoLimpio: EstadoSistema = {
-          numeroActual: 1, // Empezar desde 1
+          numeroActual: 1,
           ultimoNumero: 0,
           totalAtendidos: 0,
           numerosLlamados: 0,
-          fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }), // YYYY-MM-DD
+          fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }),
           ultimoReinicio: ahora.toISOString(),
           tickets: [],
         }
 
-        // Limpiar archivos
-        await fs.unlink(ESTADO_FILE).catch(() => {})
-        await fs.unlink(CONTADOR_FILE).catch(() => {})
-
-        // Guardar estado limpio
         await escribirDatos(estadoLimpio)
-        // await inicializarContador(estadoLimpio.numeroActual)
-
-        console.log("Todos los registros eliminados exitosamente")
+        console.log("✅ Todos los registros eliminados exitosamente")
 
         return NextResponse.json({
           ...estadoLimpio,
           mensaje: "Todos los registros han sido eliminados exitosamente",
         })
       } catch (error) {
-        console.error("Error al eliminar registros:", error)
+        console.error("❌ Error al eliminar registros:", error)
         return NextResponse.json(
           {
             error: "Error al eliminar registros",
@@ -404,39 +355,31 @@ export async function POST(request: NextRequest) {
 
     // Acción administrativa: Reiniciar contador diario
     if (action === "REINICIAR_CONTADOR_DIARIO") {
-      console.log("Reiniciando contador diario...")
+      console.log("🔄 Reiniciando contador diario...")
 
       try {
-        // Crear backup del estado actual
         await crearBackupDiario(estado)
 
-        // Reiniciar solo los contadores, mantener configuración
         const ahora = new Date()
         const estadoReiniciado: EstadoSistema = {
-          numeroActual: 1, // Empezar desde 1
+          numeroActual: 1,
           ultimoNumero: 0,
           totalAtendidos: 0,
           numerosLlamados: 0,
-          fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }), // YYYY-MM-DD
+          fechaInicio: ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }),
           ultimoReinicio: ahora.toISOString(),
           tickets: [],
         }
 
-        // Reiniciar contador atómico
-        await fs.unlink(CONTADOR_FILE).catch(() => {})
-        // await inicializarContador(estadoReiniciado.numeroActual)
-
-        // Guardar estado reiniciado
         await escribirDatos(estadoReiniciado)
-
-        console.log("Contador diario reiniciado exitosamente")
+        console.log("✅ Contador diario reiniciado exitosamente")
 
         return NextResponse.json({
           ...estadoReiniciado,
           mensaje: "Contador diario reiniciado exitosamente",
         })
       } catch (error) {
-        console.error("Error al reiniciar contador:", error)
+        console.error("❌ Error al reiniciar contador:", error)
         return NextResponse.json(
           {
             error: "Error al reiniciar contador",
@@ -457,19 +400,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Datos inválidos" }, { status: 400 })
     }
 
+    console.log("📝 Actualizando estado normal:", {
+      numeroActualAntes: estado.numeroActual,
+      numeroActualNuevo: nuevoEstado.numeroActual,
+      numerosLlamadosAntes: estado.numerosLlamados,
+      numerosLlamadosNuevo: nuevoEstado.numerosLlamados,
+    })
+
     // Actualizar estado global manteniendo las fechas originales del día
-    estado = {
+    const estadoActualizado = {
       ...nuevoEstado,
       fechaInicio: estado.fechaInicio, // Mantener la fecha original del día
       ultimoReinicio: estado.ultimoReinicio, // Mantener el último reinicio
     }
 
-    // Guardar en archivo
-    await escribirDatos(estado)
+    await escribirDatos(estadoActualizado)
 
-    return NextResponse.json(estado)
+    return NextResponse.json(estadoActualizado)
   } catch (error) {
-    console.error("Error en POST /api/sistema:", error)
+    console.error("❌ Error en POST /api/sistema:", error)
     return NextResponse.json(
       {
         error: "Error interno del servidor",

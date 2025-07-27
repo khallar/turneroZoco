@@ -4,7 +4,6 @@ import path from "path"
 
 const DATA_DIR = path.join(process.cwd(), "data")
 const ESTADO_FILE = path.join(DATA_DIR, "estado.json")
-const CONTADOR_FILE = path.join(DATA_DIR, "contador.json")
 const BACKUP_DIR = path.join(DATA_DIR, "backups")
 
 export async function GET() {
@@ -19,7 +18,6 @@ export async function GET() {
       fileSystem: {
         dataDir: DATA_DIR,
         estadoFile: ESTADO_FILE,
-        contadorFile: CONTADOR_FILE,
         backupDir: BACKUP_DIR,
       },
     }
@@ -48,18 +46,19 @@ export async function GET() {
         const stats = await fs.stat(ESTADO_FILE)
         debug.fileSystem.estadoFileSize = stats.size
         debug.fileSystem.estadoFileModified = stats.mtime.toISOString()
+
+        // Leer contenido del archivo de estado
+        const data = await fs.readFile(ESTADO_FILE, "utf8")
+        const estado = JSON.parse(data)
+        debug.fileSystem.estadoActual = {
+          numeroActual: estado.numeroActual,
+          ultimoNumero: estado.ultimoNumero,
+          totalAtendidos: estado.totalAtendidos,
+          numerosLlamados: estado.numerosLlamados,
+          totalTickets: estado.tickets?.length || 0,
+        }
       } catch {
         debug.fileSystem.estadoFileExists = false
-      }
-
-      try {
-        await fs.access(CONTADOR_FILE)
-        debug.fileSystem.contadorFileExists = true
-        const data = await fs.readFile(CONTADOR_FILE, "utf8")
-        const contador = JSON.parse(data)
-        debug.fileSystem.contadorActual = contador.contador
-      } catch {
-        debug.fileSystem.contadorFileExists = false
       }
 
       // Listar backups
