@@ -405,7 +405,7 @@ export default function SistemaAtencion() {
         </button>
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="text-center text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 4.0 | Powered by sistemaTurnosZOCO (Upstash Redis)</p>
+            <p>Develop by: Karim :) | Versión 5.0 | Powered by sistemaTurnosZOCO (Upstash Redis)</p>
           </div>
         </div>
       </footer>
