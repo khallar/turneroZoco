@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
       try {
         const backups = await obtenerBackups()
 
-        console.log("📦 Backups encontrados en SISTEMATURNOSBD:", backups.length)
+        console.log("📦 Backups encontrados en sistemaTurnosZOCO:", backups.length)
         return NextResponse.json({ backups })
       } catch (error) {
         console.error("❌ Error al listar backups:", error)
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Parámetros inválidos" }, { status: 400 })
   } catch (error) {
     console.error("❌ Error en API de backup:", error)
-    return NextResponse.json({ error: "Error interno del servidor - SISTEMATURNOSBD" }, { status: 500 })
+    return NextResponse.json({ error: "Error interno del servidor - sistemaTurnosZOCO" }, { status: 500 })
   }
 }
 
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       try {
         await limpiarDatosAntiguos()
 
-        console.log("🧹 Datos antiguos limpiados en SISTEMATURNOSBD")
+        console.log("🧹 Datos antiguos limpiados en sistemaTurnosZOCO")
         return NextResponse.json({
           mensaje: "Datos antiguos limpiados exitosamente",
         })
@@ -66,6 +66,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Acción no válida" }, { status: 400 })
   } catch (error) {
     console.error("❌ Error en POST de backup:", error)
-    return NextResponse.json({ error: "Error interno del servidor - SISTEMATURNOSBD" }, { status: 500 })
+    return NextResponse.json({ error: "Error interno del servidor - sistemaTurnosZOCO" }, { status: 500 })
   }
 }

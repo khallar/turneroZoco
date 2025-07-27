@@ -1,4 +1,4 @@
-// Configuración de la base de datos SISTEMATURNOSBD
+// Configuración de la base de datos sistemaTurnosZOCO
 import { Pool } from "pg"
 
 interface TicketInfo {
@@ -45,7 +45,7 @@ async function executeQuery(query: string, params: any[] = []) {
 // Función para leer el estado actual del sistema
 export async function leerEstadoSistema(): Promise<EstadoSistema> {
   try {
-    console.log("📖 Leyendo estado desde SISTEMATURNOSBD...")
+    console.log("📖 Leyendo estado desde sistemaTurnosZOCO...")
 
     const fechaHoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
 
@@ -98,7 +98,7 @@ export async function leerEstadoSistema(): Promise<EstadoSistema> {
         lastSync: row.last_sync,
       }
 
-      console.log("✅ Estado cargado desde SISTEMATURNOSBD:", {
+      console.log("✅ Estado cargado desde sistemaTurnosZOCO:", {
         numeroActual: estado.numeroActual,
         totalAtendidos: estado.totalAtendidos,
         totalTickets: estado.tickets.length,
@@ -133,7 +133,7 @@ export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void
   const client = await pool.connect()
 
   try {
-    console.log("💾 Escribiendo estado a SISTEMATURNOSBD...")
+    console.log("💾 Escribiendo estado a sistemaTurnosZOCO...")
 
     await client.query("BEGIN")
 
@@ -181,7 +181,7 @@ export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void
 
     await client.query("COMMIT")
 
-    console.log("✅ Estado guardado exitosamente en SISTEMATURNOSBD")
+    console.log("✅ Estado guardado exitosamente en sistemaTurnosZOCO")
   } catch (error) {
     await client.query("ROLLBACK")
     console.error("❌ Error al escribir estado:", error)
@@ -407,10 +407,10 @@ export async function obtenerEstadisticas(estado: EstadoSistema) {
 export async function verificarConexionDB(): Promise<boolean> {
   try {
     const result = await executeQuery("SELECT NOW() as timestamp, version() as version")
-    console.log("✅ Conexión a SISTEMATURNOSBD exitosa:", result.rows[0])
+    console.log("✅ Conexión a sistemaTurnosZOCO exitosa:", result.rows[0])
     return true
   } catch (error) {
-    console.error("❌ Error de conexión a SISTEMATURNOSBD:", error)
+    console.error("❌ Error de conexión a sistemaTurnosZOCO:", error)
     return false
   }
 }

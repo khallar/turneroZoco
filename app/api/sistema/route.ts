@@ -51,12 +51,12 @@ function debeReiniciarse(estado: EstadoSistema): boolean {
 
 export async function GET() {
   try {
-    console.log("\n=== 📥 GET /api/sistema - SISTEMATURNOSBD ===")
+    console.log("\n=== 📥 GET /api/sistema - sistemaTurnosZOCO ===")
 
     // Verificar conexión a la base de datos
     const conexionOK = await verificarConexionDB()
     if (!conexionOK) {
-      return NextResponse.json({ error: "Error de conexión a SISTEMATURNOSBD" }, { status: 503 })
+      return NextResponse.json({ error: "Error de conexión a sistemaTurnosZOCO" }, { status: 503 })
     }
 
     let estado = await leerEstadoSistema()
@@ -83,7 +83,7 @@ export async function GET() {
       await escribirEstadoSistema(estado)
     }
 
-    console.log("📤 Estado devuelto desde SISTEMATURNOSBD:", {
+    console.log("📤 Estado devuelto desde sistemaTurnosZOCO:", {
       numeroActual: estado.numeroActual,
       totalAtendidos: estado.totalAtendidos,
       numerosLlamados: estado.numerosLlamados,
@@ -95,7 +95,7 @@ export async function GET() {
     console.error("❌ Error en GET /api/sistema:", error)
     return NextResponse.json(
       {
-        error: "Error interno del servidor - SISTEMATURNOSBD",
+        error: "Error interno del servidor - sistemaTurnosZOCO",
         details: error instanceof Error ? error.message : "Error desconocido",
       },
       { status: 500 },
@@ -105,7 +105,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("\n=== 📨 POST /api/sistema - SISTEMATURNOSBD ===")
+    console.log("\n=== 📨 POST /api/sistema - sistemaTurnosZOCO ===")
 
     const body = await request.json()
     const { action, ...nuevoEstado } = body
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
     // Verificar conexión a la base de datos
     const conexionOK = await verificarConexionDB()
     if (!conexionOK) {
-      return NextResponse.json({ error: "Error de conexión a SISTEMATURNOSBD" }, { status: 503 })
+      return NextResponse.json({ error: "Error de conexión a sistemaTurnosZOCO" }, { status: 503 })
     }
 
     let estado = await leerEstadoSistema() // Leer estado una vez al inicio del POST
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
           lastSync: Date.now(), // Actualiza el timestamp de sincronización
         }
 
-        console.log("✅ Ticket generado exitosamente en SISTEMATURNOSBD")
+        console.log("✅ Ticket generado exitosamente en sistemaTurnosZOCO")
 
         return NextResponse.json({
           ...estadoActualizado,
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
         console.error("❌ Error al generar ticket:", error)
         return NextResponse.json(
           {
-            error: "Error al generar ticket en SISTEMATURNOSBD",
+            error: "Error al generar ticket en sistemaTurnosZOCO",
             details: error instanceof Error ? error.message : "Error desconocido",
           },
           { status: 500 },
@@ -315,7 +315,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Datos inválidos" }, { status: 400 })
     }
 
-    console.log("📝 Actualizando estado normal en SISTEMATURNOSBD")
+    console.log("📝 Actualizando estado normal en sistemaTurnosZOCO")
 
     // Actualizar estado manteniendo fechas originales
     const estadoActualizado = {
@@ -332,7 +332,7 @@ export async function POST(request: NextRequest) {
     console.error("❌ Error en POST /api/sistema:", error)
     return NextResponse.json(
       {
-        error: "Error interno del servidor - SISTEMATURNOSBD",
+        error: "Error interno del servidor - sistemaTurnosZOCO",
         details: error instanceof Error ? error.message : "Error desconocido",
       },
       { status: 500 },

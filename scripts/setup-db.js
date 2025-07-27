@@ -1,10 +1,10 @@
-// Script para configurar la base de datos SISTEMATURNOSBD
+// Script para configurar la base de datos sistemaTurnosZOCO
 const { Pool } = require("pg")
 const fs = require("fs")
 const path = require("path")
 
 async function setupDatabase() {
-  console.log("🚀 Configurando SISTEMATURNOSBD...")
+  console.log("🚀 Configurando sistemaTurnosZOCO...")
 
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -18,7 +18,7 @@ async function setupDatabase() {
     // Ejecutar el script
     await pool.query(sqlScript)
 
-    console.log("✅ SISTEMATURNOSBD configurado exitosamente")
+    console.log("✅ sistemaTurnosZOCO configurado exitosamente")
     console.log("📊 Tablas creadas:")
     console.log("   - sistema_estado (estado principal)")
     console.log("   - tickets (turnos de clientes)")
@@ -36,7 +36,7 @@ async function setupDatabase() {
 
     console.log("📈 Estado inicial:", result.rows[0])
   } catch (error) {
-    console.error("❌ Error al configurar SISTEMATURNOSBD:", error)
+    console.error("❌ Error al configurar sistemaTurnosZOCO:", error)
     process.exit(1)
   } finally {
     await pool.end()

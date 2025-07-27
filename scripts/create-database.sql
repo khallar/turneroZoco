@@ -1,4 +1,4 @@
--- Crear base de datos SISTEMATURNOSBD
+-- Crear base de datos sistemaTurnosZOCO
 -- Script para inicializar las tablas del sistema de turnos
 
 -- Tabla principal del estado del sistema

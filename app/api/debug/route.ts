@@ -7,13 +7,13 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       environment: {
         NODE_ENV: process.env.NODE_ENV,
-        PLATFORM: "SISTEMATURNOSBD (PostgreSQL)",
+        PLATFORM: "sistemaTurnosZOCO (PostgreSQL)",
         VERCEL_ENV: process.env.VERCEL_ENV || "development",
       },
       database: {
         url: process.env.DATABASE_URL ? "Configurado" : "No configurado",
         type: "PostgreSQL",
-        name: "SISTEMATURNOSBD",
+        name: "sistemaTurnosZOCO",
       },
     }
 
@@ -71,7 +71,7 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json(
       {
-        error: "Error en debug - SISTEMATURNOSBD",
+        error: "Error en debug - sistemaTurnosZOCO",
         details: error instanceof Error ? error.message : "Error desconocido",
       },
       { status: 500 },
