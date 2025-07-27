@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Printer, Database, Bug } from "lucide-react"
+import { Printer, Database, Bug, Wifi, WifiOff } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 import TicketDisplay from "@/components/TicketDisplay"
 import NombreModal from "@/components/NombreModal"
@@ -58,6 +58,7 @@ export default function SistemaAtencion() {
   const [integridad, setIntegridad] = useState<any>(null)
   const [mostrarDebug, setMostrarDebug] = useState(false)
   const [fraseAleatoria, setFraseAleatoria] = useState("")
+  const [isOnline, setIsOnline] = useState(true)
 
   // Seleccionar frase aleatoria al cargar
   useEffect(() => {
@@ -81,6 +82,28 @@ export default function SistemaAtencion() {
     checkMobile()
     window.addEventListener("resize", checkMobile)
     return () => window.removeEventListener("resize", checkMobile)
+  }, [isClient])
+
+  // Verificar conexión
+  useEffect(() => {
+    if (!isClient) return
+
+    setIsOnline(typeof navigator !== "undefined" ? navigator.onLine : true)
+
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline)
+      window.addEventListener("offline", handleOffline)
+    }
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", handleOnline)
+        window.removeEventListener("offline", handleOffline)
+      }
+    }
   }, [isClient])
 
   // Actualizar hora cada minuto - solo en cliente
@@ -174,7 +197,7 @@ export default function SistemaAtencion() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-lg text-gray-600">Cargando sistema...</p>
-          <p className="text-sm text-gray-500 mt-2">Conectando con Upstash Redis...</p>
+          <p className="text-sm text-gray-500 mt-2">Conectando con Vercel KV (Redis)...</p>
         </div>
       </div>
     )
@@ -197,6 +220,17 @@ export default function SistemaAtencion() {
             />
           </div>
           <h1 className="text-4xl font-bold text-gray-800 mb-4">{fraseAleatoria || "¡Bienvenido a nuestro local!"}</h1>
+
+          {/* Indicador de conexión */}
+          <div className="flex justify-center items-center gap-2 mb-4">
+            <div
+              className={`w-3 h-3 rounded-full ${isOnline && !error ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
+            ></div>
+            <span className="text-sm text-gray-600">
+              {error ? "Modo offline" : isOnline ? "Conectado a Vercel KV" : "Sin conexión"}
+            </span>
+          </div>
+
           {/* Botón principal */}
           <div className="mb-6">
             <Button
@@ -217,13 +251,17 @@ export default function SistemaAtencion() {
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
                 <Bug className="h-4 w-4" />
-                Información de Debug
+                Información de Debug - Vercel KV
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs space-y-2">
                 <div>
-                  <strong>Entorno:</strong> {debugInfo.environment?.NODE_ENV || "N/A"}
+                  <strong>Entorno:</strong> {debugInfo.environment?.NODE_ENV || "N/A"} (
+                  {debugInfo.environment?.VERCEL_ENV || "local"})
+                </div>
+                <div>
+                  <strong>Plataforma:</strong> {debugInfo.environment?.PLATFORM || "N/A"}
                 </div>
                 <div>
                   <strong>Redis URL:</strong> {debugInfo.redis?.url || "No configurado"}
@@ -238,11 +276,20 @@ export default function SistemaAtencion() {
                   </span>
                 </div>
                 <div>
-                  <strong>Estado en Redis:</strong> {debugInfo.redis?.estado || "N/A"}
+                  <strong>Estado en Redis:</strong> {debugInfo.redis?.estadoActual ? "Encontrado" : "No encontrado"}
                 </div>
                 <div>
-                  <strong>Claves encontradas:</strong> {debugInfo.redis?.keys?.length || 0}
+                  <strong>Lock Status:</strong> {debugInfo.redis?.lockStatus || "N/A"}
                 </div>
+                <div>
+                  <strong>Backups:</strong> {debugInfo.redis?.backupsCount || 0}
+                </div>
+                {debugInfo.redis?.estadoActual && (
+                  <div className="mt-2 p-2 bg-blue-50 rounded">
+                    <strong>Estado actual:</strong>
+                    <pre className="text-xs mt-1">{JSON.stringify(debugInfo.redis.estadoActual, null, 2)}</pre>
+                  </div>
+                )}
                 {error && (
                   <div className="text-red-600">
                     <strong>Error actual:</strong> {error}
@@ -264,7 +311,7 @@ export default function SistemaAtencion() {
             <span>
               {error
                 ? "Modo offline - Datos en localStorage"
-                : "Datos guardados en Upstash Redis - Persistencia garantizada"}
+                : "Datos guardados en Vercel KV (Redis) - Persistencia garantizada"}
             </span>
           </div>
         </div>
@@ -316,27 +363,43 @@ export default function SistemaAtencion() {
           onClose={() => setTicketGenerado(null)}
         />
       )}
+
       {/* Footer con información adicional */}
       <footer className="text-center mt-8 text-gray-500 text-sm">
-        <div>
-          Hora actual:{" "}
-          {horaActual
-            ? horaActual.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
-            : "Cargando..."}
-        </div>
-        <div>Reinicio del sistema en: {tiempoHastaReinicio}</div>
-        {ultimaSincronizacion && (
+        <div className="flex justify-center items-center gap-4 mb-2">
           <div>
-            Última sincronización:{" "}
-            {ultimaSincronizacion.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}
+            Hora actual:{" "}
+            {horaActual
+              ? horaActual.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
+              : "Cargando..."}
           </div>
-        )}
+          <div>Reinicio del sistema en: {tiempoHastaReinicio}</div>
+          {ultimaSincronizacion && (
+            <div>
+              Última sincronización:{" "}
+              {ultimaSincronizacion.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}
+            </div>
+          )}
+          <div className="flex items-center gap-1">
+            {isOnline && !error ? (
+              <>
+                <Wifi className="h-4 w-4 text-green-500" />
+                <span className="text-green-500">Online</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="h-4 w-4 text-red-500" />
+                <span className="text-red-500">Offline</span>
+              </>
+            )}
+          </div>
+        </div>
         <button onClick={() => setMostrarDebug(!mostrarDebug)} className="hover:text-gray-700">
           Mostrar Debug
         </button>
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="text-center text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 4.0</p>
+            <p>Develop by: Karim :) | Versión 4.0 | Powered by Vercel KV</p>
           </div>
         </div>
       </footer>

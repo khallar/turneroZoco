@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { promises as fs } from "fs"
-import path from "path"
+import { kv } from "@vercel/kv"
 
 interface TicketInfo {
   numero: number
@@ -30,119 +29,109 @@ const estadoInicial: EstadoSistema = {
   tickets: [],
 }
 
-// Rutas de archivos
-const DATA_DIR = path.join(process.cwd(), "data")
-const ESTADO_FILE = path.join(DATA_DIR, "estado.json")
-const BACKUP_DIR = path.join(DATA_DIR, "backups")
-const LOCK_FILE = path.join(DATA_DIR, "sistema.lock")
+// Claves de Redis
+const ESTADO_KEY = "sistema:estado"
+const LOCK_KEY = "sistema:lock"
+const BACKUP_PREFIX = "sistema:backup:"
 
-// Variable para controlar acceso concurrente
-let operacionEnProceso = false
-
-// Asegurar que los directorios existan
-async function ensureDirectories() {
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true })
-    await fs.mkdir(BACKUP_DIR, { recursive: true })
-  } catch (error) {
-    console.error("❌ Error creando directorios:", error)
-  }
-}
-
-// Función para crear un lock simple
+// Función para adquirir lock usando Redis
 async function adquirirLock(): Promise<boolean> {
   try {
-    // Si ya hay una operación en proceso, esperar
-    if (operacionEnProceso) {
-      console.log("⏳ Esperando que termine operación en proceso...")
-      let intentos = 0
-      while (operacionEnProceso && intentos < 50) {
-        await new Promise((resolve) => setTimeout(resolve, 100))
-        intentos++
-      }
-      if (operacionEnProceso) {
-        console.log("⚠️ Timeout esperando lock")
-        return false
-      }
+    console.log("🔒 Intentando adquirir lock...")
+
+    // Intentar establecer lock con TTL de 30 segundos
+    const lockAdquirido = await kv.set(LOCK_KEY, Date.now(), {
+      nx: true, // Solo establecer si no existe
+      ex: 30, // Expira en 30 segundos
+    })
+
+    if (lockAdquirido === "OK") {
+      console.log("✅ Lock adquirido exitosamente")
+      return true
     }
 
-    operacionEnProceso = true
-    await ensureDirectories()
+    // Si no se pudo adquirir, esperar un poco y reintentar
+    console.log("⏳ Lock ocupado, esperando...")
+    await new Promise((resolve) => setTimeout(resolve, 1000))
 
-    // Crear archivo de lock
-    await fs.writeFile(LOCK_FILE, Date.now().toString(), "utf8")
-    console.log("🔒 Lock adquirido")
-    return true
+    // Segundo intento
+    const segundoIntento = await kv.set(LOCK_KEY, Date.now(), {
+      nx: true,
+      ex: 30,
+    })
+
+    if (segundoIntento === "OK") {
+      console.log("✅ Lock adquirido en segundo intento")
+      return true
+    }
+
+    console.log("❌ No se pudo adquirir lock después de reintentos")
+    return false
   } catch (error) {
     console.error("❌ Error adquiriendo lock:", error)
-    operacionEnProceso = false
     return false
   }
 }
 
-// Función para liberar el lock
+// Función para liberar lock
 async function liberarLock() {
   try {
-    await fs.unlink(LOCK_FILE).catch(() => {})
-    operacionEnProceso = false
+    await kv.del(LOCK_KEY)
     console.log("🔓 Lock liberado")
   } catch (error) {
     console.error("❌ Error liberando lock:", error)
-    operacionEnProceso = false
   }
 }
 
-// Función para leer datos del archivo con lock
+// Función para leer datos de Redis
 async function leerDatos(): Promise<EstadoSistema> {
   try {
-    console.log("📖 Leyendo datos del archivo...")
-    await ensureDirectories()
+    console.log("📖 Leyendo datos de Redis...")
 
-    try {
-      const data = await fs.readFile(ESTADO_FILE, "utf8")
-      const estado = JSON.parse(data) as EstadoSistema
+    const data = await kv.get<EstadoSistema>(ESTADO_KEY)
 
-      console.log("✅ Estado leído del archivo:", {
-        numeroActual: estado.numeroActual,
-        ultimoNumero: estado.ultimoNumero,
-        totalAtendidos: estado.totalAtendidos,
-        numerosLlamados: estado.numerosLlamados,
-        totalTickets: estado.tickets?.length || 0,
-        fechaInicio: estado.fechaInicio,
+    if (data) {
+      console.log("✅ Estado encontrado en Redis:", {
+        numeroActual: data.numeroActual,
+        ultimoNumero: data.ultimoNumero,
+        totalAtendidos: data.totalAtendidos,
+        numerosLlamados: data.numerosLlamados,
+        totalTickets: data.tickets?.length || 0,
+        fechaInicio: data.fechaInicio,
       })
 
       // Validar estructura de datos
-      if (!estado.tickets) estado.tickets = []
-      if (!estado.ultimoReinicio) estado.ultimoReinicio = new Date().toISOString()
-      if (typeof estado.numeroActual !== "number") estado.numeroActual = 1
-      if (typeof estado.ultimoNumero !== "number") estado.ultimoNumero = 0
-      if (typeof estado.totalAtendidos !== "number") estado.totalAtendidos = 0
-      if (typeof estado.numerosLlamados !== "number") estado.numerosLlamados = 0
+      if (!data.tickets) data.tickets = []
+      if (!data.ultimoReinicio) data.ultimoReinicio = new Date().toISOString()
+      if (typeof data.numeroActual !== "number") data.numeroActual = 1
+      if (typeof data.ultimoNumero !== "number") data.ultimoNumero = 0
+      if (typeof data.totalAtendidos !== "number") data.totalAtendidos = 0
+      if (typeof data.numerosLlamados !== "number") data.numerosLlamados = 0
 
       // Verificar integridad de los datos
-      const ticketsCount = estado.tickets.length
-      if (ticketsCount !== estado.totalAtendidos) {
+      const ticketsCount = data.tickets.length
+      if (ticketsCount !== data.totalAtendidos) {
         console.log("⚠️ Inconsistencia detectada: tickets.length !== totalAtendidos")
-        estado.totalAtendidos = ticketsCount
+        data.totalAtendidos = ticketsCount
       }
 
-      return estado
-    } catch (fileError) {
-      console.log("⚠️ No se encontró archivo de estado, creando estado inicial")
+      return data
+    } else {
+      console.log("⚠️ No se encontró estado en Redis, creando estado inicial")
       const estadoNuevo = { ...estadoInicial }
       await escribirDatos(estadoNuevo)
       return estadoNuevo
     }
   } catch (error) {
-    console.error("❌ Error al leer datos del archivo:", error)
+    console.error("❌ Error al leer datos de Redis:", error)
     return { ...estadoInicial }
   }
 }
 
-// Función para escribir datos al archivo con verificación
+// Función para escribir datos a Redis
 async function escribirDatos(estado: EstadoSistema): Promise<void> {
   try {
-    console.log("💾 Escribiendo datos al archivo:", {
+    console.log("💾 Escribiendo datos a Redis:", {
       numeroActual: estado.numeroActual,
       ultimoNumero: estado.ultimoNumero,
       totalAtendidos: estado.totalAtendidos,
@@ -150,37 +139,30 @@ async function escribirDatos(estado: EstadoSistema): Promise<void> {
       totalTickets: estado.tickets?.length || 0,
     })
 
-    await ensureDirectories()
-
     // Verificar integridad antes de guardar
     if (estado.tickets.length !== estado.totalAtendidos) {
       console.log("⚠️ Corrigiendo inconsistencia antes de guardar")
       estado.totalAtendidos = estado.tickets.length
     }
 
-    // Escribir de forma atómica usando un archivo temporal
-    const tempFile = ESTADO_FILE + ".tmp"
-    const dataToWrite = JSON.stringify(estado, null, 2)
-
-    await fs.writeFile(tempFile, dataToWrite, "utf8")
-    await fs.rename(tempFile, ESTADO_FILE)
+    // Guardar en Redis con TTL de 7 días
+    await kv.set(ESTADO_KEY, estado, { ex: 7 * 24 * 60 * 60 })
 
     // Verificar que se escribió correctamente
-    const verificacion = await fs.readFile(ESTADO_FILE, "utf8")
-    const estadoVerificado = JSON.parse(verificacion)
+    const verificacion = await kv.get<EstadoSistema>(ESTADO_KEY)
 
-    if (estadoVerificado.numeroActual !== estado.numeroActual) {
-      throw new Error("Error de verificación: el archivo no se guardó correctamente")
+    if (!verificacion || verificacion.numeroActual !== estado.numeroActual) {
+      throw new Error("Error de verificación: el estado no se guardó correctamente en Redis")
     }
 
-    console.log("✅ Datos guardados y verificados exitosamente")
+    console.log("✅ Datos guardados y verificados exitosamente en Redis")
   } catch (error) {
-    console.error("❌ Error al escribir datos al archivo:", error)
+    console.error("❌ Error al escribir datos a Redis:", error)
     throw error
   }
 }
 
-// Función para verificar si debe reiniciarse (más conservadora)
+// Función para verificar si debe reiniciarse
 function debeReiniciarse(estado: EstadoSistema): boolean {
   try {
     const ahora = new Date()
@@ -208,11 +190,11 @@ function debeReiniciarse(estado: EstadoSistema): boolean {
   }
 }
 
-// Función para crear backup diario
+// Función para crear backup diario en Redis
 async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
   try {
-    const fecha = estado.fechaInicio // Usar la fecha del estado, no la actual
-    const backupFile = path.join(BACKUP_DIR, `backup-${fecha}.json`)
+    const fecha = estado.fechaInicio
+    const backupKey = `${BACKUP_PREFIX}${fecha}`
 
     const backup = {
       fecha,
@@ -229,11 +211,33 @@ async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
       tickets: estado.tickets,
     }
 
-    await ensureDirectories()
-    await fs.writeFile(backupFile, JSON.stringify(backup, null, 2), "utf8")
-    console.log(`📦 Backup diario creado: ${backupFile}`)
+    // Guardar backup con TTL de 30 días
+    await kv.set(backupKey, backup, { ex: 30 * 24 * 60 * 60 })
+    console.log(`📦 Backup diario creado en Redis: ${backupKey}`)
   } catch (error) {
     console.error("❌ Error al crear backup diario:", error)
+  }
+}
+
+// Función para obtener información de conexión Redis
+async function obtenerInfoRedis() {
+  try {
+    // Intentar una operación simple para verificar conexión
+    await kv.set("test:connection", "ok", { ex: 10 })
+    const test = await kv.get("test:connection")
+    await kv.del("test:connection")
+
+    return {
+      conectado: test === "ok",
+      url: process.env.KV_REST_API_URL ? "Configurado" : "No configurado",
+      timestamp: new Date().toISOString(),
+    }
+  } catch (error) {
+    return {
+      conectado: false,
+      error: error instanceof Error ? error.message : "Error desconocido",
+      timestamp: new Date().toISOString(),
+    }
   }
 }
 

@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server"
-import { promises as fs } from "fs"
-import path from "path"
+import { kv } from "@vercel/kv"
 
-const DATA_DIR = path.join(process.cwd(), "data")
-const ESTADO_FILE = path.join(DATA_DIR, "estado.json")
-const BACKUP_DIR = path.join(DATA_DIR, "backups")
-const LOCK_FILE = path.join(DATA_DIR, "sistema.lock")
+const ESTADO_KEY = "sistema:estado"
+const LOCK_KEY = "sistema:lock"
+const BACKUP_PREFIX = "sistema:backup:"
 
 export async function GET() {
   try {
@@ -14,55 +12,28 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       environment: {
         NODE_ENV: process.env.NODE_ENV,
-        PLATFORM: "File System",
+        PLATFORM: "Vercel KV (Redis)",
+        VERCEL_ENV: process.env.VERCEL_ENV || "development",
       },
-      fileSystem: {
-        dataDir: DATA_DIR,
-        estadoFile: ESTADO_FILE,
-        backupDir: BACKUP_DIR,
-        lockFile: LOCK_FILE,
+      redis: {
+        url: process.env.KV_REST_API_URL ? "Configurado" : "No configurado",
+        token: process.env.KV_REST_API_TOKEN ? "Configurado" : "No configurado",
       },
     }
 
-    // Probar acceso al sistema de archivos
+    // Probar conexión a Redis
     try {
-      // Verificar si los directorios existen
-      try {
-        await fs.access(DATA_DIR)
-        debug.fileSystem.dataDirExists = true
-      } catch {
-        debug.fileSystem.dataDirExists = false
-      }
+      // Test de conexión
+      await kv.set("test:debug", "ok", { ex: 10 })
+      const testResult = await kv.get("test:debug")
+      await kv.del("test:debug")
 
-      try {
-        await fs.access(BACKUP_DIR)
-        debug.fileSystem.backupDirExists = true
-      } catch {
-        debug.fileSystem.backupDirExists = false
-      }
+      debug.redis.connection = testResult === "ok" ? "Exitosa" : "Fallida"
 
-      // Verificar archivo de lock
-      try {
-        await fs.access(LOCK_FILE)
-        debug.fileSystem.lockFileExists = true
-        const lockContent = await fs.readFile(LOCK_FILE, "utf8")
-        debug.fileSystem.lockTimestamp = lockContent
-      } catch {
-        debug.fileSystem.lockFileExists = false
-      }
-
-      // Verificar archivos principales
-      try {
-        await fs.access(ESTADO_FILE)
-        debug.fileSystem.estadoFileExists = true
-        const stats = await fs.stat(ESTADO_FILE)
-        debug.fileSystem.estadoFileSize = stats.size
-        debug.fileSystem.estadoFileModified = stats.mtime.toISOString()
-
-        // Leer contenido del archivo de estado
-        const data = await fs.readFile(ESTADO_FILE, "utf8")
-        const estado = JSON.parse(data)
-        debug.fileSystem.estadoActual = {
+      // Obtener estado actual
+      const estado = await kv.get(ESTADO_KEY)
+      if (estado) {
+        debug.redis.estadoActual = {
           numeroActual: estado.numeroActual,
           ultimoNumero: estado.ultimoNumero,
           totalAtendidos: estado.totalAtendidos,
@@ -73,7 +44,7 @@ export async function GET() {
         }
 
         // Verificar integridad
-        debug.fileSystem.integridad = {
+        debug.redis.integridad = {
           ticketsCountMatch: estado.tickets?.length === estado.totalAtendidos,
           numeroActualValido: estado.numeroActual > estado.ultimoNumero,
           numerosLlamadosValido: estado.numerosLlamados <= estado.totalAtendidos,
@@ -81,30 +52,33 @@ export async function GET() {
 
         // Mostrar algunos tickets de ejemplo
         if (estado.tickets && estado.tickets.length > 0) {
-          debug.fileSystem.ticketsEjemplo = estado.tickets.slice(0, 3).map((t) => ({
+          debug.redis.ticketsEjemplo = estado.tickets.slice(0, 3).map((t) => ({
             numero: t.numero,
             nombre: t.nombre,
             fecha: t.fecha,
           }))
         }
-      } catch (parseError) {
-        debug.fileSystem.estadoFileExists = true
-        debug.fileSystem.parseError = parseError instanceof Error ? parseError.message : "Error de parsing"
+      } else {
+        debug.redis.estadoActual = "No encontrado"
       }
 
-      // Listar backups
-      try {
-        const files = await fs.readdir(BACKUP_DIR)
-        const backupFiles = files.filter((file) => file.startsWith("backup-") && file.endsWith(".json"))
-        debug.fileSystem.backupsCount = backupFiles.length
-        debug.fileSystem.backupFiles = backupFiles.slice(0, 5) // Mostrar solo los primeros 5
-      } catch {
-        debug.fileSystem.backupsCount = 0
-      }
+      // Verificar lock
+      const lockStatus = await kv.get(LOCK_KEY)
+      debug.redis.lockStatus = lockStatus ? `Activo desde ${new Date(lockStatus).toISOString()}` : "Libre"
 
-      debug.fileSystem.connection = "Exitosa"
+      // Contar backups
+      const backupKeys = await kv.keys(`${BACKUP_PREFIX}*`)
+      debug.redis.backupsCount = backupKeys.length
+      debug.redis.backupKeys = backupKeys.slice(0, 5) // Mostrar solo los primeros 5
+
+      // Información adicional de Redis
+      debug.redis.keys = {
+        estado: ESTADO_KEY,
+        lock: LOCK_KEY,
+        backupPrefix: BACKUP_PREFIX,
+      }
     } catch (error) {
-      debug.fileSystem.connection = `Error: ${error instanceof Error ? error.message : "Error desconocido"}`
+      debug.redis.connection = `Error: ${error instanceof Error ? error.message : "Error desconocido"}`
     }
 
     return NextResponse.json(debug)
