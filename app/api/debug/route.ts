@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server"
-import { kv } from "@vercel/kv"
-
-const ESTADO_KEY = "sistema:estado:v2"
-const BACKUP_PREFIX = "sistema:backup:"
+import { verificarConexionDB, leerEstadoSistema } from "@/lib/database"
 
 export async function GET() {
   try {
@@ -10,22 +7,26 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       environment: {
         NODE_ENV: process.env.NODE_ENV,
-        PLATFORM: "Vercel KV (Redis) - Optimizado",
+        PLATFORM: "SISTEMATURNOSBD (PostgreSQL)",
         VERCEL_ENV: process.env.VERCEL_ENV || "development",
       },
-      redis: {
-        url: process.env.KV_REST_API_URL ? "Configurado" : "No configurado",
-        token: process.env.KV_REST_API_TOKEN ? "Configurado" : "No configurado",
+      database: {
+        url: process.env.DATABASE_URL ? "Configurado" : "No configurado",
+        type: "PostgreSQL",
+        name: "SISTEMATURNOSBD",
       },
     }
 
-    // Test de conexión mínimo
+    // Test de conexión a la base de datos
     try {
-      const estado = await kv.get(ESTADO_KEY)
-      debug.redis.connection = "Exitosa"
+      const conexionOK = await verificarConexionDB()
+      debug.database.connection = conexionOK ? "Exitosa" : "Fallida"
 
-      if (estado) {
-        debug.redis.estadoActual = {
+      if (conexionOK) {
+        // Obtener estado actual
+        const estado = await leerEstadoSistema()
+
+        debug.database.estadoActual = {
           numeroActual: estado.numeroActual,
           ultimoNumero: estado.ultimoNumero,
           totalAtendidos: estado.totalAtendidos,
@@ -35,37 +36,42 @@ export async function GET() {
           lastSync: estado.lastSync ? new Date(estado.lastSync).toISOString() : "N/A",
         }
 
-        debug.redis.integridad = {
+        // Verificar integridad
+        debug.database.integridad = {
           ticketsCountMatch: estado.tickets?.length === estado.totalAtendidos,
           numeroActualValido: estado.numeroActual > estado.ultimoNumero,
           numerosLlamadosValido: estado.numerosLlamados <= estado.totalAtendidos,
         }
-      } else {
-        debug.redis.estadoActual = "No encontrado"
-      }
 
-      // Información de optimización
-      debug.redis.optimizaciones = {
-        cacheServidor: "Activo (30s TTL)",
-        throttling: "Activo (5s mínimo entre requests)",
-        backupsAsync: "Activo (no bloquean operaciones)",
-        locksEliminados: "Sistema sin locks para reducir requests",
+        // Mostrar algunos tickets de ejemplo
+        if (estado.tickets && estado.tickets.length > 0) {
+          debug.database.ticketsEjemplo = estado.tickets.slice(0, 3).map((t) => ({
+            numero: t.numero,
+            nombre: t.nombre,
+            fecha: t.fecha,
+          }))
+        }
+
+        // Información de optimización
+        debug.database.optimizaciones = {
+          transaccionesAtomicas: "Activo (ACID compliance)",
+          poolConexiones: "Activo (max 20 conexiones)",
+          indices: "Optimizados para consultas frecuentes",
+          backupsAutomaticos: "Diarios con limpieza automática",
+          logs: "Sistema de auditoría completo",
+        }
+      } else {
+        debug.database.estadoActual = "No se pudo conectar"
       }
     } catch (error) {
-      debug.redis.connection = `Error: ${error instanceof Error ? error.message : "Error desconocido"}`
-
-      // Verificar si es error de límite de requests
-      if (error instanceof Error && error.message.includes("max requests limit")) {
-        debug.redis.limitExceeded = true
-        debug.redis.recommendation = "Sistema optimizado para usar localStorage como caché principal"
-      }
+      debug.database.connection = `Error: ${error instanceof Error ? error.message : "Error desconocido"}`
     }
 
     return NextResponse.json(debug)
   } catch (error) {
     return NextResponse.json(
       {
-        error: "Error en debug",
+        error: "Error en debug - SISTEMATURNOSBD",
         details: error instanceof Error ? error.message : "Error desconocido",
       },
       { status: 500 },

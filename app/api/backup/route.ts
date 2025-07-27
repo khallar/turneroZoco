@@ -1,7 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { kv } from "@vercel/kv"
-
-const BACKUP_PREFIX = "sistema:backup:"
+import { obtenerBackups, obtenerBackup, limpiarDatosAntiguos } from "@/lib/database"
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,20 +10,9 @@ export async function GET(request: NextRequest) {
     if (accion === "listar") {
       // Listar todos los backups disponibles
       try {
-        // Obtener todas las claves que empiecen con el prefijo de backup
-        const keys = await kv.keys(`${BACKUP_PREFIX}*`)
+        const backups = await obtenerBackups()
 
-        const backups = keys
-          .map((key) => {
-            const fecha = key.replace(BACKUP_PREFIX, "")
-            return {
-              fecha,
-              key,
-            }
-          })
-          .sort((a, b) => b.fecha.localeCompare(a.fecha)) // Más recientes primero
-
-        console.log("📦 Backups encontrados:", backups.length)
+        console.log("📦 Backups encontrados en SISTEMATURNOSBD:", backups.length)
         return NextResponse.json({ backups })
       } catch (error) {
         console.error("❌ Error al listar backups:", error)
@@ -35,10 +22,8 @@ export async function GET(request: NextRequest) {
 
     if (fecha) {
       // Obtener backup específico
-      const backupKey = `${BACKUP_PREFIX}${fecha}`
-
       try {
-        const backup = await kv.get(backupKey)
+        const backup = await obtenerBackup(fecha)
 
         if (backup) {
           return NextResponse.json(backup)
@@ -54,7 +39,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Parámetros inválidos" }, { status: 400 })
   } catch (error) {
     console.error("❌ Error en API de backup:", error)
-    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })
+    return NextResponse.json({ error: "Error interno del servidor - SISTEMATURNOSBD" }, { status: 500 })
   }
 }
 
@@ -66,26 +51,11 @@ export async function POST(request: NextRequest) {
     if (accion === "limpiar_antiguos") {
       // Limpiar backups antiguos (más de 30 días)
       try {
-        const keys = await kv.keys(`${BACKUP_PREFIX}*`)
+        await limpiarDatosAntiguos()
 
-        const ahora = new Date()
-        const hace30Dias = new Date(ahora.getTime() - 30 * 24 * 60 * 60 * 1000)
-
-        let eliminados = 0
-        for (const key of keys) {
-          const fecha = key.replace(BACKUP_PREFIX, "")
-          const fechaBackup = new Date(fecha)
-
-          if (fechaBackup < hace30Dias) {
-            await kv.del(key)
-            eliminados++
-          }
-        }
-
-        console.log(`🧹 ${eliminados} backups antiguos eliminados`)
+        console.log("🧹 Datos antiguos limpiados en SISTEMATURNOSBD")
         return NextResponse.json({
-          mensaje: `${eliminados} backups antiguos eliminados`,
-          eliminados,
+          mensaje: "Datos antiguos limpiados exitosamente",
         })
       } catch (error) {
         console.error("❌ Error al limpiar backups:", error)
@@ -96,6 +66,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Acción no válida" }, { status: 400 })
   } catch (error) {
     console.error("❌ Error en POST de backup:", error)
-    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })
+    return NextResponse.json({ error: "Error interno del servidor - SISTEMATURNOSBD" }, { status: 500 })
   }
 }
