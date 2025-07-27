@@ -396,16 +396,14 @@ export function useSistemaEstado() {
     }
   }, [isClient, cargarEstado])
 
-  // Sincronización periódica (cada 30 segundos)
-  useEffect(() => {
-    if (!isClient) return
-
-    const interval = setInterval(() => {
-      cargarEstado(false).catch((err) => console.error("Error en sincronización periódica:", err))
-    }, 30000) // 30 segundos
-
-    return () => clearInterval(interval)
-  }, [cargarEstado, isClient])
+  // REMOVIDO: Sincronización periódica interna del hook. Ahora cada página la gestiona.
+  // useEffect(() => {
+  //   if (!isClient) return
+  //   const interval = setInterval(() => {
+  //     cargarEstado(false).catch((err) => console.error("Error en sincronización periódica:", err))
+  //   }, 30000) // 30 segundos
+  //   return () => clearInterval(interval)
+  // }, [cargarEstado, isClient])
 
   // Verificar integridad de la numeración
   const verificarIntegridad = useCallback(() => {

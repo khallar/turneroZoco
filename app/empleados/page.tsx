@@ -36,18 +36,18 @@ export default function PaginaEmpleados() {
     setIsClient(true)
   }, [])
 
-  // Actualizar datos automáticamente cada 30 segundos
+  // Actualizar datos automáticamente cada 30 segundos (específico para empleados)
   useEffect(() => {
     if (!isClient) return
 
     const actualizarAutomaticamente = async () => {
       try {
-        console.log("Actualizando datos automáticamente...")
+        console.log("Actualizando datos automáticamente (empleados)...")
         setUltimaActualizacionAutomatica(new Date())
         setContadorActualizaciones((prev) => prev + 1)
         await cargarEstado(true) // Con estadísticas para el panel de empleados
       } catch (error) {
-        console.error("Error en actualización automática:", error)
+        console.error("Error en actualización automática de empleados:", error)
       }
     }
 

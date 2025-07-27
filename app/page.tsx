@@ -41,6 +41,7 @@ export default function SistemaAtencion() {
     debugInfo,
     generarTicket,
     verificarIntegridad,
+    cargarEstado, // Importar cargarEstado para la sincronización manual
     isClient,
   } = useSistemaEstado()
 
@@ -133,6 +134,17 @@ export default function SistemaAtencion() {
     const interval = setInterval(actualizarHora, 60000)
     return () => clearInterval(interval)
   }, [isClient])
+
+  // Sincronización periódica para la página principal (cada 60 segundos)
+  useEffect(() => {
+    if (!isClient) return
+
+    const interval = setInterval(() => {
+      cargarEstado(false).catch((err) => console.error("Error en sincronización periódica de página principal:", err))
+    }, 60000) // 60 segundos
+
+    return () => clearInterval(interval)
+  }, [isClient, cargarEstado])
 
   // Verificar integridad de la numeración
   useEffect(() => {

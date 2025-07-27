@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Error de conexión a SISTEMATURNOSBD" }, { status: 503 })
     }
 
-    let estado = await leerEstadoSistema()
+    let estado = await leerEstadoSistema() // Leer estado una vez al inicio del POST
 
     // Verificar si debe reiniciarse antes de cualquier operación
     if (debeReiniciarse(estado)) {
@@ -129,6 +129,7 @@ export async function POST(request: NextRequest) {
 
       const ahora = new Date()
       estado = {
+        // Actualizar el objeto estado localmente
         numeroActual: 1,
         ultimoNumero: 0,
         totalAtendidos: 0,
@@ -138,6 +139,7 @@ export async function POST(request: NextRequest) {
         tickets: [],
         lastSync: Date.now(),
       }
+      // No es necesario escribir el estado aquí, se hará si la acción lo requiere
     }
 
     // Acción especial para generar ticket de forma atómica
@@ -154,8 +156,16 @@ export async function POST(request: NextRequest) {
         // Generar ticket de forma atómica en la base de datos
         const nuevoTicket = await generarTicketAtomico(nombre)
 
-        // Leer el estado actualizado después de generar el ticket
-        const estadoActualizado = await leerEstadoSistema()
+        // Construir el estado actualizado en memoria, evitando una nueva lectura completa de la DB
+        const updatedTickets = [...estado.tickets, nuevoTicket]
+        const estadoActualizado: EstadoSistema = {
+          ...estado, // Base del estado actual
+          numeroActual: nuevoTicket.numero + 1, // El siguiente número a emitir
+          ultimoNumero: nuevoTicket.numero, // El último número emitido
+          totalAtendidos: estado.totalAtendidos + 1, // Incrementa el total de tickets emitidos
+          tickets: updatedTickets, // Agrega el nuevo ticket a la lista
+          lastSync: Date.now(), // Actualiza el timestamp de sincronización
+        }
 
         console.log("✅ Ticket generado exitosamente en SISTEMATURNOSBD")
 
@@ -219,6 +229,7 @@ export async function POST(request: NextRequest) {
         await escribirEstadoSistema(estadoLimpio)
         console.log("✅ Todos los registros eliminados exitosamente")
 
+        // Devolver el estado limpio directamente, sin una nueva lectura de DB
         return NextResponse.json({
           ...estadoLimpio,
           mensaje: "Todos los registros han sido eliminados exitosamente",
@@ -258,6 +269,7 @@ export async function POST(request: NextRequest) {
         await escribirEstadoSistema(estadoReiniciado)
         console.log("✅ Contador diario reiniciado exitosamente")
 
+        // Devolver el estado reiniciado directamente, sin una nueva lectura de DB
         return NextResponse.json({
           ...estadoReiniciado,
           mensaje: "Contador diario reiniciado exitosamente",
