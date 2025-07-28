@@ -19,7 +19,6 @@ import {
   Activity,
 } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
-import { marcarTicketComoLlamado } from "@/lib/database" // Importar la nueva función
 
 export default function PaginaEmpleados() {
   const { estado, estadisticas, loading, error, guardarEstado, cargarEstado, ultimaSincronizacion } = useSistemaEstado()
@@ -37,7 +36,7 @@ export default function PaginaEmpleados() {
     setIsClient(true)
   }, [])
 
-  // Actualizar datos automáticamente cada 60 segundos (específico para empleados)
+  // Actualizar datos automáticamente cada 30 segundos (específico para empleados)
   useEffect(() => {
     if (!isClient) return
 
@@ -56,7 +55,7 @@ export default function PaginaEmpleados() {
     actualizarAutomaticamente()
 
     // Configurar intervalo
-    const interval = setInterval(actualizarAutomaticamente, 60000) // 60 segundos (1 minuto)
+    const interval = setInterval(actualizarAutomaticamente, 30000) // 30 segundos
 
     return () => clearInterval(interval)
   }, [cargarEstado, isClient])
@@ -142,17 +141,13 @@ export default function PaginaEmpleados() {
     }
 
     await guardarEstado(nuevoEstado)
-
-    // NUEVO: Marcar el ticket como llamado en la base de datos
-    if (ticketALlamar) {
-      await marcarTicketComoLlamado(ticketALlamar.numero, estado.fechaInicio)
-    }
-
     setNumeroEnAtencion(proximoNumeroALlamar)
     setNombreEnAtencion(ticketALlamar?.nombre || "Cliente ZOCO")
 
-    // Actualizar datos inmediatamente después de llamar (sin setTimeout)
-    await cargarEstado(true)
+    // Actualizar datos inmediatamente después de llamar
+    setTimeout(() => {
+      cargarEstado(true)
+    }, 500)
   }
 
   const actualizarDatosManual = async () => {
@@ -236,28 +231,6 @@ export default function PaginaEmpleados() {
   // Obtener información del próximo ticket
   const proximoTicket = estado?.tickets?.find((ticket) => ticket.numero === proximoNumeroALlamar)
 
-  // DEBUG: Log de estado y detección de inconsistencias
-  useEffect(() => {
-    if (isClient && estado) {
-      const ticketsLength = estado.tickets?.length || 0
-      if (estado.totalAtendidos !== ticketsLength) {
-        console.warn(
-          `DEBUG: Mismatch detectado! totalAtendidos (${estado.totalAtendidos}) != tickets.length (${ticketsLength}). Forzando recarga.`,
-        )
-        cargarEstado(true) // Forzar recarga si hay inconsistencia
-      }
-      console.log("DEBUG: Estado en empleados (on change):", {
-        numeroActual: estado.numeroActual,
-        ultimoNumero: estado.ultimoNumero,
-        totalAtendidos: estado.totalAtendidos,
-        numerosLlamados: estado.numerosLlamados,
-        ticketsLength: ticketsLength,
-        proximoNumeroALlamar: estado.numerosLlamados + 1,
-        proximoTicketExists: !!estado.tickets?.find((ticket) => ticket.numero === estado.numerosLlamados + 1),
-      })
-    }
-  }, [estado, isClient, cargarEstado])
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center p-4">
@@ -291,7 +264,7 @@ export default function PaginaEmpleados() {
           <div className="flex justify-center items-center gap-2 mb-2">
             <div className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>
             <span className="text-xs text-gray-600">
-              Auto-actualización cada 60s {contadorActualizaciones > 0 && `(${contadorActualizaciones} updates)`}
+              Auto-actualización cada 30s {contadorActualizaciones > 0 && `(${contadorActualizaciones} updates)`}
             </span>
           </div>
 
@@ -444,17 +417,12 @@ export default function PaginaEmpleados() {
                 </div>
 
                 {/* Nombre del cliente - responsive */}
-                {proximoTicket ? (
+                {proximoTicket && (
                   <div className="mb-3 md:mb-4">
                     <div className="flex items-center justify-center gap-2 text-lg md:text-2xl font-bold text-blue-600 bg-blue-50 p-3 md:p-4 rounded-lg max-w-sm md:max-w-md mx-auto">
                       <User className="h-4 w-4 md:h-6 md:w-6 flex-shrink-0" />
                       <span className="truncate">{proximoTicket.nombre}</span>
                     </div>
-                  </div>
-                ) : (
-                  <div className="mb-3 md:mb-4 text-center text-orange-600 text-lg font-semibold">
-                    Cargando información del ticket...
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500 mx-auto mt-2"></div>
                   </div>
                 )}
 
@@ -463,7 +431,6 @@ export default function PaginaEmpleados() {
                   onClick={llamarSiguienteNumero}
                   size="lg"
                   className="text-lg md:text-2xl px-8 md:px-16 py-4 md:py-8 h-auto bg-green-600 hover:bg-green-700 shadow-lg transform transition-transform hover:scale-105 w-full sm:w-auto"
-                  disabled={!proximoTicket || actualizandoDatos} // Deshabilitar si proximoTicket no está cargado o si se está actualizando
                 >
                   <Phone className="mr-2 md:mr-4 h-5 w-5 md:h-8 md:w-8" />
                   <span className="truncate">
@@ -534,26 +501,6 @@ export default function PaginaEmpleados() {
                 {Array.from({ length: Math.min(5, estado?.numerosLlamados || 0) }, (_, i) => {
                   const numero = (estado?.numerosLlamados || 0) - i
                   const ticket = estado?.tickets?.find((t) => t.numero === numero)
-                  const horaEmision = ticket?.timestamp
-                    ? new Date(ticket.timestamp).toLocaleTimeString("es-AR", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        timeZone: "America/Argentina/Buenos_Aires",
-                      })
-                    : "N/A"
-
-                  let tiempoDemorado = "N/A"
-                  if (ticket?.timestamp && ticket?.calledTimestamp) {
-                    const diffMs = ticket.calledTimestamp - ticket.timestamp
-                    const diffMinutes = Math.floor(diffMs / (1000 * 60))
-                    tiempoDemorado = `${diffMinutes} min`
-                  } else if (ticket?.timestamp && i === 0) {
-                    // Para el ticket actualmente en atención (el último llamado)
-                    const diffMs = Date.now() - ticket.timestamp
-                    const diffMinutes = Math.floor(diffMs / (1000 * 60))
-                    tiempoDemorado = `${diffMinutes} min (actual)`
-                  }
-
                   return (
                     <div key={numero} className="flex justify-between items-center p-2 bg-gray-50 rounded text-sm">
                       <div className="min-w-0 flex-1">
@@ -562,11 +509,9 @@ export default function PaginaEmpleados() {
                           <div className="text-xs md:text-sm text-blue-600 font-medium truncate">{ticket.nombre}</div>
                         )}
                       </div>
-                      <div className="flex flex-col items-end ml-2 flex-shrink-0">
-                        <span className="text-xs text-gray-500">{horaEmision}</span>
-                        <span className="text-xs text-gray-500">{i === 0 ? "Atendiendo" : "Atendido"}</span>
-                        {ticket?.timestamp && <span className="text-xs text-gray-500">Demora: {tiempoDemorado}</span>}
-                      </div>
+                      <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
+                        {i === 0 ? "Atendiendo" : "Atendido"}
+                      </span>
                     </div>
                   )
                 })}
@@ -596,7 +541,7 @@ export default function PaginaEmpleados() {
                   <strong>Persistencia:</strong> Los números se mantienen hasta las 12:00 AM
                 </li>
                 <li>
-                  <strong>Actualización:</strong> Se actualiza automáticamente cada 60 segundos
+                  <strong>Actualización:</strong> Se actualiza automáticamente cada 30 segundos
                 </li>
                 <li>
                   <strong>Manual:</strong> Use "Actualizar Ahora" si no ve tickets nuevos
@@ -690,7 +635,7 @@ export default function PaginaEmpleados() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                   <div>
                     <span className="text-gray-600">Última hora:</span>
-                    <p className="font-bold text-blue-600">{estadisticas.ticketsUltimaHora}</p>
+                    <p className="font-bold text-blue-600">{estadisticas.ticketsUltimaHora} tickets</p>
                   </div>
                   <div>
                     <span className="text-gray-600">Inicio:</span>
@@ -720,7 +665,7 @@ export default function PaginaEmpleados() {
       {/* Footer */}
       <footer className="text-center mt-8 pt-4 border-t border-gray-200">
         <div className="text-xs text-gray-400">
-          <p>Develop by: Karim :) | Versión 5.0</p>
+          <p>Develop by: Karim :) | Versión 4.0</p>
         </div>
       </footer>
     </div>

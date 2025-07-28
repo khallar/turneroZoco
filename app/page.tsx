@@ -273,7 +273,7 @@ export default function SistemaAtencion() {
                   {debugInfo.environment?.VERCEL_ENV || "local"})
                 </div>
                 <div>
-                  <strong>Plataforma:</strong> {debugInfo.environment?.PLATFORM || "N/A"}
+                  <strong>Plataforma:</strong> {debugInfo.database?.PLATFORM || "N/A"}
                 </div>
                 <div>
                   <strong>DB URL:</strong> {debugInfo.database?.url || "No configurado"}
