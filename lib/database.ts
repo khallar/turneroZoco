@@ -3,8 +3,9 @@ import { Redis } from "@upstash/redis"
 interface TicketInfo {
   numero: number
   nombre: string
-  fecha: string
-  timestamp: number
+  fecha: string // Fecha de emisión
+  timestamp: number // Timestamp de emisión
+  calledTimestamp?: number // Nuevo: Timestamp de cuando fue llamado
 }
 
 // EstadoSistema ahora NO contendrá el array 'tickets' directamente
@@ -55,14 +56,40 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
     const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
 
     // Usamos MULTI/EXEC para obtener el estado y la lista de tickets en una sola operación de red
-    const [estadoRaw, ticketsRaw] = await redis
+    const [estadoRaw, rawTicketsStrings] = await redis
       .multi()
       .get<EstadoSistema>(estadoKey)
-      .lrange<TicketInfo>(ticketsListKey, 0, -1)
+      .lrange<string>(ticketsListKey, 0, -1) // Request raw strings
       .exec()
 
     let estado: EstadoSistema
-    const tickets: TicketInfo[] = ticketsRaw || []
+    let tickets: TicketInfo[] = []
+
+    // Ensure rawTicketsStrings is an array before mapping
+    if (Array.isArray(rawTicketsStrings)) {
+      tickets = rawTicketsStrings.map((ticketStr) => {
+        try {
+          // Manejar explícitamente nulls y la cadena literal "[object Object]"
+          if (ticketStr === null || typeof ticketStr !== "string" || ticketStr === "[object Object]") {
+            console.warn(
+              `⚠️ Saltando cadena de ticket malformada o nula (tipo: ${typeof ticketStr}, valor: ${ticketStr}).`,
+            )
+            return { numero: 0, nombre: "Datos corruptos", fecha: new Date().toLocaleString(), timestamp: Date.now() }
+          }
+          return JSON.parse(ticketStr) as TicketInfo
+        } catch (parseError) {
+          console.error(`❌ Error al analizar la cadena del ticket: ${ticketStr}`, parseError)
+          return { numero: 0, nombre: "Error de datos", fecha: new Date().toLocaleString(), timestamp: Date.now() }
+        }
+      })
+    } else if (rawTicketsStrings === null) {
+      // If lrange returns null (key doesn't exist), it's an empty list
+      tickets = []
+    } else {
+      // This case should ideally not happen for lrange, but handles unexpected non-array truthy values
+      console.warn("⚠️ Unexpected non-array result for tickets list:", rawTicketsStrings)
+      tickets = []
+    }
 
     if (estadoRaw) {
       estado = estadoRaw
@@ -152,6 +179,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
       nombre: nombre.trim(),
       fecha,
       timestamp,
+      // calledTimestamp no se establece aquí, se establece cuando se llama
     }
 
     // Actualizar la metadata del estado en memoria
@@ -165,7 +193,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
     await redis
       .multi()
       .set(estadoKey, estadoActual) // Guarda la metadata del estado actualizada
-      .rpush(ticketsListKey, nuevoTicket) // Añade el nuevo ticket al final de la lista de tickets del día
+      .rpush(ticketsListKey, JSON.stringify(nuevoTicket)) // Añade el nuevo ticket al final de la lista de tickets del día (como string)
       .lpush(
         LOGS_KEY,
         JSON.stringify({
@@ -184,6 +212,60 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
     return nuevoTicket
   } catch (error) {
     console.error("❌ Error al generar ticket en Upstash Redis:", error)
+    throw error
+  }
+}
+
+// Nueva función para marcar un ticket como llamado
+export async function marcarTicketComoLlamado(numeroTicket: number, fechaInicio: string): Promise<void> {
+  try {
+    console.log(`📞 Marcando ticket #${numeroTicket} como llamado en Upstash Redis...`)
+    const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaInicio
+
+    // 1. Obtener todos los tickets de la lista
+    const rawTicketsStrings = await redis.lrange<string>(ticketsListKey, 0, -1)
+    let tickets: TicketInfo[] = []
+
+    if (Array.isArray(rawTicketsStrings)) {
+      tickets = rawTicketsStrings.map((ticketStr) => {
+        try {
+          return JSON.parse(ticketStr) as TicketInfo
+        } catch (parseError) {
+          console.error(`❌ Error al analizar la cadena del ticket durante la actualización: ${ticketStr}`, parseError)
+          return { numero: 0, nombre: "Error de datos", fecha: new Date().toLocaleString(), timestamp: Date.now() }
+        }
+      })
+    }
+
+    // 2. Encontrar y actualizar el ticket
+    let updated = false
+    const updatedTickets = tickets.map((ticket) => {
+      if (ticket.numero === numeroTicket) {
+        if (!ticket.calledTimestamp) {
+          // Solo actualizar si no ha sido llamado ya
+          ticket.calledTimestamp = Date.now()
+          updated = true
+          console.log(`✅ Ticket #${numeroTicket} actualizado con calledTimestamp: ${ticket.calledTimestamp}`)
+        }
+      }
+      return ticket
+    })
+
+    if (updated) {
+      // 3. Eliminar la lista antigua y guardar la nueva lista actualizada
+      // Esto se hace en una transacción MULTI/EXEC para asegurar atomicidad
+      const multi = redis.multi()
+      multi.del(ticketsListKey) // Eliminar la clave de la lista
+      if (updatedTickets.length > 0) {
+        multi.rpush(ticketsListKey, ...updatedTickets.map((t) => JSON.stringify(t))) // Volver a añadir todos los tickets
+      }
+      await multi.exec()
+      console.log(`💾 Lista de tickets actualizada en Upstash Redis para ticket #${numeroTicket}.`)
+    } else {
+      console.log(`ℹ️ Ticket #${numeroTicket} no encontrado o ya tenía calledTimestamp.`)
+    }
+  } catch (error) {
+    console.error(`❌ Error al marcar ticket #${numeroTicket} como llamado en Upstash Redis:`, error)
     throw error
   }
 }

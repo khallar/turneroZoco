@@ -19,6 +19,7 @@ import {
   Activity,
 } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
+import { marcarTicketComoLlamado } from "@/lib/database" // Importar la nueva función
 
 export default function PaginaEmpleados() {
   const { estado, estadisticas, loading, error, guardarEstado, cargarEstado, ultimaSincronizacion } = useSistemaEstado()
@@ -141,6 +142,12 @@ export default function PaginaEmpleados() {
     }
 
     await guardarEstado(nuevoEstado)
+
+    // NUEVO: Marcar el ticket como llamado en la base de datos
+    if (ticketALlamar) {
+      await marcarTicketComoLlamado(ticketALlamar.numero, estado.fechaInicio)
+    }
+
     setNumeroEnAtencion(proximoNumeroALlamar)
     setNombreEnAtencion(ticketALlamar?.nombre || "Cliente ZOCO")
 
@@ -534,6 +541,19 @@ export default function PaginaEmpleados() {
                         timeZone: "America/Argentina/Buenos_Aires",
                       })
                     : "N/A"
+
+                  let tiempoDemorado = "N/A"
+                  if (ticket?.timestamp && ticket?.calledTimestamp) {
+                    const diffMs = ticket.calledTimestamp - ticket.timestamp
+                    const diffMinutes = Math.floor(diffMs / (1000 * 60))
+                    tiempoDemorado = `${diffMinutes} min`
+                  } else if (ticket?.timestamp && i === 0) {
+                    // Para el ticket actualmente en atención
+                    const diffMs = Date.now() - ticket.timestamp
+                    const diffMinutes = Math.floor(diffMs / (1000 * 60))
+                    tiempoDemorado = `${diffMinutes} min (actual)`
+                  }
+
                   return (
                     <div key={numero} className="flex justify-between items-center p-2 bg-gray-50 rounded text-sm">
                       <div className="min-w-0 flex-1">
@@ -545,6 +565,7 @@ export default function PaginaEmpleados() {
                       <div className="flex flex-col items-end ml-2 flex-shrink-0">
                         <span className="text-xs text-gray-500">{horaEmision}</span>
                         <span className="text-xs text-gray-500">{i === 0 ? "Atendiendo" : "Atendido"}</span>
+                        {ticket?.timestamp && <span className="text-xs text-gray-500">Demora: {tiempoDemorado}</span>}
                       </div>
                     </div>
                   )
