@@ -55,41 +55,14 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
     const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
 
     // Usamos MULTI/EXEC para obtener el estado y la lista de tickets en una sola operación de red
-    // Explicitly get strings from lrange to handle parsing manually
-    const [estadoRaw, rawTicketsStrings] = await redis
+    const [estadoRaw, ticketsRaw] = await redis
       .multi()
       .get<EstadoSistema>(estadoKey)
-      .lrange<string>(ticketsListKey, 0, -1) // Request raw strings
+      .lrange<TicketInfo>(ticketsListKey, 0, -1)
       .exec()
 
     let estado: EstadoSistema
-    let tickets: TicketInfo[] = []
-
-    // Ensure rawTicketsStrings is an array before mapping
-    if (Array.isArray(rawTicketsStrings)) {
-      tickets = rawTicketsStrings.map((ticketStr) => {
-        try {
-          // Manejar explícitamente nulls y la cadena literal "[object Object]"
-          if (ticketStr === null || typeof ticketStr !== "string" || ticketStr === "[object Object]") {
-            console.warn(
-              `⚠️ Saltando cadena de ticket malformada o nula (tipo: ${typeof ticketStr}, valor: ${ticketStr}).`,
-            )
-            return { numero: 0, nombre: "Datos corruptos", fecha: new Date().toLocaleString(), timestamp: Date.now() }
-          }
-          return JSON.parse(ticketStr) as TicketInfo
-        } catch (parseError) {
-          console.error(`❌ Error al analizar la cadena del ticket: ${ticketStr}`, parseError)
-          return { numero: 0, nombre: "Error de datos", fecha: new Date().toLocaleString(), timestamp: Date.now() }
-        }
-      })
-    } else if (rawTicketsStrings === null) {
-      // If lrange returns null (key doesn't exist), it's an empty list
-      tickets = []
-    } else {
-      // This case should ideally not happen for lrange, but handles unexpected non-array truthy values
-      console.warn("⚠️ Unexpected non-array result for tickets list:", rawTicketsStrings)
-      tickets = []
-    }
+    const tickets: TicketInfo[] = ticketsRaw || []
 
     if (estadoRaw) {
       estado = estadoRaw
@@ -192,7 +165,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
     await redis
       .multi()
       .set(estadoKey, estadoActual) // Guarda la metadata del estado actualizada
-      .rpush(ticketsListKey, JSON.stringify(nuevoTicket)) // Añade el nuevo ticket al final de la lista de tickets del día (como string)
+      .rpush(ticketsListKey, nuevoTicket) // Añade el nuevo ticket al final de la lista de tickets del día
       .lpush(
         LOGS_KEY,
         JSON.stringify({

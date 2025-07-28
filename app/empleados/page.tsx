@@ -36,7 +36,7 @@ export default function PaginaEmpleados() {
     setIsClient(true)
   }, [])
 
-  // Actualizar datos automáticamente cada 20 segundos (específico para empleados)
+  // Actualizar datos automáticamente cada 60 segundos (específico para empleados)
   useEffect(() => {
     if (!isClient) return
 
@@ -55,7 +55,7 @@ export default function PaginaEmpleados() {
     actualizarAutomaticamente()
 
     // Configurar intervalo
-    const interval = setInterval(actualizarAutomaticamente, 20000) // 20 segundos
+    const interval = setInterval(actualizarAutomaticamente, 60000) // 60 segundos (1 minuto)
 
     return () => clearInterval(interval)
   }, [cargarEstado, isClient])
@@ -284,7 +284,7 @@ export default function PaginaEmpleados() {
           <div className="flex justify-center items-center gap-2 mb-2">
             <div className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>
             <span className="text-xs text-gray-600">
-              Auto-actualización cada 20s {contadorActualizaciones > 0 && `(${contadorActualizaciones} updates)`}
+              Auto-actualización cada 60s {contadorActualizaciones > 0 && `(${contadorActualizaciones} updates)`}
             </span>
           </div>
 
@@ -575,7 +575,7 @@ export default function PaginaEmpleados() {
                   <strong>Persistencia:</strong> Los números se mantienen hasta las 12:00 AM
                 </li>
                 <li>
-                  <strong>Actualización:</strong> Se actualiza automáticamente cada 20 segundos
+                  <strong>Actualización:</strong> Se actualiza automáticamente cada 60 segundos
                 </li>
                 <li>
                   <strong>Manual:</strong> Use "Actualizar Ahora" si no ve tickets nuevos

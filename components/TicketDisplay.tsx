@@ -1,10 +1,9 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { X, Share2, Download } from "lucide-react"
-import { cn } from "@/lib/utils"
 
 interface TicketDisplayProps {
   numero: number
@@ -13,32 +12,16 @@ interface TicketDisplayProps {
   fecha: string
   onClose: () => void
   esMobile: boolean
-  isCurrent: boolean
 }
 
-export default function TicketDisplay({
-  numero,
-  nombre,
-  frase,
-  fecha,
-  onClose,
-  esMobile,
-  isCurrent,
-}: TicketDisplayProps) {
+export default function TicketDisplay({ numero, nombre, frase, fecha, onClose, esMobile }: TicketDisplayProps) {
   const [mostrarTicket, setMostrarTicket] = useState(false)
   const [mounted, setMounted] = useState(false)
-  const cardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setMounted(true)
     setMostrarTicket(true)
   }, [])
-
-  useEffect(() => {
-    if (isCurrent && cardRef.current) {
-      cardRef.current.scrollIntoView({ behavior: "smooth", block: "center" })
-    }
-  }, [isCurrent])
 
   const generarImagenTicket = () => {
     if (typeof document === "undefined" || !mounted) return
@@ -394,35 +377,14 @@ export default function TicketDisplay({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <Card
-        ref={cardRef}
-        className={cn(
-          "w-full max-w-sm bg-white",
-          isCurrent
-            ? "bg-green-500 text-white scale-105 shadow-lg border-green-600"
-            : "bg-white text-gray-800 border-gray-200 hover:shadow-md",
-        )}
-      >
+      <Card className="w-full max-w-sm bg-white">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-lg">Ticket Generado</CardTitle>
           <Button variant="ghost" size="sm" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </CardHeader>
-        <CardContent className="flex flex-col items-center justify-center p-4 sm:p-6">
-          <div className={cn("text-4xl sm:text-5xl font-bold mb-2", isCurrent ? "text-white" : "text-green-600")}>
-            #{numero.toString().padStart(3, "0")}
-          </div>
-          <div
-            className={cn(
-              "text-lg sm:text-xl font-semibold text-center truncate w-full",
-              isCurrent ? "text-white" : "text-gray-700",
-            )}
-          >
-            {nombre}
-          </div>
-          {isCurrent && <p className="text-sm mt-1 animate-pulse">¡Es tu turno!</p>}
-
+        <CardContent>
           <div className="bg-white border-2 border-dashed border-gray-400 p-6 text-center font-mono mb-4">
             <h3 className="text-lg font-bold mb-4">NÚMERO DE ATENCIÓN</h3>
             <div className="text-6xl font-bold text-blue-600 border-2 border-blue-600 rounded-lg py-4 mb-4">
