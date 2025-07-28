@@ -1,465 +1,374 @@
 import { Redis } from "@upstash/redis"
 
-interface TicketInfo {
+// Definir prefijos de clave para evitar colisiones y organizar datos
+const KEY_PREFIX_ESTADO = "sistemaTurnosZOCO:estado"
+const KEY_PREFIX_TICKETS = "sistemaTurnosZOCO:tickets"
+
+// Interfaz para el estado del sistema
+export interface SistemaEstado {
+  numeroActual: number // Próximo número a emitir
+  ultimoNumero: number // Último número emitido
+  totalAtendidos: number // Total de tickets emitidos hoy
+  numerosLlamados: number // Cantidad de tickets que ya fueron llamados
+  fechaInicio: string // Fecha de inicio de la jornada (para reinicio diario)
+  tickets: TicketInfo[] // Lista de todos los tickets emitidos hoy
+}
+
+// Interfaz para la información de cada ticket
+export interface TicketInfo {
   numero: number
   nombre: string
-  fecha: string // Fecha de emisión
-  timestamp: number // Timestamp de emisión
-  calledTimestamp?: number // Nuevo: Timestamp de cuando fue llamado
+  fecha: string // Fecha de emisión del ticket
+  timestamp: number // Timestamp de emisión (ms)
+  calledTimestamp?: number // Timestamp de cuando el ticket fue llamado (opcional)
 }
 
-// EstadoSistema ahora NO contendrá el array 'tickets' directamente
-interface EstadoSistema {
-  numeroActual: number
-  ultimoNumero: number
-  totalAtendidos: number
-  numerosLlamados: number
-  fechaInicio: string // YYYY-MM-DD
-  ultimoReinicio: string // ISO string
-  lastSync?: number
-}
-
-// Prefijos para las claves de Redis
-const STATE_KEY_PREFIX = "sistemaTurnosZOCO:estado:" // sistemaTurnosZOCO:estado:YYYY-MM-DD
-export const TICKETS_LIST_KEY_PREFIX = "sistemaTurnosZOCO:tickets:" // sistemaTurnosZOCO:tickets:YYYY-MM-DD
-const BACKUP_KEY_PREFIX = "sistemaTurnosZOCO:backup:" // sistemaTurnosZOCO:backup:YYYY-MM-DD
-const LOGS_KEY = "sistemaTurnosZOCO:logs"
-export const COUNTER_KEY_PREFIX = "sistemaTurnosZOCO:counter:" // Para el contador atómico de número de ticket
-
-// Validación de variables de entorno para producción
-if (!process.env.KV_REST_API_URL) {
-  throw new Error("KV_REST_API_URL no está configurada. Es necesaria para la conexión a Upstash Redis.")
-}
-if (!process.env.KV_REST_API_TOKEN) {
-  throw new Error("KV_REST_API_TOKEN no está configurada. Es necesaria para la conexión a Upstash Redis.")
-}
-
-// Inicializar cliente de Upstash Redis
-export const redis = new Redis({
-  url: process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
+// Inicialización de Redis
+// Asegúrate de que estas variables de entorno estén configuradas en Vercel
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL!,
+  token: process.env.KV_REST_API_TOKEN!,
 })
 
-// Función auxiliar para obtener la fecha actual en formato YYYY-MM-DD (Argentina)
-function getTodayDateString(): string {
-  const now = new Date()
-  const options: Intl.DateTimeFormatOptions = {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "America/Argentina/Buenos_Aires",
-  }
-  const formatter = new Intl.DateTimeFormat("en-CA", options) // en-CA para YYYY-MM-DD
-  return formatter.format(now)
-}
+// Exportar la instancia de Redis y los prefijos para uso centralizado
+export { redis, KEY_PREFIX_ESTADO, KEY_PREFIX_TICKETS }
 
-// --- Core State Management ---
-
-// leerEstadoSistema ahora devuelve el estado (metadata) Y los tickets
-export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: TicketInfo[] }> {
+// Función para leer el estado actual del sistema desde Redis
+export async function leerEstadoSistema(): Promise<SistemaEstado> {
   try {
-    console.log("📖 Leyendo estado y tickets desde Upstash Redis...")
-    const fechaHoy = getTodayDateString()
-    const estadoKey = STATE_KEY_PREFIX + fechaHoy
-    const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
+    const estadoRaw = await redis.get<SistemaEstado>(KEY_PREFIX_ESTADO)
 
-    // Usamos MULTI/EXEC para obtener el estado y la lista de tickets en una sola operación de red
-    const [estadoRaw, rawTicketsStrings] = await redis
-      .multi()
-      .get<EstadoSistema>(estadoKey)
-      .lrange<string>(ticketsListKey, 0, -1) // Solicitar cadenas de texto
-      .exec()
-
-    let estado: EstadoSistema
-    let tickets: TicketInfo[] = []
-
-    // Asegurarse de que rawTicketsStrings sea un array antes de mapear
-    if (Array.isArray(rawTicketsStrings)) {
-      tickets = rawTicketsStrings.map((ticketStr) => {
-        try {
-          // Manejar explícitamente nulls y la cadena literal "[object Object]"
-          if (ticketStr === null || typeof ticketStr !== "string" || ticketStr === "[object Object]") {
-            console.warn(
-              `⚠️ Saltando cadena de ticket malformada o nula (tipo: ${typeof ticketStr}, valor: ${ticketStr}).`,
-            )
-            return { numero: 0, nombre: "Datos corruptos", fecha: new Date().toLocaleString(), timestamp: Date.now() }
-          }
-          return JSON.parse(ticketStr) as TicketInfo
-        } catch (parseError) {
-          console.error(`❌ Error al analizar la cadena del ticket: ${ticketStr}`, parseError)
-          return { numero: 0, nombre: "Error de datos", fecha: new Date().toLocaleString(), timestamp: Date.now() }
-        }
-      })
-    } else if (rawTicketsStrings === null) {
-      // Si lrange devuelve null (la clave no existe), es una lista vacía
-      tickets = []
-    } else {
-      // Este caso idealmente no debería ocurrir para lrange, pero maneja valores inesperados
-      console.warn("⚠️ Resultado inesperado no-array para la lista de tickets:", rawTicketsStrings)
-      tickets = []
-    }
-
-    if (estadoRaw) {
-      estado = estadoRaw
-      console.log("✅ Estado y tickets cargados desde Upstash Redis.")
-    } else {
-      // Crear estado inicial para el día si no existe
-      console.log("⚠️ No se encontró estado para hoy, creando inicial en Upstash Redis...")
-      estado = {
+    // Reiniciar si es un nuevo día o si no hay estado
+    const hoy = new Date().toISOString().split("T")[0] // Formato YYYY-MM-DD
+    if (!estadoRaw || estadoRaw.fechaInicio !== hoy) {
+      console.log("Reiniciando sistema para el nuevo día o estado inicial.")
+      const nuevoEstado: SistemaEstado = {
         numeroActual: 1,
         ultimoNumero: 0,
         totalAtendidos: 0,
         numerosLlamados: 0,
-        fechaInicio: fechaHoy,
-        ultimoReinicio: new Date().toISOString(),
-        lastSync: Date.now(),
+        fechaInicio: hoy,
+        tickets: [],
       }
-      // No llamar a escribirEstadoSistema aquí para evitar recursión,
-      // el llamador (GET /api/sistema) se encargará de escribirlo si es necesario.
+      await guardarEstadoSistema(nuevoEstado)
+      return nuevoEstado
     }
 
-    return { ...estado, tickets }
+    // Asegurarse de que 'tickets' sea un array y parsear si es necesario
+    let ticketsParsed: TicketInfo[] = []
+    if (estadoRaw.tickets) {
+      // Si los tickets se guardaron como strings JSON individuales en una lista,
+      // necesitamos leerlos y parsearlos.
+      // Asumimos que 'tickets' en estadoRaw ya es un array de TicketInfo o un array de strings JSON.
+      // Si es un array de strings, lo parseamos.
+      if (Array.isArray(estadoRaw.tickets) && typeof estadoRaw.tickets[0] === "string") {
+        ticketsParsed = (estadoRaw.tickets as unknown as string[])
+          .map((ticketStr) => {
+            try {
+              return JSON.parse(ticketStr) as TicketInfo
+            } catch (e) {
+              console.error("Error parsing ticket string:", ticketStr, e)
+              return null // Retorna null para tickets malformados
+            }
+          })
+          .filter(Boolean) as TicketInfo[] // Filtra los nulls
+      } else {
+        ticketsParsed = estadoRaw.tickets // Ya es un array de TicketInfo
+      }
+    }
+
+    return { ...estadoRaw, tickets: ticketsParsed }
   } catch (error) {
-    console.error("❌ Error al leer estado del sistema desde Upstash Redis:", error)
-    throw error
+    console.error("Error al leer el estado del sistema desde Redis:", error)
+    // En caso de error, retornar un estado inicial para evitar que la app falle
+    const hoy = new Date().toISOString().split("T")[0]
+    return {
+      numeroActual: 1,
+      ultimoNumero: 0,
+      totalAtendidos: 0,
+      numerosLlamados: 0,
+      fechaInicio: hoy,
+      tickets: [],
+    }
   }
 }
 
-// escribirEstadoSistema ahora solo escribe la metadata del estado
-export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void> {
+// Función para guardar el estado actual del sistema en Redis
+export async function guardarEstadoSistema(estado: SistemaEstado): Promise<void> {
   try {
-    console.log("💾 Escribiendo estado (metadata) a Upstash Redis...")
-    const estadoKey = STATE_KEY_PREFIX + estado.fechaInicio
-    estado.lastSync = Date.now() // Actualizar timestamp de sincronización
-
-    await redis.set(estadoKey, estado)
-    // Establecer una expiración para la clave de estado (ej. 25 horas)
-    await redis.expire(estadoKey, 24 * 60 * 60 + 3600) // 25 horas
-    console.log("✅ Estado (metadata) guardado exitosamente en Upstash Redis")
+    // Asegurarse de que los tickets se guarden como strings JSON si es necesario
+    const ticketsToSave = estado.tickets.map((ticket) => JSON.stringify(ticket))
+    await redis.set(KEY_PREFIX_ESTADO, { ...estado, tickets: ticketsToSave })
+    console.log("Estado del sistema guardado en Redis.")
   } catch (error) {
-    console.error("❌ Error al escribir estado en Upstash Redis:", error)
-    throw error
+    console.error("Error al guardar el estado del sistema en Redis:", error)
+    throw new Error("No se pudo guardar el estado del sistema.")
   }
 }
 
 // Función para generar un nuevo ticket de forma atómica
-export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> {
+export async function generarTicketAtomico(nombre: string): Promise<TicketInfo | null> {
   try {
-    console.log("🎫 Generando ticket atómico para:", nombre, "en Upstash Redis...")
-    const fechaHoy = getTodayDateString()
-    const estadoKey = STATE_KEY_PREFIX + fechaHoy
-    const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
-    const counterKey = COUNTER_KEY_PREFIX + fechaHoy
-
-    // Transacción 1: Obtener el estado actual y el contador de ticket
-    // Esto se hace en un solo viaje de ida y vuelta a Redis
-    const [numeroAsignadoRaw, estadoRaw] = await redis
+    // Usar una transacción para asegurar atomicidad
+    const result = await redis
       .multi()
-      .incr(counterKey) // Incrementa el contador diario de tickets
-      .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado actual
+      .get(KEY_PREFIX_ESTADO)
+      .incr("ultimo_numero_emitido_temp") // Usar una clave temporal para el número
       .exec()
 
-    const numeroAsignado = numeroAsignadoRaw as number
+    const [estadoRaw, nuevoNumeroTemp] = result as [SistemaEstado | null, number]
 
-    let estadoActual: EstadoSistema
-    if (estadoRaw) {
-      estadoActual = estadoRaw
-    } else {
-      // Si el estado no existe (primer ticket del día), inicializarlo
+    if (!estadoRaw) {
+      console.error("Estado del sistema no encontrado durante la generación atómica de ticket.")
+      throw new Error("Estado del sistema no inicializado.")
+    }
+
+    // Reiniciar si es un nuevo día
+    const hoy = new Date().toISOString().split("T")[0]
+    let estadoActual: SistemaEstado
+    let nuevoNumero = nuevoNumeroTemp // Usar let para nuevoNumero
+
+    if (estadoRaw.fechaInicio !== hoy) {
+      console.log("Reiniciando sistema para el nuevo día durante la generación de ticket.")
       estadoActual = {
         numeroActual: 1,
         ultimoNumero: 0,
         totalAtendidos: 0,
         numerosLlamados: 0,
-        fechaInicio: fechaHoy,
-        ultimoReinicio: new Date().toISOString(),
-        lastSync: Date.now(),
+        fechaInicio: hoy,
+        tickets: [],
       }
-      // Establecer expiración para la clave del contador si es nueva
-      await redis.expire(counterKey, 24 * 60 * 60 + 3600) // 25 horas
+      // Resetear la clave temporal también
+      await redis.set("ultimo_numero_emitido_temp", 0)
+      nuevoNumero = 1 // El primer número del día
+    } else {
+      // Asegurarse de que 'tickets' sea un array y parsear si es necesario
+      let ticketsParsed: TicketInfo[] = []
+      if (estadoRaw.tickets) {
+        if (Array.isArray(estadoRaw.tickets) && typeof estadoRaw.tickets[0] === "string") {
+          ticketsParsed = (estadoRaw.tickets as unknown as string[])
+            .map((ticketStr) => {
+              try {
+                return JSON.parse(ticketStr) as TicketInfo
+              } catch (e) {
+                console.error("Error parsing ticket string during atomic generation:", ticketStr, e)
+                return null
+              }
+            })
+            .filter(Boolean) as TicketInfo[]
+        } else {
+          ticketsParsed = estadoRaw.tickets
+        }
+      }
+      estadoActual = { ...estadoRaw, tickets: ticketsParsed }
     }
 
-    const fecha = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
-    const timestamp = Date.now()
-
+    const numeroTicket = nuevoNumero
+    const fechaActual = new Date()
     const nuevoTicket: TicketInfo = {
-      numero: numeroAsignado,
-      nombre: nombre.trim(),
-      fecha,
-      timestamp,
-      // calledTimestamp no se establece aquí, se establece cuando se llama
+      numero: numeroTicket,
+      nombre: nombre,
+      fecha: fechaActual.toISOString(),
+      timestamp: fechaActual.getTime(),
     }
 
-    // Actualizar la metadata del estado en memoria
-    estadoActual.numeroActual = numeroAsignado + 1
-    estadoActual.ultimoNumero = numeroAsignado
-    estadoActual.totalAtendidos = (estadoActual.totalAtendidos || 0) + 1
-    estadoActual.lastSync = Date.now()
+    estadoActual.ultimoNumero = numeroTicket
+    estadoActual.totalAtendidos = estadoActual.tickets.length + 1 // Sumar el nuevo ticket
+    estadoActual.numeroActual = numeroTicket + 1
+    estadoActual.tickets.push(nuevoTicket)
 
-    // Transacción 2: Guardar el estado actualizado, añadir el nuevo ticket a la lista y registrar el log
-    // Esto también se hace en un solo viaje de ida y vuelta a Redis
-    await redis
-      .multi()
-      .set(estadoKey, estadoActual) // Guarda la metadata del estado actualizada
-      .rpush(ticketsListKey, JSON.stringify(nuevoTicket)) // Añade el nuevo ticket al final de la lista de tickets del día (como string)
-      .lpush(
-        LOGS_KEY,
-        JSON.stringify({
-          accion: "GENERAR_TICKET",
-          detalles: { numero: numeroAsignado, nombre: nombre.trim() },
-          timestamp_log: timestamp,
-        }),
-      )
-      .exec()
-
-    // Establecer expiración para la lista de tickets si es nueva o para asegurar que expire
-    await redis.expire(ticketsListKey, 24 * 60 * 60 + 3600) // 25 horas
-
-    console.log("✅ Ticket generado exitosamente en Upstash Redis:", nuevoTicket)
+    // Guardar el estado actualizado
+    await guardarEstadoSistema(estadoActual)
 
     return nuevoTicket
   } catch (error) {
-    console.error("❌ Error al generar ticket en Upstash Redis:", error)
+    console.error("Error en generarTicketAtomico:", error)
     throw error
   }
 }
 
-// Nueva función para marcar un ticket como llamado
-export async function marcarTicketComoLlamado(numeroTicket: number, fechaInicio: string): Promise<void> {
+// Función para marcar un ticket como llamado
+export async function marcarTicketComoLlamado(numeroTicket: number, fechaInicioJornada: string): Promise<boolean> {
   try {
-    console.log(`📞 Marcando ticket #${numeroTicket} como llamado en Upstash Redis...`)
-    const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaInicio
+    const estadoActual = await leerEstadoSistema()
 
-    // 1. Obtener todos los tickets de la lista
-    const rawTicketsStrings = await redis.lrange<string>(ticketsListKey, 0, -1)
-    let tickets: TicketInfo[] = []
-
-    if (Array.isArray(rawTicketsStrings)) {
-      tickets = rawTicketsStrings.map((ticketStr) => {
-        try {
-          return JSON.parse(ticketStr) as TicketInfo
-        } catch (parseError) {
-          console.error(`❌ Error al analizar la cadena del ticket durante la actualización: ${ticketStr}`, parseError)
-          return { numero: 0, nombre: "Error de datos", fecha: new Date().toLocaleString(), timestamp: Date.now() }
-        }
-      })
+    // Verificar si la jornada ha cambiado
+    const hoy = new Date().toISOString().split("T")[0]
+    if (estadoActual.fechaInicio !== hoy || estadoActual.fechaInicio !== fechaInicioJornada) {
+      console.warn("Intento de marcar ticket en una jornada diferente o reiniciada. No se marcará.")
+      return false
     }
 
-    // 2. Encontrar y actualizar el ticket
-    let updated = false
-    const updatedTickets = tickets.map((ticket) => {
-      if (ticket.numero === numeroTicket) {
-        if (!ticket.calledTimestamp) {
-          // Solo actualizar si no ha sido llamado ya
-          ticket.calledTimestamp = Date.now()
-          updated = true
-          console.log(`✅ Ticket #${numeroTicket} actualizado con calledTimestamp: ${ticket.calledTimestamp}`)
-        }
-      }
-      return ticket
-    })
+    const ticketIndex = estadoActual.tickets.findIndex((t) => t.numero === numeroTicket)
 
-    if (updated) {
-      // 3. Eliminar la lista antigua y guardar la nueva lista actualizada
-      // Esto se hace en una transacción MULTI/EXEC para asegurar atomicidad
-      const multi = redis.multi()
-      multi.del(ticketsListKey) // Eliminar la clave de la lista
-      if (updatedTickets.length > 0) {
-        multi.rpush(ticketsListKey, ...updatedTickets.map((t) => JSON.stringify(t))) // Volver a añadir todos los tickets
-      }
-      await multi.exec()
-      console.log(`💾 Lista de tickets actualizada en Upstash Redis para ticket #${numeroTicket}.`)
+    if (ticketIndex !== -1) {
+      // Actualizar el timestamp de llamado
+      estadoActual.tickets[ticketIndex].calledTimestamp = Date.now()
+      await guardarEstadoSistema(estadoActual)
+      console.log(`Ticket #${numeroTicket} marcado como llamado.`)
+      return true
     } else {
-      console.log(`ℹ️ Ticket #${numeroTicket} no encontrado o ya tenía calledTimestamp.`)
+      console.warn(`Ticket #${numeroTicket} no encontrado para marcar como llamado.`)
+      return false
     }
   } catch (error) {
-    console.error(`❌ Error al marcar ticket #${numeroTicket} como llamado en Upstash Redis:`, error)
-    throw error
-  }
-}
-
-// --- Backup & Admin Functions ---
-
-// crearBackupDiario ahora espera el estado completo (metadata + tickets)
-export async function crearBackupDiario(estado: EstadoSistema & { tickets: TicketInfo[] }): Promise<void> {
-  try {
-    console.log("📦 Creando backup diario en Upstash Redis...")
-
-    const fecha = estado.fechaInicio
-    const backupKey = BACKUP_KEY_PREFIX + fecha
-
-    const backupData = {
-      fecha,
-      estadoFinal: {
-        numeroActual: estado.numeroActual,
-        ultimoNumero: estado.ultimoNumero,
-        totalAtendidos: estado.totalAtendidos,
-        numerosLlamados: estado.numerosLlamados,
-        fechaInicio: estado.fechaInicio,
-        ultimoReinicio: estado.ultimoReinicio,
-        lastSync: estado.lastSync,
-      },
-      resumen: {
-        totalTicketsEmitidos: estado.totalAtendidos,
-        totalTicketsAtendidos: estado.numerosLlamados,
-        ticketsPendientes: estado.totalAtendidos - estado.numerosLlamados,
-        primerTicket: estado.tickets[0]?.numero || 0,
-        ultimoTicket: estado.ultimoNumero,
-        horaInicio: estado.fechaInicio,
-        horaBackup: new Date().toISOString(),
-      },
-      tickets: estado.tickets, // Incluye el array completo de tickets en el backup
-    }
-
-    await redis.set(backupKey, backupData)
-    await redis.expire(backupKey, 60 * 24 * 60 * 60) // 60 días de expiración para los backups
-
-    console.log("✅ Backup diario creado exitosamente en Upstash Redis")
-  } catch (error) {
-    console.error("❌ Error al crear backup diario en Upstash Redis:", error)
-    // No lanzar error para no bloquear otras operaciones
-  }
-}
-
-export async function obtenerBackups(): Promise<any[]> {
-  try {
-    const allKeys = await redis.keys(BACKUP_KEY_PREFIX + "*")
-    const backups: any[] = []
-
-    // Obtener todos los backups en una sola operación MULTI/EXEC si es posible
-    if (allKeys.length > 0) {
-      const multi = redis.multi()
-      for (const key of allKeys) {
-        multi.get(key)
-      }
-      const results = await multi.exec()
-
-      results.forEach((backup: any) => {
-        if (backup && typeof backup === "object" && "resumen" in backup) {
-          backups.push({
-            fecha: backup.fecha,
-            resumen: backup.resumen,
-            createdAt: backup.horaBackup, // Usar la hora de backup como created_at
-          })
-        }
-      })
-    }
-
-    backups.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
-
-    return backups.slice(0, 30) // Limitar a los últimos 30
-  } catch (error) {
-    console.error("❌ Error al obtener backups desde Upstash Redis:", error)
-    return []
-  }
-}
-
-export async function obtenerBackup(fecha: string): Promise<any | null> {
-  try {
-    const backupKey = BACKUP_KEY_PREFIX + fecha
-    const backup = await redis.get(backupKey)
-    return backup || null
-  } catch (error) {
-    console.error("❌ Error al obtener backup desde Upstash Redis:", error)
-    return null
-  }
-}
-
-// Función para limpiar datos antiguos (estados diarios, listas de tickets y backups)
-export async function limpiarDatosAntiguos(): Promise<void> {
-  try {
-    console.log("🧹 Limpiando datos antiguos en Upstash Redis...")
-    const now = Date.now()
-    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000 // 30 días en milisegundos
-
-    // Limpiar estados diarios y listas de tickets antiguas
-    const dailyStateKeys = await redis.keys(STATE_KEY_PREFIX + "*")
-    const dailyTicketsKeys = await redis.keys(TICKETS_LIST_KEY_PREFIX + "*")
-    const dailyCounterKeys = await redis.keys(COUNTER_KEY_PREFIX + "*")
-    const allDailyKeys = [...dailyStateKeys, ...dailyTicketsKeys, ...dailyCounterKeys]
-
-    for (const key of allDailyKeys) {
-      const datePart = key.split(":").pop() // Extraer YYYY-MM-DD de la clave
-      if (datePart) {
-        const keyDate = new Date(datePart).getTime()
-        if (keyDate < thirtyDaysAgo) {
-          await redis.del(key)
-          console.log(`🗑️ Eliminado dato diario antiguo: ${key}`)
-        }
-      }
-    }
-
-    // Limpiar backups antiguos
-    const allBackupKeys = await redis.keys(BACKUP_KEY_PREFIX + "*")
-    for (const key of allBackupKeys) {
-      const datePart = key.replace(BACKUP_KEY_PREFIX, "")
-      const backupDate = new Date(datePart).getTime()
-      if (backupDate < thirtyDaysAgo) {
-        await redis.del(key)
-        console.log(`🗑️ Eliminado backup antiguo: ${key}`)
-      }
-    }
-
-    // Recortar logs (mantener los últimos 1000)
-    await redis.ltrim(LOGS_KEY, 0, 999)
-
-    // Registrar la acción de limpieza
-    await redis.lpush(
-      LOGS_KEY,
-      JSON.stringify({
-        accion: "LIMPIEZA_AUTOMATICA",
-        detalles: { descripcion: "Limpieza de datos antiguos" },
-        timestamp_log: Date.now(),
-      }),
-    )
-
-    console.log("✅ Datos antiguos limpiados exitosamente en Upstash Redis")
-  } catch (error) {
-    console.error("❌ Error al limpiar datos antiguos en Upstash Redis:", error)
-  }
-}
-
-export async function obtenerEstadisticas(estado: EstadoSistema & { tickets: TicketInfo[] }) {
-  try {
-    const estadisticas = {
-      totalTicketsHoy: estado.totalAtendidos,
-      ticketsAtendidos: estado.numerosLlamados,
-      ticketsPendientes: estado.totalAtendidos - estado.numerosLlamados,
-      promedioTiempoPorTicket:
-        estado.tickets && estado.tickets.length > 1
-          ? (estado.tickets[estado.tickets.length - 1].timestamp - estado.tickets[0].timestamp) /
-            estado.tickets.length /
-            1000 /
-            60
-          : 0,
-      horaInicioOperaciones: estado.fechaInicio,
-      ultimaActividad:
-        estado.tickets && estado.tickets.length > 0
-          ? estado.tickets[estado.tickets.length - 1]?.fecha
-          : "Sin actividad",
-      ticketsUltimaHora: estado.tickets
-        ? estado.tickets.filter((t) => Date.now() - t.timestamp < 60 * 60 * 1000).length
-        : 0,
-    }
-
-    return estadisticas
-  } catch (error) {
-    console.error("❌ Error al obtener estadísticas desde Upstash Redis:", error)
-    throw error
-  }
-}
-
-export async function verificarConexionDB(): Promise<boolean> {
-  try {
-    const pong = await redis.ping()
-    console.log("✅ Conexión a Upstash Redis exitosa:", pong)
-    return pong === "PONG"
-  } catch (error) {
-    console.error("❌ Error de conexión a Upstash Redis:", error)
+    console.error(`Error al marcar ticket #${numeroTicket} como llamado:`, error)
     return false
   }
 }
 
-export async function cerrarConexiones(): Promise<void> {
-  console.log("🔌 No es necesario cerrar conexiones para Upstash Redis (HTTP)")
+// Función para obtener estadísticas del sistema
+export async function obtenerEstadisticas(): Promise<any> {
+  try {
+    const estado = await leerEstadoSistema()
+    const ahora = Date.now()
+    const inicioOperaciones = new Date(estado.fechaInicio).getTime()
+
+    // Tickets en la última hora
+    const unaHoraAtras = ahora - 60 * 60 * 1000
+    const ticketsUltimaHora = estado.tickets.filter((t) => t.timestamp > unaHoraAtras).length
+
+    // Tiempo promedio por ticket atendido
+    let totalTiempoAtencion = 0
+    let ticketsAtendidosConTiempo = 0
+    estado.tickets.forEach((ticket) => {
+      if (ticket.timestamp && ticket.calledTimestamp) {
+        totalTiempoAtencion += ticket.calledTimestamp - ticket.timestamp
+        ticketsAtendidosConTiempo++
+      }
+    })
+    const promedioTiempoPorTicket =
+      ticketsAtendidosConTiempo > 0 ? totalTiempoAtencion / ticketsAtendidosConTiempo / (1000 * 60) : 0 // en minutos
+
+    // Última actividad (timestamp del último ticket emitido o llamado)
+    let ultimaActividad = "Sin actividad"
+    if (estado.tickets.length > 0) {
+      const lastTicket = estado.tickets[estado.tickets.length - 1]
+      ultimaActividad = new Date(lastTicket.calledTimestamp || lastTicket.timestamp).toISOString()
+    }
+
+    return {
+      ticketsUltimaHora,
+      horaInicioOperaciones: new Date(inicioOperaciones).toLocaleTimeString("es-AR", {
+        timeZone: "America/Argentina/Buenos_Aires",
+      }),
+      ultimaActividad,
+      promedioTiempoPorTicket,
+    }
+  } catch (error) {
+    console.error("Error al obtener estadísticas:", error)
+    return {
+      ticketsUltimaHora: 0,
+      horaInicioOperaciones: "N/A",
+      ultimaActividad: "N/A",
+      promedioTiempoPorTicket: 0,
+    }
+  }
+}
+
+// Función para obtener información de debug
+export async function obtenerDebugInfo(): Promise<any> {
+  try {
+    const estado = await leerEstadoSistema()
+    const env = process.env
+
+    let dbConnectionStatus = "Desconocido"
+    try {
+      // Intenta una operación simple para verificar la conexión
+      await redis.ping()
+      dbConnectionStatus = "Exitosa"
+    } catch (e) {
+      dbConnectionStatus = `Fallida: ${e instanceof Error ? e.message : String(e)}`
+    }
+
+    return {
+      environment: {
+        NODE_ENV: env.NODE_ENV,
+        VERCEL_ENV: env.VERCEL_ENV,
+        PLATFORM: env.VERCEL_ENV ? "Vercel" : "Local",
+      },
+      database: {
+        url: env.KV_REST_API_URL ? "Configurado" : "No configurado",
+        type: "Upstash Redis",
+        name: "sistemaTurnosZOCO",
+        connection: dbConnectionStatus,
+        estadoActual: estado, // Mostrar el estado completo para debug
+      },
+    }
+  } catch (error) {
+    console.error("Error al obtener información de debug:", error)
+    return {
+      environment: {},
+      database: {
+        connection: `Error al obtener info: ${error instanceof Error ? error.message : String(error)}`,
+      },
+    }
+  }
+}
+
+// Función para obtener backups
+export async function obtenerBackups(): Promise<any[]> {
+  try {
+    const keys = await redis.keys("backup:*")
+    const backups = []
+
+    for (const key of keys) {
+      const backup = await redis.get(key)
+      if (backup) {
+        backups.push({
+          fecha: key.replace("backup:", ""),
+          resumen: backup.resumen,
+        })
+      }
+    }
+
+    backups.sort((a, b) => (b.fecha > a.fecha ? 1 : -1)) // Ordenar por fecha descendente
+    return backups
+  } catch (error) {
+    console.error("Error al obtener backups:", error)
+    return []
+  }
+}
+
+// Función para obtener backup específico
+export async function obtenerBackup(fecha: string): Promise<any | null> {
+  try {
+    const backup = await redis.get(`backup:${fecha}`)
+    return backup || null
+  } catch (error) {
+    console.error("Error al obtener backup:", error)
+    return null
+  }
+}
+
+// Función para limpiar datos antiguos (más de 30 días)
+export async function limpiarDatosAntiguos(): Promise<void> {
+  try {
+    const keys = await redis.keys("backup:*")
+    const treintaDiasAtras = Date.now() - 30 * 24 * 60 * 60 * 1000
+
+    for (const key of keys) {
+      const fechaBackupStr = key.replace("backup:", "")
+      const [year, month, day] = fechaBackupStr.split("-").map(Number)
+      const fechaBackup = new Date(year, month - 1, day).getTime() // Month is 0-indexed
+
+      if (fechaBackup < treintaDiasAtras) {
+        await redis.del(key)
+        console.log(`Backup antiguo eliminado: ${key}`)
+      }
+    }
+  } catch (error) {
+    console.error("Error al limpiar datos antiguos:", error)
+  }
+}
+
+// Función para verificar la conexión a la base de datos
+export async function verificarConexionDB(): Promise<boolean> {
+  try {
+    await redis.ping()
+    return true
+  } catch (error) {
+    console.error("Error al verificar la conexión a la base de datos:", error)
+    return false
+  }
 }

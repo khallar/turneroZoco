@@ -548,7 +548,7 @@ export default function PaginaEmpleados() {
                     const diffMinutes = Math.floor(diffMs / (1000 * 60))
                     tiempoDemorado = `${diffMinutes} min`
                   } else if (ticket?.timestamp && i === 0) {
-                    // Para el ticket actualmente en atención
+                    // Para el ticket actualmente en atención (el último llamado)
                     const diffMs = Date.now() - ticket.timestamp
                     const diffMinutes = Math.floor(diffMs / (1000 * 60))
                     tiempoDemorado = `${diffMinutes} min (actual)`
