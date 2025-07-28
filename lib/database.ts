@@ -54,11 +54,12 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
     const estadoKey = STATE_KEY_PREFIX + fechaHoy
     const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
 
-    // Usamos MULTI/EXEC para obtener el estado y la lista de tickets en una sola operación de red
+    // OPTIMIZACIÓN: Usamos MULTI/EXEC para obtener el estado y la lista de tickets
+    // en una sola operación de red. Esto reduce la latencia y asegura la atomicidad.
     const [estadoRaw, ticketsRaw] = await redis
       .multi()
-      .get<EstadoSistema>(estadoKey)
-      .lrange<TicketInfo>(ticketsListKey, 0, -1)
+      .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado
+      .lrange<TicketInfo>(ticketsListKey, 0, -1) // Obtiene todos los tickets del día
       .exec()
 
     let estado: EstadoSistema
@@ -97,9 +98,9 @@ export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void
     const estadoKey = STATE_KEY_PREFIX + estado.fechaInicio
     estado.lastSync = Date.now() // Actualizar timestamp de sincronización
 
-    await redis.set(estadoKey, estado)
+    // OPTIMIZACIÓN: SET y EXPIRE son operaciones rápidas.
     // Establecer una expiración para la clave de estado (ej. 25 horas)
-    await redis.expire(estadoKey, 24 * 60 * 60 + 3600) // 25 horas
+    await redis.set(estadoKey, estado, { ex: 24 * 60 * 60 + 3600 }) // 25 horas
     console.log("✅ Estado (metadata) guardado exitosamente en Upstash Redis")
   } catch (error) {
     console.error("❌ Error al escribir estado en Upstash Redis:", error)
@@ -116,11 +117,11 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
     const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
     const counterKey = COUNTER_KEY_PREFIX + fechaHoy
 
-    // Transacción 1: Obtener el estado actual y el contador de ticket
-    // Esto se hace en un solo viaje de ida y vuelta a Redis
+    // OPTIMIZACIÓN: Transacción 1 - Obtener el estado actual y el contador de ticket
+    // Esto se hace en un solo viaje de ida y vuelta a Redis para minimizar latencia.
     const [numeroAsignadoRaw, estadoRaw] = await redis
       .multi()
-      .incr(counterKey) // Incrementa el contador diario de tickets
+      .incr(counterKey) // Incrementa el contador diario de tickets (atómico)
       .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado actual
       .exec()
 
@@ -160,8 +161,8 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
     estadoActual.totalAtendidos = (estadoActual.totalAtendidos || 0) + 1
     estadoActual.lastSync = Date.now()
 
-    // Transacción 2: Guardar el estado actualizado, añadir el nuevo ticket a la lista y registrar el log
-    // Esto también se hace en un solo viaje de ida y vuelta a Redis
+    // OPTIMIZACIÓN: Transacción 2 - Guardar el estado actualizado, añadir el nuevo ticket
+    // a la lista y registrar el log. Todo en un solo viaje de ida y vuelta a Redis.
     await redis
       .multi()
       .set(estadoKey, estadoActual) // Guarda la metadata del estado actualizada
@@ -221,9 +222,8 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
       tickets: estado.tickets, // Incluye el array completo de tickets en el backup
     }
 
-    await redis.set(backupKey, backupData)
-    await redis.expire(backupKey, 60 * 24 * 60 * 60) // 60 días de expiración para los backups
-
+    // OPTIMIZACIÓN: SET con expiración para el backup.
+    await redis.set(backupKey, backupData, { ex: 60 * 24 * 60 * 60 }) // 60 días de expiración para los backups
     console.log("✅ Backup diario creado exitosamente en Upstash Redis")
   } catch (error) {
     console.error("❌ Error al crear backup diario en Upstash Redis:", error)
@@ -233,10 +233,12 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
 
 export async function obtenerBackups(): Promise<any[]> {
   try {
+    // NOTA: KEYS puede ser lento en bases de datos muy grandes.
+    // Para un número limitado de backups (ej. 30-60 días), es aceptable.
     const allKeys = await redis.keys(BACKUP_KEY_PREFIX + "*")
     const backups: any[] = []
 
-    // Obtener todos los backups en una sola operación MULTI/EXEC si es posible
+    // OPTIMIZACIÓN: Obtener todos los backups en una sola operación MULTI/EXEC si es posible
     if (allKeys.length > 0) {
       const multi = redis.multi()
       for (const key of allKeys) {
@@ -267,6 +269,7 @@ export async function obtenerBackups(): Promise<any[]> {
 export async function obtenerBackup(fecha: string): Promise<any | null> {
   try {
     const backupKey = BACKUP_KEY_PREFIX + fecha
+    // OPTIMIZACIÓN: GET es una operación de lectura directa y eficiente.
     const backup = await redis.get(backupKey)
     return backup || null
   } catch (error) {
@@ -282,35 +285,45 @@ export async function limpiarDatosAntiguos(): Promise<void> {
     const now = Date.now()
     const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000 // 30 días en milisegundos
 
-    // Limpiar estados diarios y listas de tickets antiguas
+    // NOTA: KEYS puede ser lento en bases de datos muy grandes.
+    // Para la limpieza periódica de datos con prefijos específicos, es manejable.
     const dailyStateKeys = await redis.keys(STATE_KEY_PREFIX + "*")
     const dailyTicketsKeys = await redis.keys(TICKETS_LIST_KEY_PREFIX + "*")
     const dailyCounterKeys = await redis.keys(COUNTER_KEY_PREFIX + "*")
     const allDailyKeys = [...dailyStateKeys, ...dailyTicketsKeys, ...dailyCounterKeys]
 
+    // OPTIMIZACIÓN: Usar DEL para eliminar múltiples claves.
+    const keysToDelete = []
     for (const key of allDailyKeys) {
       const datePart = key.split(":").pop() // Extraer YYYY-MM-DD de la clave
       if (datePart) {
         const keyDate = new Date(datePart).getTime()
         if (keyDate < thirtyDaysAgo) {
-          await redis.del(key)
-          console.log(`🗑️ Eliminado dato diario antiguo: ${key}`)
+          keysToDelete.push(key)
         }
       }
+    }
+    if (keysToDelete.length > 0) {
+      await redis.del(...keysToDelete)
+      console.log(`🗑️ Eliminados ${keysToDelete.length} datos diarios antiguos.`)
     }
 
     // Limpiar backups antiguos
     const allBackupKeys = await redis.keys(BACKUP_KEY_PREFIX + "*")
+    const backupKeysToDelete = []
     for (const key of allBackupKeys) {
       const datePart = key.replace(BACKUP_KEY_PREFIX, "")
       const backupDate = new Date(datePart).getTime()
       if (backupDate < thirtyDaysAgo) {
-        await redis.del(key)
-        console.log(`🗑️ Eliminado backup antiguo: ${key}`)
+        backupKeysToDelete.push(key)
       }
     }
+    if (backupKeysToDelete.length > 0) {
+      await redis.del(...backupKeysToDelete)
+      console.log(`🗑️ Eliminados ${backupKeysToDelete.length} backups antiguos.`)
+    }
 
-    // Recortar logs (mantener los últimos 1000)
+    // OPTIMIZACIÓN: LTRIM para recortar la lista de logs de forma eficiente.
     await redis.ltrim(LOGS_KEY, 0, 999)
 
     // Registrar la acción de limpieza
@@ -331,6 +344,8 @@ export async function limpiarDatosAntiguos(): Promise<void> {
 
 export async function obtenerEstadisticas(estado: EstadoSistema & { tickets: TicketInfo[] }) {
   try {
+    // Esta función procesa datos ya obtenidos de Redis, por lo que su eficiencia
+    // depende de la eficiencia de 'leerEstadoSistema'.
     const estadisticas = {
       totalTicketsHoy: estado.totalAtendidos,
       ticketsAtendidos: estado.numerosLlamados,
@@ -361,6 +376,7 @@ export async function obtenerEstadisticas(estado: EstadoSistema & { tickets: Tic
 
 export async function verificarConexionDB(): Promise<boolean> {
   try {
+    // OPTIMIZACIÓN: PING es una operación muy ligera para verificar la conexión.
     const pong = await redis.ping()
     console.log("✅ Conexión a Upstash Redis exitosa:", pong)
     return pong === "PONG"
