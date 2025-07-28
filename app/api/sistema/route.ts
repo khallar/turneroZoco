@@ -1,167 +1,113 @@
 import { NextResponse } from "next/server"
 import {
+  inicializarEstadoSistema,
   leerEstadoSistema,
-  guardarEstadoSistema,
   generarTicketAtomico,
   obtenerEstadisticas,
-  obtenerDebugInfo,
+  marcarTicketComoLlamado,
   redis, // Importar la instancia de redis
   KEY_PREFIX_ESTADO, // Importar prefijos de clave
+  KEY_PREFIX_TICKETS,
+  KEY_PREFIX_ULTIMO_NUMERO_EMITIDO_TEMP,
 } from "@/lib/database"
 
-interface TicketInfo {
-  numero: number
-  nombre: string
-  fecha: string
-  timestamp: number
-  calledTimestamp?: number
-}
-
-interface EstadoSistema {
-  numeroActual: number
-  ultimoNumero: number
-  totalAtendidos: number
-  numerosLlamados: number
-  fechaInicio: string
-  ultimoReinicio: string
-  tickets: TicketInfo[] // Mantener aquí para la consistencia del tipo en la API
-  lastSync?: number
-}
-
-// Función para verificar si debe reiniciarse
-function debeReiniciarse(estado: EstadoSistema): boolean {
-  try {
-    const ahora = new Date()
-    const fechaActualArgentina = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }))
-    const fechaHoyString = fechaActualArgentina.toISOString().split("T")[0]
-    const fechaInicioString = estado.fechaInicio
-
-    const esDiaDiferente = fechaHoyString !== fechaInicioString
-
-    if (esDiaDiferente) {
-      console.log(`🔄 Reinicio automático necesario (Upstash Redis): ${fechaHoyString} vs ${fechaInicioString}`)
-      return true
-    }
-
-    return false
-  } catch (error) {
-    console.error("❌ Error verificando reinicio (Upstash Redis):", error)
-    return false
-  }
-}
-
+// GET: Obtener el estado actual del sistema y estadísticas
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const includeStats = searchParams.get("stats") === "true"
-    const includeDebug = searchParams.get("debug") === "true"
 
     const estado = await leerEstadoSistema()
-    const response: any = { estado }
+    let responseData: any = { estado }
 
     if (includeStats) {
-      response.estadisticas = await obtenerEstadisticas()
-    }
-    if (includeDebug) {
-      response.debugInfo = await obtenerDebugInfo()
+      const estadisticas = await obtenerEstadisticas()
+      responseData = { ...responseData, estadisticas }
     }
 
-    return NextResponse.json(response)
+    return NextResponse.json(responseData, { status: 200 })
   } catch (error) {
-    console.error("Error en GET /api/sistema:", error)
+    console.error("Error al obtener el estado del sistema:", error)
     return NextResponse.json(
-      { error: "Error al obtener el estado del sistema", details: (error as Error).message },
+      { message: "Error al obtener el estado del sistema", error: (error as Error).message },
       { status: 500 },
     )
   }
 }
 
+// POST: Generar un nuevo ticket
 export async function POST(request: Request) {
   try {
     const { nombre } = await request.json()
     if (!nombre) {
-      return NextResponse.json({ error: "El nombre es requerido" }, { status: 400 })
+      return NextResponse.json({ message: "El nombre es requerido" }, { status: 400 })
     }
 
     const nuevoTicket = await generarTicketAtomico(nombre)
 
-    if (nuevoTicket) {
-      return NextResponse.json({ success: true, ticket: nuevoTicket })
-    } else {
-      return NextResponse.json({ success: false, error: "No se pudo generar el ticket" }, { status: 500 })
+    if (!nuevoTicket) {
+      throw new Error("No se pudo generar el ticket.")
     }
+
+    return NextResponse.json({ message: "Ticket generado exitosamente", ticket: nuevoTicket }, { status: 201 })
   } catch (error) {
-    console.error("Error en POST /api/sistema:", error)
-    return NextResponse.json(
-      { error: "Error al generar el ticket", details: (error as Error).message },
-      { status: 500 },
-    )
+    console.error("Error al generar ticket:", error)
+    return NextResponse.json({ message: "Error al generar ticket", error: (error as Error).message }, { status: 500 })
   }
 }
 
+// PUT: Actualizar el estado del sistema (ej. llamar siguiente número, reiniciar)
 export async function PUT(request: Request) {
   try {
-    const { action, numero, fechaInicio } = await request.json()
+    const { action, payload } = await request.json()
 
-    if (action === "reset") {
-      // Reiniciar el sistema
-      const hoy = new Date().toISOString().split("T")[0]
-      const nuevoEstado = {
-        numeroActual: 1,
-        ultimoNumero: 0,
-        totalAtendidos: 0,
-        numerosLlamados: 0,
-        fechaInicio: hoy,
-        tickets: [],
-      }
-      await guardarEstadoSistema(nuevoEstado)
-      // También resetear la clave temporal de incremento si existe
-      await redis.set("ultimo_numero_emitido_temp", 0)
-      return NextResponse.json({ success: true, message: "Sistema reiniciado" })
-    } else if (action === "callTicket") {
-      // Marcar un ticket como llamado
-      if (typeof numero !== "number" || !fechaInicio) {
+    if (action === "callTicket") {
+      const { numeroTicket, fechaInicioOperaciones } = payload
+      if (!numeroTicket || !fechaInicioOperaciones) {
         return NextResponse.json(
-          { error: "Número de ticket y fecha de inicio son requeridos para llamar" },
+          { message: "Número de ticket y fecha de inicio son requeridos para llamar." },
           { status: 400 },
         )
       }
-      const estado = await leerEstadoSistema()
-      const ticketIndex = estado.tickets.findIndex((t) => t.numero === numero)
-
-      if (ticketIndex !== -1) {
-        // Actualizar el timestamp de llamado
-        estado.tickets[ticketIndex].calledTimestamp = Date.now()
-        estado.numerosLlamados = Math.max(estado.numerosLlamados, numero) // Asegurar que numerosLlamados no retroceda
-        await guardarEstadoSistema(estado)
-        return NextResponse.json({ success: true, message: `Ticket ${numero} marcado como llamado` })
-      } else {
-        return NextResponse.json({ success: false, error: `Ticket ${numero} no encontrado` }, { status: 404 })
-      }
-    } else {
-      return NextResponse.json({ error: "Acción no válida" }, { status: 400 })
+      await marcarTicketComoLlamado(numeroTicket, fechaInicioOperaciones)
+      const estadoActualizado = await leerEstadoSistema()
+      return NextResponse.json(
+        { message: `Ticket ${numeroTicket} marcado como llamado.`, estado: estadoActualizado },
+        { status: 200 },
+      )
     }
+
+    // Para otras acciones como reiniciar el sistema
+    if (action === "reset") {
+      const nuevoEstado = await inicializarEstadoSistema()
+      return NextResponse.json({ message: "Sistema reiniciado exitosamente", estado: nuevoEstado }, { status: 200 })
+    }
+
+    return NextResponse.json({ message: "Acción no válida" }, { status: 400 })
   } catch (error) {
-    console.error("Error en PUT /api/sistema:", error)
+    console.error("Error al actualizar el estado del sistema:", error)
     return NextResponse.json(
-      { error: "Error al actualizar el estado del sistema", details: (error as Error).message },
+      { message: "Error al actualizar el estado del sistema", error: (error as Error).message },
       { status: 500 },
     )
   }
 }
 
-export async function DELETE() {
+// DELETE: Reiniciar el sistema (alias para PUT con acción reset)
+export async function DELETE(request: Request) {
   try {
-    // Eliminar la clave de estado principal
+    // Al reiniciar, eliminamos todas las claves relacionadas con el estado y los tickets
     await redis.del(KEY_PREFIX_ESTADO)
-    // Eliminar la clave temporal de incremento
-    await redis.del("ultimo_numero_emitido_temp")
-    console.log("Todos los datos del sistema han sido eliminados de Redis.")
-    return NextResponse.json({ success: true, message: "Todos los datos del sistema han sido eliminados." })
+    await redis.del(KEY_PREFIX_TICKETS)
+    await redis.del(KEY_PREFIX_ULTIMO_NUMERO_EMITIDO_TEMP) // Asegurarse de limpiar el contador temporal
+
+    const nuevoEstado = await inicializarEstadoSistema() // Re-inicializar para el nuevo día/sesión
+
+    return NextResponse.json({ message: "Sistema reiniciado exitosamente", estado: nuevoEstado }, { status: 200 })
   } catch (error) {
-    console.error("Error en DELETE /api/sistema:", error)
+    console.error("Error al reiniciar el sistema:", error)
     return NextResponse.json(
-      { error: "Error al eliminar los datos del sistema", details: (error as Error).message },
+      { message: "Error al reiniciar el sistema", error: (error as Error).message },
       { status: 500 },
     )
   }
