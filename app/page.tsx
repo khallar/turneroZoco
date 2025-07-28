@@ -29,6 +29,21 @@ const FRASES_ALEATORIAS = [
   "Quedate tranquilo, ya te toca. Y sí, podés llevarte ese globo gigante. 🎈🛒",
   "Un turno en ZOCO vale más que mil excusas para no festejar. 🥳💬",
   "Estás a un paso de que tu casa parezca una fiesta sorpresa permanente. 🎁🎊",
+  "¡Ya casi es tu turno! Prepará la sonrisa 😁",
+  "Turno en mano, paciencia en el corazón 🧘‍♂️",
+  "¿Ansias? Tranqui, lo bueno se hace esperar ⏳",
+  "¡Gracias por venir! Ya te atendemos 💕",
+  "Turnito sacado, ahora a mirar memes 😜",
+  "¡Sos el próximo protagonista! 🎬",
+  "Mientras esperás… pensá en algo rico 🍫",
+  "Tu número tiene suerte, lo presiento 🍀",
+  "Esto no es el bingo… ¡pero podés ganar buena onda! 🎟️",
+  "Estamos a full, pero ya te toca 💪",
+  "Gracias por bancarnos con onda 🙌",
+  "¡Zoco no se toma vacaciones! Vos tampoco del buen humor 😄",
+  "Te prometemos atención con una sonrisa 😃",
+  "Mientras esperás, pensá qué más te podés llevar 👀",
+  "Esto es más rápido que sacar una selfie 📸",
 ]
 
 export default function SistemaAtencion() {
