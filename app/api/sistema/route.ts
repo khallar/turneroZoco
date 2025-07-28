@@ -7,14 +7,17 @@ import {
   obtenerEstadisticas,
   verificarConexionDB,
   limpiarDatosAntiguos,
+  redis, // Importar la instancia de redis centralizada
+  TICKETS_LIST_KEY_PREFIX,
+  COUNTER_KEY_PREFIX,
 } from "@/lib/database"
-import { Redis } from "@upstash/redis" // Importar Redis para operaciones directas
 
 interface TicketInfo {
   numero: number
   nombre: string
   fecha: string
   timestamp: number
+  calledTimestamp?: number // Mantener aquí para la consistencia del tipo en la API
 }
 
 interface EstadoSistema {
@@ -27,17 +30,6 @@ interface EstadoSistema {
   tickets: TicketInfo[] // Mantener aquí para la consistencia del tipo en la API
   lastSync?: number
 }
-
-// Inicializar cliente de Upstash Redis para operaciones directas en la API
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL!,
-  token: process.env.KV_REST_API_TOKEN!,
-})
-
-// Prefijos para las claves de Redis (duplicados para uso directo aquí)
-const STATE_KEY_PREFIX = "sistemaTurnosZOCO:estado:"
-const TICKETS_LIST_KEY_PREFIX = "sistemaTurnosZOCO:tickets:"
-const COUNTER_KEY_PREFIX = "sistemaTurnosZOCO:counter:"
 
 // Función para verificar si debe reiniciarse
 function debeReiniciarse(estado: EstadoSistema): boolean {
