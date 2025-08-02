@@ -53,37 +53,73 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
     const fechaHoy = getTodayDateString()
     const estadoKey = STATE_KEY_PREFIX + fechaHoy
     const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
+    const counterKey = COUNTER_KEY_PREFIX + fechaHoy
 
-    // OPTIMIZACIÓN: Usamos MULTI/EXEC para obtener el estado y la lista de tickets
+    // OPTIMIZACIÓN: Usamos MULTI/EXEC para obtener el estado, la lista de tickets y el contador
     // en una sola operación de red. Esto reduce la latencia y asegura la atomicidad.
-    const [estadoRaw, ticketsRaw] = await redis
+    const [estadoRaw, ticketsRaw, contadorActual] = await redis
       .multi()
       .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado
       .lrange<TicketInfo>(ticketsListKey, 0, -1) // Obtiene todos los tickets del día
+      .get(counterKey) // Obtiene el valor actual del contador
       .exec()
 
     let estado: EstadoSistema
     const tickets: TicketInfo[] = ticketsRaw || []
+    const contador = (contadorActual as number) || 0
+
+    console.log(`🔍 Verificación al leer: Tickets en lista: ${tickets.length}, Contador: ${contador}`)
 
     if (estadoRaw) {
       estado = estadoRaw
+
+      // Verificar y corregir inconsistencias entre el estado y los datos reales
+      const ticketsReales = tickets.length
+      if (estado.totalAtendidos !== ticketsReales) {
+        console.log(
+          `⚠️ Corrigiendo inconsistencia: Estado decía ${estado.totalAtendidos}, pero hay ${ticketsReales} tickets`,
+        )
+        estado.totalAtendidos = ticketsReales
+
+        // Si hay tickets, actualizar el último número basado en el último ticket real
+        if (tickets.length > 0) {
+          const ultimoTicketReal = tickets[tickets.length - 1]
+          estado.ultimoNumero = ultimoTicketReal.numero
+          estado.numeroActual = ultimoTicketReal.numero + 1
+        }
+
+        // Actualizar el estado corregido en Redis
+        estado.lastSync = Date.now()
+        await redis.set(estadoKey, estado)
+        console.log("✅ Estado corregido y guardado")
+      }
+
       console.log("✅ Estado y tickets cargados desde Upstash Redis.")
     } else {
       // Crear estado inicial para el día si no existe
       console.log("⚠️ No se encontró estado para hoy, creando inicial en Upstash Redis...")
+
+      // Si hay tickets pero no hay estado, reconstruir el estado basado en los tickets existentes
+      let ultimoNumero = 0
+      if (tickets.length > 0) {
+        ultimoNumero = Math.max(...tickets.map((t) => t.numero))
+        console.log(`🔧 Reconstruyendo estado: Encontrados ${tickets.length} tickets, último número: ${ultimoNumero}`)
+      }
+
       estado = {
-        numeroActual: 1,
-        ultimoNumero: 0,
-        totalAtendidos: 0,
-        numerosLlamados: 0,
+        numeroActual: ultimoNumero + 1,
+        ultimoNumero: ultimoNumero,
+        totalAtendidos: tickets.length,
+        numerosLlamados: 0, // Esto se debe calcular o mantener por separado
         fechaInicio: fechaHoy,
         ultimoReinicio: new Date().toISOString(),
         lastSync: Date.now(),
       }
-      // No llamar a escribirEstadoSistema aquí para evitar recursión,
-      // el llamador (GET /api/sistema) se encargará de escribirlo si es necesario.
     }
 
+    console.log(
+      `📊 Estado final: Total: ${estado.totalAtendidos}, Último: ${estado.ultimoNumero}, Próximo: ${estado.numeroActual}`,
+    )
     return { ...estado, tickets }
   } catch (error) {
     console.error("❌ Error al leer estado del sistema desde Upstash Redis:", error)
@@ -119,23 +155,36 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
 
     // OPTIMIZACIÓN: Transacción 1 - Obtener el estado actual y el contador de ticket
     // Esto se hace en un solo viaje de ida y vuelta a Redis para minimizar latencia.
-    const [numeroAsignadoRaw, estadoRaw] = await redis
+    const [numeroAsignadoRaw, estadoRaw, totalTicketsEnLista] = await redis
       .multi()
       .incr(counterKey) // Incrementa el contador diario de tickets (atómico)
       .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado actual
+      .llen(ticketsListKey) // Obtiene el número total de tickets en la lista para verificar consistencia
       .exec()
 
     const numeroAsignado = numeroAsignadoRaw as number
+    const ticketsExistentes = (totalTicketsEnLista as number) || 0
+
+    console.log(
+      `🔍 Verificación de consistencia: Número asignado: ${numeroAsignado}, Tickets en lista: ${ticketsExistentes}`,
+    )
 
     let estadoActual: EstadoSistema
     if (estadoRaw) {
       estadoActual = estadoRaw
+      // Verificar y corregir inconsistencias
+      if (estadoActual.totalAtendidos !== ticketsExistentes) {
+        console.log(
+          `⚠️ Inconsistencia detectada: Estado dice ${estadoActual.totalAtendidos}, lista tiene ${ticketsExistentes}`,
+        )
+        estadoActual.totalAtendidos = ticketsExistentes
+      }
     } else {
       // Si el estado no existe (primer ticket del día), inicializarlo
       estadoActual = {
         numeroActual: 1,
         ultimoNumero: 0,
-        totalAtendidos: 0,
+        totalAtendidos: ticketsExistentes,
         numerosLlamados: 0,
         fechaInicio: fechaHoy,
         ultimoReinicio: new Date().toISOString(),
@@ -155,10 +204,10 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
       timestamp,
     }
 
-    // Actualizar la metadata del estado en memoria
+    // Actualizar la metadata del estado en memoria con el nuevo ticket
     estadoActual.numeroActual = numeroAsignado + 1
     estadoActual.ultimoNumero = numeroAsignado
-    estadoActual.totalAtendidos = (estadoActual.totalAtendidos || 0) + 1
+    estadoActual.totalAtendidos = ticketsExistentes + 1 // Usar el conteo real de la lista + 1
     estadoActual.lastSync = Date.now()
 
     // OPTIMIZACIÓN: Transacción 2 - Guardar el estado actualizado, añadir el nuevo ticket
@@ -171,7 +220,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
         LOGS_KEY,
         JSON.stringify({
           accion: "GENERAR_TICKET",
-          detalles: { numero: numeroAsignado, nombre: nombre.trim() },
+          detalles: { numero: numeroAsignado, nombre: nombre.trim(), totalEnSistema: estadoActual.totalAtendidos },
           timestamp_log: timestamp,
         }),
       )
@@ -181,6 +230,9 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
     await redis.expire(ticketsListKey, 24 * 60 * 60 + 3600) // 25 horas
 
     console.log("✅ Ticket generado exitosamente en Upstash Redis:", nuevoTicket)
+    console.log(
+      `📊 Estado actualizado: Total atendidos: ${estadoActual.totalAtendidos}, Último número: ${estadoActual.ultimoNumero}`,
+    )
 
     return nuevoTicket
   } catch (error) {

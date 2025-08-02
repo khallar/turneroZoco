@@ -36,16 +36,21 @@ export default function PaginaEmpleados() {
     setIsClient(true)
   }, [])
 
-  // Actualizar datos automáticamente cada 30 segundos (específico para empleados)
+  // Actualizar datos automáticamente cada 15 segundos (más frecuente para empleados)
   useEffect(() => {
     if (!isClient) return
 
     const actualizarAutomaticamente = async () => {
       try {
-        console.log("Actualizando datos automáticamente (empleados - Upstash Redis)...")
+        console.log("🔄 Actualizando datos automáticamente (empleados - Upstash Redis)...")
         setUltimaActualizacionAutomatica(new Date())
         setContadorActualizaciones((prev) => prev + 1)
         await cargarEstado(true) // Con estadísticas para el panel de empleados
+
+        // Log adicional para debug
+        console.log(
+          `📊 Estado después de actualización: Total emitidos: ${estado?.totalAtendidos}, Números llamados: ${estado?.numerosLlamados}`,
+        )
       } catch (error) {
         console.error("Error en actualización automática de empleados (Upstash Redis):", error)
       }
@@ -54,8 +59,8 @@ export default function PaginaEmpleados() {
     // Ejecutar inmediatamente al montar
     actualizarAutomaticamente()
 
-    // Configurar intervalo
-    const interval = setInterval(actualizarAutomaticamente, 30000) // 30 segundos
+    // Configurar intervalo más frecuente para empleados
+    const interval = setInterval(actualizarAutomaticamente, 15000) // 15 segundos
 
     return () => clearInterval(interval)
   }, [cargarEstado, isClient])
@@ -230,6 +235,17 @@ export default function PaginaEmpleados() {
 
   // Obtener información del próximo ticket
   const proximoTicket = estado?.tickets?.find((ticket) => ticket.numero === proximoNumeroALlamar)
+
+  const debugInfo = {
+    estadoCompleto: estado,
+    proximoNumeroCalculado: proximoNumeroALlamar,
+    numerosEnEspera: numerosEnEspera,
+    hayNumerosParaLlamar: hayNumerosParaLlamar,
+    totalTicketsEnArray: estado?.tickets?.length || 0,
+    ultimoTicketEnArray: estado?.tickets?.[estado.tickets.length - 1]?.numero || "N/A",
+  }
+
+  console.log("🔍 Debug info empleados:", debugInfo)
 
   if (loading) {
     return (

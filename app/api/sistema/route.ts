@@ -73,6 +73,18 @@ export async function GET() {
 
     let estado = await leerEstadoSistema() // Esto ya devuelve el estado con los tickets
 
+    // Log detallado del estado leído
+    console.log(
+      `📊 Estado leído: Total atendidos: ${estado.totalAtendidos}, Tickets en array: ${estado.tickets.length}, Último número: ${estado.ultimoNumero}`,
+    )
+
+    // Verificación adicional de integridad
+    if (estado.totalAtendidos !== estado.tickets.length) {
+      console.log(
+        `⚠️ ALERTA: Inconsistencia detectada en GET - Estado: ${estado.totalAtendidos}, Array: ${estado.tickets.length}`,
+      )
+    }
+
     // Verificar si debe reiniciarse automáticamente
     if (debeReiniciarse(estado)) {
       console.log("🔄 Ejecutando reinicio automático (Upstash Redis)")
@@ -108,6 +120,7 @@ export async function GET() {
       totalAtendidos: estado.totalAtendidos,
       numerosLlamados: estado.numerosLlamados,
       totalTickets: estado.tickets?.length || 0,
+      ultimoNumero: estado.ultimoNumero,
     })
 
     return NextResponse.json(estado)
