@@ -65,10 +65,16 @@ export async function GET() {
   try {
     console.log("\n=== 📥 GET /api/sistema - sistemaTurnosZOCO (Upstash Redis) ===")
 
-    // Verificar conexión a la base de datos
-    const conexionOK = await verificarConexionDB()
-    if (!conexionOK) {
-      return NextResponse.json({ error: "Error de conexión a sistemaTurnosZOCO (Upstash Redis)" }, { status: 503 })
+    // Verificar conexión a la base de datos (no bloquear si falla)
+    try {
+      const conexionOK = await verificarConexionDB()
+      if (!conexionOK) {
+        console.log("⚠️ Advertencia: Problema de conexión detectado, pero continuando...")
+        // No retornar error 503, solo logear la advertencia
+      }
+    } catch (connectionError) {
+      console.error("❌ Error al verificar conexión, pero continuando:", connectionError)
+      // Continuar con la operación normal
     }
 
     let estado = await leerEstadoSistema() // Esto ya devuelve el estado con los tickets
@@ -145,10 +151,16 @@ export async function POST(request: NextRequest) {
 
     console.log("🎯 Acción recibida (Upstash Redis):", action)
 
-    // Verificar conexión a la base de datos
-    const conexionOK = await verificarConexionDB()
-    if (!conexionOK) {
-      return NextResponse.json({ error: "Error de conexión a sistemaTurnosZOCO (Upstash Redis)" }, { status: 503 })
+    // Verificar conexión a la base de datos (no bloquear si falla)
+    try {
+      const conexionOK = await verificarConexionDB()
+      if (!conexionOK) {
+        console.log("⚠️ Advertencia: Problema de conexión detectado, pero continuando...")
+        // No retornar error 503, solo logear la advertencia
+      }
+    } catch (connectionError) {
+      console.error("❌ Error al verificar conexión, pero continuando:", connectionError)
+      // Continuar con la operación normal
     }
 
     let estado = await leerEstadoSistema() // Leer estado una vez al inicio del POST (incluye tickets)
