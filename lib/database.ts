@@ -57,20 +57,26 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
 
     // OPTIMIZACIÓN: Usamos MULTI/EXEC para obtener el estado, la lista de tickets y el contador
     // en una sola operación de red. Esto reduce la latencia y asegura la atomicidad.
-    const [estadoRaw, ticketsRaw, contadorActual] = await redis
+    const results = await redis
       .multi()
       .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado
       .lrange<TicketInfo>(ticketsListKey, 0, -1) // Obtiene todos los tickets del día
       .get(counterKey) // Obtiene el valor actual del contador
       .exec()
 
+    // Validar que tenemos los resultados esperados
+    if (!Array.isArray(results) || results.length !== 3) {
+      throw new Error("Respuesta inesperada de Redis MULTI/EXEC")
+    }
+
+    const [estadoRaw, ticketsRaw, contadorActual] = results
     let estado: EstadoSistema
-    const tickets: TicketInfo[] = ticketsRaw || []
-    const contador = (contadorActual as number) || 0
+    const tickets: TicketInfo[] = Array.isArray(ticketsRaw) ? ticketsRaw : []
+    const contador = typeof contadorActual === "number" ? contadorActual : 0
 
     console.log(`🔍 Verificación al leer: Tickets en lista: ${tickets.length}, Contador: ${contador}`)
 
-    if (estadoRaw) {
+    if (estadoRaw && typeof estadoRaw === "object") {
       estado = estadoRaw
 
       // Verificar y corregir inconsistencias entre el estado y los datos reales
@@ -155,22 +161,28 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
 
     // OPTIMIZACIÓN: Transacción 1 - Obtener el estado actual y el contador de ticket
     // Esto se hace en un solo viaje de ida y vuelta a Redis para minimizar latencia.
-    const [numeroAsignadoRaw, estadoRaw, totalTicketsEnLista] = await redis
+    const results = await redis
       .multi()
       .incr(counterKey) // Incrementa el contador diario de tickets (atómico)
       .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado actual
       .llen(ticketsListKey) // Obtiene el número total de tickets en la lista para verificar consistencia
       .exec()
 
-    const numeroAsignado = numeroAsignadoRaw as number
-    const ticketsExistentes = (totalTicketsEnLista as number) || 0
+    // Validar que tenemos los resultados esperados
+    if (!Array.isArray(results) || results.length !== 3) {
+      throw new Error("Respuesta inesperada de Redis MULTI/EXEC en generarTicketAtomico")
+    }
+
+    const [numeroAsignadoRaw, estadoRaw, totalTicketsEnLista] = results
+    const numeroAsignado = typeof numeroAsignadoRaw === "number" ? numeroAsignadoRaw : 1
+    const ticketsExistentes = typeof totalTicketsEnLista === "number" ? totalTicketsEnLista : 0
 
     console.log(
       `🔍 Verificación de consistencia: Número asignado: ${numeroAsignado}, Tickets en lista: ${ticketsExistentes}`,
     )
 
     let estadoActual: EstadoSistema
-    if (estadoRaw) {
+    if (estadoRaw && typeof estadoRaw === "object") {
       estadoActual = estadoRaw
       // Verificar y corregir inconsistencias
       if (estadoActual.totalAtendidos !== ticketsExistentes) {
@@ -298,15 +310,17 @@ export async function obtenerBackups(): Promise<any[]> {
       }
       const results = await multi.exec()
 
-      results.forEach((backup: any) => {
-        if (backup && typeof backup === "object" && "resumen" in backup) {
-          backups.push({
-            fecha: backup.fecha,
-            resumen: backup.resumen,
-            createdAt: backup.horaBackup, // Usar la hora de backup como created_at
-          })
-        }
-      })
+      if (Array.isArray(results)) {
+        results.forEach((backup: any) => {
+          if (backup && typeof backup === "object" && "resumen" in backup) {
+            backups.push({
+              fecha: backup.fecha,
+              resumen: backup.resumen,
+              createdAt: backup.horaBackup, // Usar la hora de backup como created_at
+            })
+          }
+        })
+      }
     }
 
     backups.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
@@ -428,10 +442,22 @@ export async function obtenerEstadisticas(estado: EstadoSistema & { tickets: Tic
 
 export async function verificarConexionDB(): Promise<boolean> {
   try {
-    // OPTIMIZACIÓN: PING es una operación muy ligera para verificar la conexión.
-    const pong = await redis.ping()
-    console.log("✅ Conexión a Upstash Redis exitosa:", pong)
-    return pong === "PONG"
+    console.log("🔍 Verificando conexión a Upstash Redis...")
+
+    // Usar una operación simple para verificar la conexión
+    const testKey = "sistemaTurnosZOCO:test:connection"
+    const testValue = "test-" + Date.now()
+
+    // Intentar escribir y leer un valor de prueba
+    await redis.set(testKey, testValue, { ex: 10 }) // Expira en 10 segundos
+    const result = await redis.get(testKey)
+
+    // Limpiar la clave de prueba
+    await redis.del(testKey)
+
+    const isConnected = result === testValue
+    console.log("✅ Conexión a Upstash Redis:", isConnected ? "Exitosa" : "Fallida")
+    return isConnected
   } catch (error) {
     console.error("❌ Error de conexión a Upstash Redis:", error)
     return false
