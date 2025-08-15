@@ -7,7 +7,7 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       environment: {
         NODE_ENV: process.env.NODE_ENV,
-        PLATFORM: "sistemaTurnosZOCO (Upstash Redis)", // Actualizado
+        PLATFORM: "TURNOS_ZOCO (Upstash Redis)", // Actualizado
         VERCEL_ENV: process.env.VERCEL_ENV || "development",
       },
       database: {
@@ -20,7 +20,7 @@ export async function GET() {
           KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
         },
         type: "Upstash Redis", // Actualizado
-        name: "sistemaTurnosZOCO",
+        name: "TURNOS_ZOCO",
       },
     }
 
@@ -78,7 +78,7 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json(
       {
-        error: "Error en debug - sistemaTurnosZOCO (Upstash Redis)",
+        error: "Error en debug - TURNOS_ZOCO (Upstash Redis)",
         details: error instanceof Error ? error.message : "Error desconocido",
       },
       { status: 500 },

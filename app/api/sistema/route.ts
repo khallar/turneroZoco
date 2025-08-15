@@ -39,20 +39,20 @@ function debeReiniciarse(estado: EstadoSistema): boolean {
     const esDiaDiferente = fechaHoyString !== fechaInicioString
 
     if (esDiaDiferente) {
-      console.log(`🔄 Reinicio automático necesario (Upstash Redis): ${fechaHoyString} vs ${fechaInicioString}`)
+      console.log(`🔄 Reinicio automático necesario (TURNOS_ZOCO): ${fechaHoyString} vs ${fechaInicioString}`)
       return true
     }
 
     return false
   } catch (error) {
-    console.error("❌ Error verificando reinicio (Upstash Redis):", error)
+    console.error("❌ Error verificando reinicio (TURNOS_ZOCO):", error)
     return false
   }
 }
 
 export async function GET() {
   try {
-    console.log("\n=== 📥 GET /api/sistema - sistemaTurnosZOCO (Upstash Redis) ===")
+    console.log("\n=== 📥 GET /api/sistema - TURNOS_ZOCO (Upstash Redis) ===")
 
     // Verificar conexión a la base de datos (no bloquear si falla)
     try {
@@ -108,10 +108,10 @@ export async function GET() {
 
     // Verificar si debe reiniciarse automáticamente
     if (debeReiniciarse(estado)) {
-      console.log("🔄 Ejecutando reinicio automático (Upstash Redis)")
+      console.log("🔄 Ejecutando reinicio automático (TURNOS_ZOCO)")
 
       // Crear backup en background con el estado actual (incluyendo tickets)
-      crearBackupDiario(estado).catch((err) => console.error("Error en backup (Upstash Redis):", err))
+      crearBackupDiario(estado).catch((err) => console.error("Error en backup (TURNOS_ZOCO):", err))
 
       const ahora = new Date()
       const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
@@ -131,7 +131,7 @@ export async function GET() {
       await escribirEstadoSistema(estado)
     }
 
-    console.log("📤 Estado devuelto desde sistemaTurnosZOCO (Upstash Redis):", {
+    console.log("📤 Estado devuelto desde TURNOS_ZOCO (Upstash Redis):", {
       numeroActual: estado.numeroActual,
       totalAtendidos: estado.totalAtendidos,
       numerosLlamados: estado.numerosLlamados,
@@ -141,10 +141,10 @@ export async function GET() {
 
     return NextResponse.json(estado)
   } catch (error) {
-    console.error("❌ Error en GET /api/sistema (Upstash Redis):", error)
+    console.error("❌ Error en GET /api/sistema (TURNOS_ZOCO):", error)
     return NextResponse.json(
       {
-        error: "Error interno del servidor - sistemaTurnosZOCO (Upstash Redis)",
+        error: "Error interno del servidor - TURNOS_ZOCO (Upstash Redis)",
         details: error instanceof Error ? error.message : "Error desconocido",
       },
       { status: 500 },
@@ -154,12 +154,12 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("\n=== 📨 POST /api/sistema - sistemaTurnosZOCO (Upstash Redis) ===")
+    console.log("\n=== 📨 POST /api/sistema - TURNOS_ZOCO (Upstash Redis) ===")
 
     const body = await request.json()
     const { action, ...nuevoEstado } = body
 
-    console.log("🎯 Acción recibida (Upstash Redis):", action)
+    console.log("🎯 Acción recibida (TURNOS_ZOCO):", action)
 
     // Verificar conexión a la base de datos (no bloquear si falla)
     try {
@@ -175,10 +175,10 @@ export async function POST(request: NextRequest) {
 
     // Verificar si debe reiniciarse antes de cualquier operación
     if (debeReiniciarse(estado)) {
-      console.log("🔄 Reinicio automático durante POST (Upstash Redis)")
+      console.log("🔄 Reinicio automático durante POST (TURNOS_ZOCO)")
 
       // Crear backup en background con el estado actual (incluyendo tickets)
-      crearBackupDiario(estado).catch((err) => console.error("Error en backup (Upstash Redis):", err))
+      crearBackupDiario(estado).catch((err) => console.error("Error en backup (TURNOS_ZOCO):", err))
 
       const ahora = new Date()
       const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Nombre requerido" }, { status: 400 })
       }
 
-      console.log("🎫 Generando ticket para:", nombre, "(Upstash Redis)")
+      console.log("🎫 Generando ticket para:", nombre, "(TURNOS_ZOCO)")
 
       try {
         // Generar ticket de forma atómica en la base de datos
@@ -214,17 +214,17 @@ export async function POST(request: NextRequest) {
         // Esto es importante porque generarTicketAtomico actualiza el estado directamente en Redis
         const estadoActualizado = await leerEstadoSistema() // Esto ya devuelve el estado con los tickets
 
-        console.log("✅ Ticket generado exitosamente en sistemaTurnosZOCO (Upstash Redis)")
+        console.log("✅ Ticket generado exitosamente en TURNOS_ZOCO (Upstash Redis)")
 
         return NextResponse.json({
           ...estadoActualizado,
           ticketGenerado: nuevoTicket,
         })
       } catch (error) {
-        console.error("❌ Error al generar ticket (Upstash Redis):", error)
+        console.error("❌ Error al generar ticket (TURNOS_ZOCO):", error)
         return NextResponse.json(
           {
-            error: "Error al generar ticket en sistemaTurnosZOCO (Upstash Redis)",
+            error: "Error al generar ticket en TURNOS_ZOCO (Upstash Redis)",
             details: error instanceof Error ? error.message : "Error desconocido",
           },
           { status: 500 },
@@ -242,7 +242,7 @@ export async function POST(request: NextRequest) {
           estadisticas,
         })
       } catch (error) {
-        console.error("❌ Error al obtener estadísticas (Upstash Redis):", error)
+        console.error("❌ Error al obtener estadísticas (TURNOS_ZOCO):", error)
         return NextResponse.json(
           {
             error: "Error al obtener estadísticas",
@@ -255,7 +255,7 @@ export async function POST(request: NextRequest) {
 
     // Acción administrativa: Eliminar todos los registros
     if (action === "ELIMINAR_TODOS_REGISTROS") {
-      console.log("🗑️ Eliminando todos los registros (Upstash Redis)...")
+      console.log("🗑️ Eliminando todos los registros (TURNOS_ZOCO)...")
 
       try {
         // Crear backup antes de eliminar con el estado actual (incluyendo tickets)
@@ -276,7 +276,7 @@ export async function POST(request: NextRequest) {
 
         // Escribir el estado limpio (solo metadata)
         await escribirEstadoSistema(estadoLimpio)
-        console.log("✅ Todos los registros eliminados exitosamente (Upstash Redis)")
+        console.log("✅ Todos los registros eliminados exitosamente (TURNOS_ZOCO)")
 
         // Devolver el estado limpio directamente, sin una nueva lectura de DB
         return NextResponse.json({
@@ -284,7 +284,7 @@ export async function POST(request: NextRequest) {
           mensaje: "Todos los registros han sido eliminados exitosamente",
         })
       } catch (error) {
-        console.error("❌ Error al eliminar registros (Upstash Redis):", error)
+        console.error("❌ Error al eliminar registros (TURNOS_ZOCO):", error)
         return NextResponse.json(
           {
             error: "Error al eliminar registros",
@@ -297,7 +297,7 @@ export async function POST(request: NextRequest) {
 
     // Acción administrativa: Reiniciar contador diario
     if (action === "REINICIAR_CONTADOR_DIARIO") {
-      console.log("🔄 Reiniciando contador diario (Upstash Redis)...")
+      console.log("🔄 Reiniciando contador diario (TURNOS_ZOCO)...")
 
       try {
         // Crear backup antes de reiniciar con el estado actual (incluyendo tickets)
@@ -318,7 +318,7 @@ export async function POST(request: NextRequest) {
 
         // Escribir el estado reiniciado (solo metadata)
         await escribirEstadoSistema(estadoReiniciado)
-        console.log("✅ Contador diario reiniciado exitosamente (Upstash Redis)")
+        console.log("✅ Contador diario reiniciado exitosamente (TURNOS_ZOCO)")
 
         // Devolver el estado reiniciado directamente, sin una nueva lectura de DB
         return NextResponse.json({
@@ -326,7 +326,7 @@ export async function POST(request: NextRequest) {
           mensaje: "Contador diario reiniciado exitosamente",
         })
       } catch (error) {
-        console.error("❌ Error al reiniciar contador (Upstash Redis):", error)
+        console.error("❌ Error al reiniciar contador (TURNOS_ZOCO):", error)
         return NextResponse.json(
           {
             error: "Error al reiniciar contador",
@@ -345,7 +345,7 @@ export async function POST(request: NextRequest) {
           mensaje: "Datos antiguos limpiados exitosamente",
         })
       } catch (error) {
-        console.error("❌ Error al limpiar datos antiguos (Upstash Redis):", error)
+        console.error("❌ Error al limpiar datos antiguos (TURNOS_ZOCO):", error)
         return NextResponse.json(
           {
             error: "Error al limpiar datos antiguos",
@@ -367,7 +367,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Datos inválidos" }, { status: 400 })
     }
 
-    console.log("📝 Actualizando estado normal en sistemaTurnosZOCO (Upstash Redis)")
+    console.log("📝 Actualizando estado normal en TURNOS_ZOCO (Upstash Redis)")
 
     // Actualizar estado manteniendo fechas originales
     const estadoActualizado = {
@@ -387,10 +387,10 @@ export async function POST(request: NextRequest) {
     const estadoFinal = await leerEstadoSistema()
     return NextResponse.json(estadoFinal)
   } catch (error) {
-    console.error("❌ Error en POST /api/sistema (Upstash Redis):", error)
+    console.error("❌ Error en POST /api/sistema (TURNOS_ZOCO):", error)
     return NextResponse.json(
       {
-        error: "Error interno del servidor - sistemaTurnosZOCO (Upstash Redis)",
+        error: "Error interno del servidor - TURNOS_ZOCO (Upstash Redis)",
         details: error instanceof Error ? error.message : "Error desconocido",
       },
       { status: 500 },

@@ -12,10 +12,10 @@ export async function GET(request: NextRequest) {
       try {
         const backups = await obtenerBackups()
 
-        console.log("📦 Backups encontrados en sistemaTurnosZOCO (Upstash Redis):", backups.length)
+        console.log("📦 Backups encontrados en TURNOS_ZOCO (Upstash Redis):", backups.length)
         return NextResponse.json({ backups })
       } catch (error) {
-        console.error("❌ Error al listar backups (Upstash Redis):", error)
+        console.error("❌ Error al listar backups (TURNOS_ZOCO):", error)
         return NextResponse.json({ backups: [] })
       }
     }
@@ -31,18 +31,15 @@ export async function GET(request: NextRequest) {
           return NextResponse.json({ error: "Backup no encontrado" }, { status: 404 })
         }
       } catch (error) {
-        console.error("❌ Error al obtener backup (Upstash Redis):", error)
+        console.error("❌ Error al obtener backup (TURNOS_ZOCO):", error)
         return NextResponse.json({ error: "Backup no encontrado" }, { status: 404 })
       }
     }
 
     return NextResponse.json({ error: "Parámetros inválidos" }, { status: 400 })
   } catch (error) {
-    console.error("❌ Error en API de backup (Upstash Redis):", error)
-    return NextResponse.json(
-      { error: "Error interno del servidor - sistemaTurnosZOCO (Upstash Redis)" },
-      { status: 500 },
-    )
+    console.error("❌ Error en API de backup (TURNOS_ZOCO):", error)
+    return NextResponse.json({ error: "Error interno del servidor - TURNOS_ZOCO (Upstash Redis)" }, { status: 500 })
   }
 }
 
@@ -56,22 +53,19 @@ export async function POST(request: NextRequest) {
       try {
         await limpiarDatosAntiguos()
 
-        console.log("🧹 Datos antiguos limpiados en sistemaTurnosZOCO (Upstash Redis)")
+        console.log("🧹 Datos antiguos limpiados en TURNOS_ZOCO (Upstash Redis)")
         return NextResponse.json({
           mensaje: "Datos antiguos limpiados exitosamente",
         })
       } catch (error) {
-        console.error("❌ Error al limpiar backups (Upstash Redis):", error)
+        console.error("❌ Error al limpiar backups (TURNOS_ZOCO):", error)
         return NextResponse.json({ error: "Error al limpiar backups" }, { status: 500 })
       }
     }
 
     return NextResponse.json({ error: "Acción no válida" }, { status: 400 })
   } catch (error) {
-    console.error("❌ Error en POST de backup (Upstash Redis):", error)
-    return NextResponse.json(
-      { error: "Error interno del servidor - sistemaTurnosZOCO (Upstash Redis)" },
-      { status: 500 },
-    )
+    console.error("❌ Error en POST de backup (TURNOS_ZOCO):", error)
+    return NextResponse.json({ error: "Error interno del servidor - TURNOS_ZOCO (Upstash Redis)" }, { status: 500 })
   }
 }

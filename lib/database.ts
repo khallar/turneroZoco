@@ -77,12 +77,12 @@ try {
   })
 }
 
-// Prefijos para las claves de Redis
-const STATE_KEY_PREFIX = "sistemaTurnosZOCO:estado:" // sistemaTurnosZOCO:estado:YYYY-MM-DD
-const TICKETS_LIST_KEY_PREFIX = "sistemaTurnosZOCO:tickets:" // sistemaTurnosZOCO:tickets:YYYY-MM-DD
-const BACKUP_KEY_PREFIX = "sistemaTurnosZOCO:backup:" // sistemaTurnosZOCO:backup:YYYY-MM-DD
-const LOGS_KEY = "sistemaTurnosZOCO:logs"
-const COUNTER_KEY_PREFIX = "sistemaTurnosZOCO:counter:" // Para el contador atómico de número de ticket
+// Prefijos para las claves de Redis - ACTUALIZADOS CON NUEVO NOMBRE
+const STATE_KEY_PREFIX = "TURNOS_ZOCO:estado:" // TURNOS_ZOCO:estado:YYYY-MM-DD
+const TICKETS_LIST_KEY_PREFIX = "TURNOS_ZOCO:tickets:" // TURNOS_ZOCO:tickets:YYYY-MM-DD
+const BACKUP_KEY_PREFIX = "TURNOS_ZOCO:backup:" // TURNOS_ZOCO:backup:YYYY-MM-DD
+const LOGS_KEY = "TURNOS_ZOCO:logs"
+const COUNTER_KEY_PREFIX = "TURNOS_ZOCO:counter:" // Para el contador atómico de número de ticket
 
 // Función auxiliar para obtener la fecha actual en formato YYYY-MM-DD (Argentina)
 function getTodayDateString(): string {
@@ -102,7 +102,7 @@ function getTodayDateString(): string {
 // leerEstadoSistema ahora devuelve el estado (metadata) Y los tickets
 export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: TicketInfo[] }> {
   try {
-    console.log("📖 Leyendo estado y tickets desde Upstash Redis...")
+    console.log("📖 Leyendo estado y tickets desde TURNOS_ZOCO (Upstash Redis)...")
     const fechaHoy = getTodayDateString()
     const estadoKey = STATE_KEY_PREFIX + fechaHoy
     const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
@@ -164,10 +164,10 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
         await redis.expire(counterKey, 48 * 60 * 60) // 48 horas
       }
 
-      console.log("✅ Estado y tickets cargados desde Upstash Redis con persistencia verificada.")
+      console.log("✅ Estado y tickets cargados desde TURNOS_ZOCO (Upstash Redis) con persistencia verificada.")
     } else {
       // Crear estado inicial para el día si no existe
-      console.log("⚠️ No se encontró estado para hoy, creando inicial en Upstash Redis...")
+      console.log("⚠️ No se encontró estado para hoy, creando inicial en TURNOS_ZOCO (Upstash Redis)...")
 
       // Si hay tickets pero no hay estado, reconstruir el estado basado en los tickets existentes
       let ultimoNumero = 0
@@ -196,7 +196,7 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
     )
     return { ...estado, tickets }
   } catch (error) {
-    console.error("❌ Error al leer estado del sistema desde Upstash Redis:", error)
+    console.error("❌ Error al leer estado del sistema desde TURNOS_ZOCO (Upstash Redis):", error)
     throw error
   }
 }
@@ -204,7 +204,7 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
 // escribirEstadoSistema ahora solo escribe la metadata del estado
 export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void> {
   try {
-    console.log("💾 Escribiendo estado (metadata) a Upstash Redis con persistencia mejorada...")
+    console.log("💾 Escribiendo estado (metadata) a TURNOS_ZOCO (Upstash Redis) con persistencia mejorada...")
     const estadoKey = STATE_KEY_PREFIX + estado.fechaInicio
     estado.lastSync = Date.now() // Actualizar timestamp de sincronización
 
@@ -216,9 +216,9 @@ export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void
     const backupKey = `${estadoKey}:backup`
     await redis.set(backupKey, estado, { ex: 72 * 60 * 60 }) // 72 horas para backup
 
-    console.log("✅ Estado (metadata) guardado exitosamente en Upstash Redis con persistencia mejorada")
+    console.log("✅ Estado (metadata) guardado exitosamente en TURNOS_ZOCO (Upstash Redis) con persistencia mejorada")
   } catch (error) {
-    console.error("❌ Error al escribir estado en Upstash Redis:", error)
+    console.error("❌ Error al escribir estado en TURNOS_ZOCO (Upstash Redis):", error)
     throw error
   }
 }
@@ -226,7 +226,7 @@ export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void
 // Función para generar un nuevo ticket de forma atómica
 export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> {
   try {
-    console.log("🎫 Generando ticket atómico para:", nombre, "en Upstash Redis...")
+    console.log("🎫 Generando ticket atómico para:", nombre, "en TURNOS_ZOCO (Upstash Redis)...")
     const fechaHoy = getTodayDateString()
     const estadoKey = STATE_KEY_PREFIX + fechaHoy
     const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
@@ -318,14 +318,17 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
     const ticketBackupKey = `${ticketsListKey}:backup:${numeroAsignado}`
     await redis.set(ticketBackupKey, nuevoTicket, { ex: 72 * 60 * 60 }) // 72 horas para backup individual
 
-    console.log("✅ Ticket generado exitosamente en Upstash Redis con persistencia mejorada:", nuevoTicket)
+    console.log(
+      "✅ Ticket generado exitosamente en TURNOS_ZOCO (Upstash Redis) con persistencia mejorada:",
+      nuevoTicket,
+    )
     console.log(
       `📊 Estado actualizado: Total atendidos: ${estadoActual.totalAtendidos}, Último número: ${estadoActual.ultimoNumero}`,
     )
 
     return nuevoTicket
   } catch (error) {
-    console.error("❌ Error al generar ticket en Upstash Redis:", error)
+    console.error("❌ Error al generar ticket en TURNOS_ZOCO (Upstash Redis):", error)
     throw error
   }
 }
@@ -335,7 +338,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
 // crearBackupDiario ahora espera el estado completo (metadata + tickets)
 export async function crearBackupDiario(estado: EstadoSistema & { tickets: TicketInfo[] }): Promise<void> {
   try {
-    console.log("📦 Creando backup diario en Upstash Redis...")
+    console.log("📦 Creando backup diario en TURNOS_ZOCO (Upstash Redis)...")
 
     const fecha = estado.fechaInicio
     const backupKey = BACKUP_KEY_PREFIX + fecha
@@ -365,9 +368,9 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
 
     // OPTIMIZACIÓN: SET con expiración para el backup.
     await redis.set(backupKey, backupData, { ex: 60 * 24 * 60 * 60 }) // 60 días de expiración para los backups
-    console.log("✅ Backup diario creado exitosamente en Upstash Redis")
+    console.log("✅ Backup diario creado exitosamente en TURNOS_ZOCO (Upstash Redis)")
   } catch (error) {
-    console.error("❌ Error al crear backup diario en Upstash Redis:", error)
+    console.error("❌ Error al crear backup diario en TURNOS_ZOCO (Upstash Redis):", error)
     // No lanzar error para no bloquear otras operaciones
   }
 }
@@ -404,7 +407,7 @@ export async function obtenerBackups(): Promise<any[]> {
 
     return backups.slice(0, 30) // Limitar a los últimos 30
   } catch (error) {
-    console.error("❌ Error al obtener backups desde Upstash Redis:", error)
+    console.error("❌ Error al obtener backups desde TURNOS_ZOCO (Upstash Redis):", error)
     return []
   }
 }
@@ -416,7 +419,7 @@ export async function obtenerBackup(fecha: string): Promise<any | null> {
     const backup = await redis.get(backupKey)
     return backup || null
   } catch (error) {
-    console.error("❌ Error al obtener backup desde Upstash Redis:", error)
+    console.error("❌ Error al obtener backup desde TURNOS_ZOCO (Upstash Redis):", error)
     return null
   }
 }
@@ -424,7 +427,7 @@ export async function obtenerBackup(fecha: string): Promise<any | null> {
 // Función para limpiar datos antiguos (estados diarios, listas de tickets y backups)
 export async function limpiarDatosAntiguos(): Promise<void> {
   try {
-    console.log("🧹 Limpiando datos antiguos en Upstash Redis...")
+    console.log("🧹 Limpiando datos antiguos en TURNOS_ZOCO (Upstash Redis)...")
     const now = Date.now()
     const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000 // 30 días en milisegundos
 
@@ -479,9 +482,9 @@ export async function limpiarDatosAntiguos(): Promise<void> {
       }),
     )
 
-    console.log("✅ Datos antiguos limpiados exitosamente en Upstash Redis")
+    console.log("✅ Datos antiguos limpiados exitosamente en TURNOS_ZOCO (Upstash Redis)")
   } catch (error) {
-    console.error("❌ Error al limpiar datos antiguos en Upstash Redis:", error)
+    console.error("❌ Error al limpiar datos antiguos en TURNOS_ZOCO (Upstash Redis):", error)
   }
 }
 
@@ -512,14 +515,14 @@ export async function obtenerEstadisticas(estado: EstadoSistema & { tickets: Tic
 
     return estadisticas
   } catch (error) {
-    console.error("❌ Error al obtener estadísticas desde Upstash Redis:", error)
+    console.error("❌ Error al obtener estadísticas desde TURNOS_ZOCO (Upstash Redis):", error)
     throw error
   }
 }
 
 export async function verificarConexionDB(): Promise<boolean> {
   try {
-    console.log("🔍 Verificando conexión a Upstash Redis...")
+    console.log("🔍 Verificando conexión a TURNOS_ZOCO (Upstash Redis)...")
 
     // Intentar obtener la configuración de Redis
     let config
@@ -533,7 +536,7 @@ export async function verificarConexionDB(): Promise<boolean> {
 
     // Intentar una operación simple para verificar la conexión
     try {
-      const testKey = "sistemaTurnosZOCO:test:connection"
+      const testKey = "TURNOS_ZOCO:test:connection"
       const testValue = "test-" + Date.now()
 
       await redis.set(testKey, testValue, { ex: 10 })
@@ -541,7 +544,7 @@ export async function verificarConexionDB(): Promise<boolean> {
       await redis.del(testKey)
 
       const isConnected = result === testValue
-      console.log("✅ Prueba de conexión a Upstash Redis:", isConnected ? "Exitosa" : "Fallida")
+      console.log("✅ Prueba de conexión a TURNOS_ZOCO (Upstash Redis):", isConnected ? "Exitosa" : "Fallida")
       return isConnected
     } catch (testError) {
       console.error("❌ Error en prueba de conexión:", testError)
@@ -554,7 +557,7 @@ export async function verificarConexionDB(): Promise<boolean> {
 }
 
 export async function cerrarConexiones(): Promise<void> {
-  console.log("🔌 No es necesario cerrar conexiones para Upstash Redis (HTTP)")
+  console.log("🔌 No es necesario cerrar conexiones para TURNOS_ZOCO (Upstash Redis - HTTP)")
 }
 
 // Nueva función para recuperar datos en caso de pérdida
