@@ -7,6 +7,7 @@ import {
   obtenerEstadisticas,
   verificarConexionDB,
   limpiarDatosAntiguos,
+  recuperarDatosPerdidos, // Nueva función
 } from "@/lib/database"
 import { Redis } from "@upstash/redis" // Importar Redis para operaciones directas
 
@@ -70,14 +71,40 @@ export async function GET() {
       const conexionOK = await verificarConexionDB()
       if (!conexionOK) {
         console.log("⚠️ Advertencia: Problema de conexión detectado, pero continuando...")
-        // No retornar error 503, solo logear la advertencia
       }
     } catch (connectionError) {
       console.error("❌ Error al verificar conexión, pero continuando:", connectionError)
-      // Continuar con la operación normal
     }
 
-    let estado = await leerEstadoSistema() // Esto ya devuelve el estado con los tickets
+    let estado
+    try {
+      estado = await leerEstadoSistema() // Esto ya devuelve el estado con los tickets
+    } catch (readError) {
+      console.error("❌ Error al leer estado, intentando recuperación:", readError)
+
+      // Intentar recuperar datos del día actual
+      const fechaHoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+      try {
+        estado = await recuperarDatosPerdidos(fechaHoy)
+        console.log("✅ Datos recuperados exitosamente")
+      } catch (recoveryError) {
+        console.error("❌ No se pudieron recuperar los datos, creando estado inicial:", recoveryError)
+
+        // Crear estado completamente nuevo como último recurso
+        estado = {
+          numeroActual: 1,
+          ultimoNumero: 0,
+          totalAtendidos: 0,
+          numerosLlamados: 0,
+          fechaInicio: fechaHoy,
+          ultimoReinicio: new Date().toISOString(),
+          tickets: [],
+          lastSync: Date.now(),
+        }
+
+        await escribirEstadoSistema(estado)
+      }
+    }
 
     // Log detallado del estado leído
     console.log(
@@ -102,22 +129,21 @@ export async function GET() {
       const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
 
       // Limpiar explícitamente las claves del día anterior para el nuevo día
-      await redis.del(TICKETS_LIST_KEY_PREFIX + estado.fechaInicio) // Eliminar lista de tickets del día anterior
-      await redis.del(COUNTER_KEY_PREFIX + estado.fechaInicio) // Eliminar contador del día anterior
+      await redis.del(TICKETS_LIST_KEY_PREFIX + estado.fechaInicio)
+      await redis.del(COUNTER_KEY_PREFIX + estado.fechaInicio)
 
       estado = {
-        // Actualizar el objeto estado localmente para el nuevo día
         numeroActual: 1,
         ultimoNumero: 0,
         totalAtendidos: 0,
         numerosLlamados: 0,
         fechaInicio: fechaHoy,
         ultimoReinicio: ahora.toISOString(),
-        tickets: [], // Reiniciar tickets para el nuevo día
+        tickets: [],
         lastSync: Date.now(),
       }
 
-      // Escribir el estado inicial del nuevo día (solo metadata)
+      // Escribir el estado inicial del nuevo día con persistencia mejorada
       await escribirEstadoSistema(estado)
     }
 
@@ -156,11 +182,9 @@ export async function POST(request: NextRequest) {
       const conexionOK = await verificarConexionDB()
       if (!conexionOK) {
         console.log("⚠️ Advertencia: Problema de conexión detectado, pero continuando...")
-        // No retornar error 503, solo logear la advertencia
       }
     } catch (connectionError) {
       console.error("❌ Error al verificar conexión, pero continuando:", connectionError)
-      // Continuar con la operación normal
     }
 
     let estado = await leerEstadoSistema() // Leer estado una vez al inicio del POST (incluye tickets)
@@ -176,18 +200,17 @@ export async function POST(request: NextRequest) {
       const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
 
       // Limpiar explícitamente las claves del día anterior para el nuevo día
-      await redis.del(TICKETS_LIST_KEY_PREFIX + estado.fechaInicio) // Eliminar lista de tickets del día anterior
-      await redis.del(COUNTER_KEY_PREFIX + estado.fechaInicio) // Eliminar contador del día anterior
+      await redis.del(TICKETS_LIST_KEY_PREFIX + estado.fechaInicio)
+      await redis.del(COUNTER_KEY_PREFIX + estado.fechaInicio)
 
       estado = {
-        // Actualizar el objeto estado localmente para el nuevo día
         numeroActual: 1,
         ultimoNumero: 0,
         totalAtendidos: 0,
         numerosLlamados: 0,
         fechaInicio: fechaHoy,
         ultimoReinicio: ahora.toISOString(),
-        tickets: [], // Reiniciar tickets para el nuevo día
+        tickets: [],
         lastSync: Date.now(),
       }
       // No es necesario escribir el estado aquí, se hará si la acción lo requiere

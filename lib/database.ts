@@ -62,19 +62,22 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
       .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado
       .lrange<TicketInfo>(ticketsListKey, 0, -1) // Obtiene todos los tickets del día
       .get(counterKey) // Obtiene el valor actual del contador
+      .exists(estadoKey) // Verificar si existe el estado
+      .exists(ticketsListKey) // Verificar si existe la lista de tickets
       .exec()
 
     // Validar que tenemos los resultados esperados
-    if (!Array.isArray(results) || results.length !== 3) {
+    if (!Array.isArray(results) || results.length !== 5) {
       throw new Error("Respuesta inesperada de Redis MULTI/EXEC")
     }
 
-    const [estadoRaw, ticketsRaw, contadorActual] = results
+    const [estadoRaw, ticketsRaw, contadorActual, estadoExists, ticketsExists] = results
     let estado: EstadoSistema
     const tickets: TicketInfo[] = Array.isArray(ticketsRaw) ? ticketsRaw : []
     const contador = typeof contadorActual === "number" ? contadorActual : 0
 
     console.log(`🔍 Verificación al leer: Tickets en lista: ${tickets.length}, Contador: ${contador}`)
+    console.log(`🔍 Existencia: Estado: ${estadoExists}, Tickets: ${ticketsExists}`)
 
     if (estadoRaw && typeof estadoRaw === "object") {
       estado = estadoRaw
@@ -94,13 +97,21 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
           estado.numeroActual = ultimoTicketReal.numero + 1
         }
 
-        // Actualizar el estado corregido en Redis
+        // Actualizar el estado corregido en Redis con persistencia extendida
         estado.lastSync = Date.now()
-        await redis.set(estadoKey, estado)
-        console.log("✅ Estado corregido y guardado")
+        await redis.set(estadoKey, estado, { ex: 48 * 60 * 60 }) // 48 horas de persistencia
+        console.log("✅ Estado corregido y guardado con persistencia extendida")
       }
 
-      console.log("✅ Estado y tickets cargados desde Upstash Redis.")
+      // Asegurar persistencia de datos existentes
+      if (ticketsExists && tickets.length > 0) {
+        await redis.expire(ticketsListKey, 48 * 60 * 60) // 48 horas
+      }
+      if (contador > 0) {
+        await redis.expire(counterKey, 48 * 60 * 60) // 48 horas
+      }
+
+      console.log("✅ Estado y tickets cargados desde Upstash Redis con persistencia verificada.")
     } else {
       // Crear estado inicial para el día si no existe
       console.log("⚠️ No se encontró estado para hoy, creando inicial en Upstash Redis...")
@@ -121,6 +132,10 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
         ultimoReinicio: new Date().toISOString(),
         lastSync: Date.now(),
       }
+
+      // Guardar el estado inicial con persistencia extendida
+      await redis.set(estadoKey, estado, { ex: 48 * 60 * 60 }) // 48 horas
+      console.log("✅ Estado inicial creado con persistencia extendida")
     }
 
     console.log(
@@ -136,14 +151,19 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
 // escribirEstadoSistema ahora solo escribe la metadata del estado
 export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void> {
   try {
-    console.log("💾 Escribiendo estado (metadata) a Upstash Redis...")
+    console.log("💾 Escribiendo estado (metadata) a Upstash Redis con persistencia mejorada...")
     const estadoKey = STATE_KEY_PREFIX + estado.fechaInicio
     estado.lastSync = Date.now() // Actualizar timestamp de sincronización
 
-    // OPTIMIZACIÓN: SET y EXPIRE son operaciones rápidas.
-    // Establecer una expiración para la clave de estado (ej. 25 horas)
-    await redis.set(estadoKey, estado, { ex: 24 * 60 * 60 + 3600 }) // 25 horas
-    console.log("✅ Estado (metadata) guardado exitosamente en Upstash Redis")
+    // OPTIMIZACIÓN: SET con persistencia extendida y backup automático
+    // Establecer una expiración más larga para mayor persistencia (48 horas)
+    await redis.set(estadoKey, estado, { ex: 48 * 60 * 60 }) // 48 horas
+
+    // Crear una copia de respaldo con clave diferente para mayor seguridad
+    const backupKey = `${estadoKey}:backup`
+    await redis.set(backupKey, estado, { ex: 72 * 60 * 60 }) // 72 horas para backup
+
+    console.log("✅ Estado (metadata) guardado exitosamente en Upstash Redis con persistencia mejorada")
   } catch (error) {
     console.error("❌ Error al escribir estado en Upstash Redis:", error)
     throw error
@@ -202,8 +222,8 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
         ultimoReinicio: new Date().toISOString(),
         lastSync: Date.now(),
       }
-      // Establecer expiración para la clave del contador si es nueva
-      await redis.expire(counterKey, 24 * 60 * 60 + 3600) // 25 horas
+      // Establecer expiración extendida para la clave del contador si es nueva
+      await redis.expire(counterKey, 48 * 60 * 60) // 48 horas
     }
 
     const fecha = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
@@ -224,10 +244,12 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
 
     // OPTIMIZACIÓN: Transacción 2 - Guardar el estado actualizado, añadir el nuevo ticket
     // a la lista y registrar el log. Todo en un solo viaje de ida y vuelta a Redis.
-    await redis
+    const transactionResults = await redis
       .multi()
-      .set(estadoKey, estadoActual) // Guarda la metadata del estado actualizada
+      .set(estadoKey, estadoActual, { ex: 48 * 60 * 60 }) // Guarda la metadata del estado actualizada con persistencia extendida
       .rpush(ticketsListKey, nuevoTicket) // Añade el nuevo ticket al final de la lista de tickets del día
+      .expire(ticketsListKey, 48 * 60 * 60) // Asegurar persistencia extendida de la lista
+      .expire(counterKey, 48 * 60 * 60) // Asegurar persistencia extendida del contador
       .lpush(
         LOGS_KEY,
         JSON.stringify({
@@ -236,12 +258,14 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
           timestamp_log: timestamp,
         }),
       )
+      .ltrim(LOGS_KEY, 0, 1999) // Mantener solo los últimos 2000 logs
       .exec()
 
-    // Establecer expiración para la lista de tickets si es nueva o para asegurar que expire
-    await redis.expire(ticketsListKey, 24 * 60 * 60 + 3600) // 25 horas
+    // Crear backup inmediato del ticket para mayor seguridad
+    const ticketBackupKey = `${ticketsListKey}:backup:${numeroAsignado}`
+    await redis.set(ticketBackupKey, nuevoTicket, { ex: 72 * 60 * 60 }) // 72 horas para backup individual
 
-    console.log("✅ Ticket generado exitosamente en Upstash Redis:", nuevoTicket)
+    console.log("✅ Ticket generado exitosamente en Upstash Redis con persistencia mejorada:", nuevoTicket)
     console.log(
       `📊 Estado actualizado: Total atendidos: ${estadoActual.totalAtendidos}, Último número: ${estadoActual.ultimoNumero}`,
     )
@@ -463,4 +487,82 @@ export async function verificarConexionDB(): Promise<boolean> {
 
 export async function cerrarConexiones(): Promise<void> {
   console.log("🔌 No es necesario cerrar conexiones para Upstash Redis (HTTP)")
+}
+
+// Nueva función para recuperar datos en caso de pérdida
+export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSistema & { tickets: TicketInfo[] }> {
+  try {
+    console.log("🔧 Intentando recuperar datos perdidos para:", fecha)
+
+    const estadoKey = STATE_KEY_PREFIX + fecha
+    const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fecha
+    const counterKey = COUNTER_KEY_PREFIX + fecha
+    const backupKey = `${estadoKey}:backup`
+
+    // Intentar recuperar desde backup
+    const [estadoBackup, ticketsOriginales, contador] = await redis
+      .multi()
+      .get<EstadoSistema>(backupKey)
+      .lrange<TicketInfo>(ticketsListKey, 0, -1)
+      .get(counterKey)
+      .exec()
+
+    if (estadoBackup && typeof estadoBackup === "object") {
+      console.log("✅ Datos recuperados desde backup")
+      const tickets = Array.isArray(ticketsOriginales) ? ticketsOriginales : []
+
+      // Restaurar datos principales desde backup
+      await redis.set(estadoKey, estadoBackup, { ex: 48 * 60 * 60 })
+
+      return { ...estadoBackup, tickets }
+    }
+
+    // Si no hay backup, intentar reconstruir desde tickets individuales
+    const ticketKeys = await redis.keys(`${ticketsListKey}:backup:*`)
+    if (ticketKeys.length > 0) {
+      console.log("🔧 Reconstruyendo desde tickets individuales...")
+
+      const multi = redis.multi()
+      for (const key of ticketKeys) {
+        multi.get(key)
+      }
+      const ticketsIndividuales = await multi.exec()
+
+      const ticketsRecuperados: TicketInfo[] = ticketsIndividuales
+        .filter((ticket): ticket is TicketInfo => ticket && typeof ticket === "object")
+        .sort((a, b) => a.numero - b.numero)
+
+      if (ticketsRecuperados.length > 0) {
+        const ultimoNumero = Math.max(...ticketsRecuperados.map((t) => t.numero))
+        const estadoReconstruido: EstadoSistema = {
+          numeroActual: ultimoNumero + 1,
+          ultimoNumero: ultimoNumero,
+          totalAtendidos: ticketsRecuperados.length,
+          numerosLlamados: 0,
+          fechaInicio: fecha,
+          ultimoReinicio: new Date().toISOString(),
+          lastSync: Date.now(),
+        }
+
+        // Restaurar lista de tickets
+        await redis.del(ticketsListKey)
+        if (ticketsRecuperados.length > 0) {
+          await redis.rpush(ticketsListKey, ...ticketsRecuperados)
+          await redis.expire(ticketsListKey, 48 * 60 * 60)
+        }
+
+        // Restaurar estado
+        await redis.set(estadoKey, estadoReconstruido, { ex: 48 * 60 * 60 })
+        await redis.set(counterKey, ultimoNumero, { ex: 48 * 60 * 60 })
+
+        console.log("✅ Datos reconstruidos exitosamente")
+        return { ...estadoReconstruido, tickets: ticketsRecuperados }
+      }
+    }
+
+    throw new Error("No se pudieron recuperar los datos")
+  } catch (error) {
+    console.error("❌ Error al recuperar datos perdidos:", error)
+    throw error
+  }
 }
