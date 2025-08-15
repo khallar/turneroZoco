@@ -23,6 +23,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      geist:
+        specifier: ^1.3.0
+        version: 1.3.0(next@15.2.4(react-dom@19.0.0(react@19.0.0))(react@19.0.0))
       lucide-react:
         specifier: ^0.454.0
         version: 0.454.0(react@19.0.0)
@@ -1049,6 +1052,11 @@ packages:
 
   functions-have-names@1.2.3:
     resolution: {integrity: sha512-xckBUXyTIqT97tq2x2AMb+g163b5JFysYk0x4qxNFwbfQkmNZoiRHb6sPzI9/QV33WeuvVYBUIiD4NzNIyqaRQ==}
+
+  geist@1.3.0:
+    resolution: {integrity: sha512-IoGBfcqVEYB4bEwsfHd35jF4+X9LHRPYZymHL4YOltHSs9LJa24DYs1Z7rEMQ/lsEvaAIc61Y9aUxgcJaQ8lrg==}
+    peerDependencies:
+      next: '>=13.2.0 <15.0.0-0'
 
   get-intrinsic@1.3.0:
     resolution: {integrity: sha512-9fSjSaos/fRIVIp+xSJlE6lfwhES7LNtKaCBIamHsjr2na1BiABJPo0mOjjz8GJDURarmCPGqaiVg5mfjb98CQ==}
@@ -2775,7 +2783,7 @@ snapshots:
       eslint: 8.56.0
       eslint-import-resolver-node: 0.3.9
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(eslint@8.56.0))(eslint@8.56.0)
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.56.0)(typescript@5.0.2))(eslint-import-resolver-typescript@3.10.1)(eslint@8.56.0)
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.56.0)(typescript@5.0.2))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@8.56.0))(eslint@8.56.0))(eslint@8.56.0)
       eslint-plugin-jsx-a11y: 6.10.2(eslint@8.56.0)
       eslint-plugin-react: 7.37.5(eslint@8.56.0)
       eslint-plugin-react-hooks: 5.0.0-canary-7118f5dd7-20230705(eslint@8.56.0)
@@ -2805,7 +2813,7 @@ snapshots:
       tinyglobby: 0.2.14
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.56.0)(typescript@5.0.2))(eslint-import-resolver-typescript@3.10.1)(eslint@8.56.0)
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.56.0)(typescript@5.0.2))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@8.56.0))(eslint@8.56.0))(eslint@8.56.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -2820,7 +2828,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.56.0)(typescript@5.0.2))(eslint-import-resolver-typescript@3.10.1)(eslint@8.56.0):
+  eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.56.0)(typescript@5.0.2))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@8.56.0))(eslint@8.56.0))(eslint@8.56.0):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9
@@ -3033,6 +3041,10 @@ snapshots:
       is-callable: 1.2.7
 
   functions-have-names@1.2.3: {}
+
+  geist@1.3.0(next@15.2.4(react-dom@19.0.0(react@19.0.0))(react@19.0.0)):
+    dependencies:
+      next: 15.2.4(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
 
   get-intrinsic@1.3.0:
     dependencies:
