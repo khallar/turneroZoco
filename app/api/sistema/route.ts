@@ -9,7 +9,6 @@ import {
   limpiarDatosAntiguos,
   recuperarDatosPerdidos, // Nueva función
 } from "@/lib/database"
-import { Redis } from "@upstash/redis" // Importar Redis para operaciones directas
 
 interface TicketInfo {
   numero: number
@@ -28,17 +27,6 @@ interface EstadoSistema {
   tickets: TicketInfo[] // Mantener aquí para la consistencia del tipo en la API
   lastSync?: number
 }
-
-// Inicializar cliente de Upstash Redis para operaciones directas en la API con las variables correctas
-const redis = new Redis({
-  url: process.env.TURNOS_KV_REST_API_URL!,
-  token: process.env.TURNOS_KV_REST_API_TOKEN!,
-})
-
-// Prefijos para las claves de Redis (duplicados para uso directo aquí)
-const STATE_KEY_PREFIX = "sistemaTurnosZOCO:estado:"
-const TICKETS_LIST_KEY_PREFIX = "sistemaTurnosZOCO:tickets:"
-const COUNTER_KEY_PREFIX = "sistemaTurnosZOCO:counter:"
 
 // Función para verificar si debe reiniciarse
 function debeReiniciarse(estado: EstadoSistema): boolean {
@@ -128,10 +116,6 @@ export async function GET() {
       const ahora = new Date()
       const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
 
-      // Limpiar explícitamente las claves del día anterior para el nuevo día
-      await redis.del(TICKETS_LIST_KEY_PREFIX + estado.fechaInicio)
-      await redis.del(COUNTER_KEY_PREFIX + estado.fechaInicio)
-
       estado = {
         numeroActual: 1,
         ultimoNumero: 0,
@@ -198,10 +182,6 @@ export async function POST(request: NextRequest) {
 
       const ahora = new Date()
       const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
-
-      // Limpiar explícitamente las claves del día anterior para el nuevo día
-      await redis.del(TICKETS_LIST_KEY_PREFIX + estado.fechaInicio)
-      await redis.del(COUNTER_KEY_PREFIX + estado.fechaInicio)
 
       estado = {
         numeroActual: 1,
@@ -294,10 +274,6 @@ export async function POST(request: NextRequest) {
           lastSync: Date.now(),
         }
 
-        // Eliminar explícitamente la lista de tickets y el contador del día actual
-        await redis.del(TICKETS_LIST_KEY_PREFIX + fechaHoy)
-        await redis.del(COUNTER_KEY_PREFIX + fechaHoy)
-
         // Escribir el estado limpio (solo metadata)
         await escribirEstadoSistema(estadoLimpio)
         console.log("✅ Todos los registros eliminados exitosamente (Upstash Redis)")
@@ -339,10 +315,6 @@ export async function POST(request: NextRequest) {
           tickets: [], // Reiniciar tickets para el estado de retorno
           lastSync: Date.now(),
         }
-
-        // Eliminar explícitamente la lista de tickets y el contador del día actual
-        await redis.del(TICKETS_LIST_KEY_PREFIX + fechaHoy)
-        await redis.del(COUNTER_KEY_PREFIX + fechaHoy)
 
         // Escribir el estado reiniciado (solo metadata)
         await escribirEstadoSistema(estadoReiniciado)

@@ -11,7 +11,14 @@ export async function GET() {
         VERCEL_ENV: process.env.VERCEL_ENV || "development",
       },
       database: {
-        url: process.env.KV_REST_API_URL ? "Configurado" : "No configurado",
+        availableVars: {
+          UPSTASH_REDIS_REST_URL: process.env.KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
+          UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN ? "✓ Configurado" : "✗ No configurado",
+          TURNOS_KV_REST_API_URL: process.env.TURNOS_KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
+          TURNOS_KV_REST_API_TOKEN: process.env.TURNOS_KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
+          KV_REST_API_URL: process.env.KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
+          KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
+        },
         type: "Upstash Redis", // Actualizado
         name: "sistemaTurnosZOCO",
       },

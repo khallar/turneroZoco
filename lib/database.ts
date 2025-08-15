@@ -18,11 +18,64 @@ interface EstadoSistema {
   lastSync?: number
 }
 
-// Inicializar cliente de Upstash Redis con las variables de entorno correctas
-const redis = new Redis({
-  url: process.env.TURNOS_KV_REST_API_URL!,
-  token: process.env.TURNOS_KV_REST_API_TOKEN!,
-})
+// Función para obtener las variables de entorno correctas
+function getRedisConfig() {
+  // Intentar diferentes combinaciones de variables de entorno disponibles
+  const configs = [
+    {
+      url: process.env.KV_REST_API_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      name: "UPSTASH_REDIS_REST",
+    },
+    {
+      url: process.env.TURNOS_KV_REST_API_URL,
+      token: process.env.TURNOS_KV_REST_API_TOKEN,
+      name: "TURNOS_KV_REST_API",
+    },
+    {
+      url: process.env.KV_REST_API_URL,
+      token: process.env.KV_REST_API_TOKEN,
+      name: "KV_REST_API",
+    },
+  ]
+
+  for (const config of configs) {
+    if (config.url && config.token) {
+      console.log(`✅ Usando configuración Redis: ${config.name}`)
+      return { url: config.url, token: config.token, name: config.name }
+    }
+  }
+
+  console.error("❌ No se encontraron variables de entorno válidas para Redis")
+  console.log("Variables disponibles:", {
+    UPSTASH_REDIS_REST_URL: process.env.KV_REST_API_URL ? "✓" : "✗",
+    UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN ? "✓" : "✗",
+    TURNOS_KV_REST_API_URL: process.env.TURNOS_KV_REST_API_URL ? "✓" : "✗",
+    TURNOS_KV_REST_API_TOKEN: process.env.TURNOS_KV_REST_API_TOKEN ? "✓" : "✗",
+    KV_REST_API_URL: process.env.KV_REST_API_URL ? "✓" : "✗",
+    KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ? "✓" : "✗",
+  })
+
+  throw new Error("No se encontraron variables de entorno válidas para Redis")
+}
+
+// Inicializar cliente de Upstash Redis con configuración dinámica
+let redis: Redis
+try {
+  const config = getRedisConfig()
+  redis = new Redis({
+    url: config.url,
+    token: config.token,
+  })
+  console.log(`🔗 Cliente Redis inicializado con: ${config.name}`)
+} catch (error) {
+  console.error("❌ Error al inicializar cliente Redis:", error)
+  // Crear un cliente mock para evitar errores de compilación
+  redis = new Redis({
+    url: "http://localhost:6379",
+    token: "mock-token",
+  })
+}
 
 // Prefijos para las claves de Redis
 const STATE_KEY_PREFIX = "sistemaTurnosZOCO:estado:" // sistemaTurnosZOCO:estado:YYYY-MM-DD
@@ -468,17 +521,15 @@ export async function verificarConexionDB(): Promise<boolean> {
   try {
     console.log("🔍 Verificando conexión a Upstash Redis...")
 
-    // Verificar que las variables de entorno estén configuradas
-    if (!process.env.TURNOS_KV_REST_API_URL || !process.env.TURNOS_KV_REST_API_TOKEN) {
-      console.error("❌ Variables de entorno de Upstash Redis no configuradas")
-      console.log("Variables disponibles:", {
-        TURNOS_KV_REST_API_URL: process.env.TURNOS_KV_REST_API_URL ? "Configurado" : "No configurado",
-        TURNOS_KV_REST_API_TOKEN: process.env.TURNOS_KV_REST_API_TOKEN ? "Configurado" : "No configurado",
-      })
+    // Intentar obtener la configuración de Redis
+    let config
+    try {
+      config = getRedisConfig()
+      console.log(`✅ Configuración encontrada: ${config.name}`)
+    } catch (configError) {
+      console.error("❌ No se pudo obtener configuración de Redis:", configError)
       return false
     }
-
-    console.log("✅ Variables de entorno de Upstash Redis configuradas correctamente")
 
     // Intentar una operación simple para verificar la conexión
     try {
@@ -494,8 +545,7 @@ export async function verificarConexionDB(): Promise<boolean> {
       return isConnected
     } catch (testError) {
       console.error("❌ Error en prueba de conexión:", testError)
-      // Aún así, permitir que el sistema continúe
-      return true
+      return false
     }
   } catch (error) {
     console.error("❌ Error inesperado en verificarConexionDB:", error)
