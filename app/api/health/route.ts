@@ -5,13 +5,21 @@ import { Redis } from "@upstash/redis"
 // Crear cliente Redis para health check
 let redis: Redis
 try {
-  const url = process.env.KV_REST_API_URL || process.env.KV_REST_API_URL
-  const token = process.env.KV_REST_API_TOKEN || process.env.KV_REST_API_TOKEN
+  const upstashUrl = process.env.KV_REST_API_URL || process.env.KV_REST_API_URL
+  const upstashToken = process.env.KV_REST_API_TOKEN || process.env.KV_REST_API_TOKEN
 
-  if (url && token) {
-    redis = new Redis({ url, token })
+  if (upstashUrl && upstashToken) {
+    redis = new Redis({
+      url: upstashUrl,
+      token: upstashToken,
+      retry: {
+        retries: 2,
+        backoff: (retryCount) => Math.exp(retryCount) * 100,
+      },
+    })
+    console.log("✅ Health Check Redis client initialized")
   } else {
-    throw new Error("No Redis configuration found")
+    throw new Error("No Redis configuration found for health check")
   }
 } catch (error) {
   console.error("Failed to initialize Redis for health check:", error)

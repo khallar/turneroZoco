@@ -20,7 +20,7 @@ export async function GET() {
           TURNOS_KV_REST_API_URL: process.env.TURNOS_KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
           TURNOS_KV_REST_API_TOKEN: process.env.TURNOS_KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
           REDIS_URL: process.env.REDIS_URL ? "✓ Configurado" : "✗ No configurado",
-          KV_URL: process.env.KV_URL ? "✓ Configurado" : "✗ No configurado",
+          REDIS_TOKEN: process.env.REDIS_TOKEN ? "✓ Configurado" : "✗ No configurado",
         },
         type: "Upstash Redis",
         name: "TURNOS_ZOCO",

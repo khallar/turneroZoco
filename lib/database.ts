@@ -38,9 +38,9 @@ function getRedisConfig() {
       name: "TURNOS_KV_REST_API",
     },
     {
-      url: process.env.KV_REST_API_URL,
-      token: process.env.KV_REST_API_TOKEN, // Usar el token de UPSTASH si no hay KV_REST_API_TOKEN
-      name: "KV_REST_API + UPSTASH_TOKEN",
+      url: process.env.REDIS_URL?.replace("rediss://", "https://").replace(":6379", ""),
+      token: process.env.REDIS_TOKEN,
+      name: "REDIS_URL (Convertido)",
     },
   ]
 
@@ -49,7 +49,7 @@ function getRedisConfig() {
   for (const config of configs) {
     if (config.url && config.token) {
       console.log(`✅ Usando configuración Redis: ${config.name}`)
-      console.log(`📡 URL: ${config.url}`)
+      console.log(`📡 URL: ${config.url.substring(0, 50)}...`)
       console.log(`🔑 Token: ${config.token.substring(0, 20)}...`)
       return { url: config.url, token: config.token, name: config.name }
     }
@@ -65,6 +65,7 @@ function getRedisConfig() {
     TURNOS_KV_REST_API_URL: process.env.TURNOS_KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
     TURNOS_KV_REST_API_TOKEN: process.env.TURNOS_KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
     REDIS_URL: process.env.REDIS_URL ? "✓ Configurado" : "✗ No configurado",
+    REDIS_TOKEN: process.env.REDIS_TOKEN ? "✓ Configurado" : "✗ No configurado",
   })
 
   throw new Error("No se encontraron variables de entorno válidas para Upstash Redis")
@@ -355,7 +356,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
     estadoActual.lastSync = Date.now()
 
     // OPTIMIZACIÓN: Transacción 2 - Guardar el estado actualizado, añadir el nuevo ticket
-    // a la lista y registrar el log. Todo en un solo viaje de ida y vuelta a Redis.
+    // a la lista de tickets del día y registrar el log. Todo en un solo viaje de ida y vuelta a Redis.
     const transactionResults = await redis
       .multi()
       .set(estadoKey, estadoActual, { ex: 48 * 60 * 60 }) // Guarda la metadata del estado actualizada con persistencia extendida
