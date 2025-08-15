@@ -13,16 +13,18 @@ export async function GET() {
       },
       upstash: {
         availableVars: {
-          KV_REST_API_URL: process.env.KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
-          KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
           UPSTASH_REDIS_REST_URL: process.env.KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
           UPSTASH_REDIS_REST_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
+          KV_REST_API_URL: process.env.KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
+          KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
           TURNOS_KV_REST_API_URL: process.env.TURNOS_KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
           TURNOS_KV_REST_API_TOKEN: process.env.TURNOS_KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
           REDIS_URL: process.env.REDIS_URL ? "✓ Configurado" : "✗ No configurado",
+          KV_URL: process.env.KV_URL ? "✓ Configurado" : "✗ No configurado",
         },
         type: "Upstash Redis",
         name: "TURNOS_ZOCO",
+        endpoint: process.env.KV_REST_API_URL || process.env.KV_REST_API_URL || "No configurado",
         keyPrefixes: {
           state: "TURNOS_ZOCO:estado:",
           tickets: "TURNOS_ZOCO:tickets:",

@@ -25,12 +25,12 @@ function getRedisConfig() {
     {
       url: process.env.KV_REST_API_URL,
       token: process.env.KV_REST_API_TOKEN,
-      name: "KV_REST_API (Principal)",
+      name: "UPSTASH_REDIS_REST (Principal)",
     },
     {
       url: process.env.KV_REST_API_URL,
       token: process.env.KV_REST_API_TOKEN,
-      name: "UPSTASH_REDIS_REST",
+      name: "KV_REST_API",
     },
     {
       url: process.env.TURNOS_KV_REST_API_URL,
@@ -38,9 +38,9 @@ function getRedisConfig() {
       name: "TURNOS_KV_REST_API",
     },
     {
-      url: process.env.REDIS_URL,
-      token: process.env.REDIS_TOKEN,
-      name: "REDIS_URL",
+      url: process.env.KV_REST_API_URL,
+      token: process.env.KV_REST_API_TOKEN, // Usar el token de UPSTASH si no hay KV_REST_API_TOKEN
+      name: "KV_REST_API + UPSTASH_TOKEN",
     },
   ]
 
@@ -49,8 +49,8 @@ function getRedisConfig() {
   for (const config of configs) {
     if (config.url && config.token) {
       console.log(`✅ Usando configuración Redis: ${config.name}`)
-      console.log(`📡 URL: ${config.url.substring(0, 30)}...`)
-      console.log(`🔑 Token: ${config.token.substring(0, 10)}...`)
+      console.log(`📡 URL: ${config.url}`)
+      console.log(`🔑 Token: ${config.token.substring(0, 20)}...`)
       return { url: config.url, token: config.token, name: config.name }
     }
   }
@@ -58,14 +58,13 @@ function getRedisConfig() {
   console.error("❌ No se encontraron variables de entorno válidas para Upstash Redis")
   console.log("🔍 Variables disponibles en el entorno:")
   console.log({
-    KV_REST_API_URL: process.env.KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
-    KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
     UPSTASH_REDIS_REST_URL: process.env.KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
     UPSTASH_REDIS_REST_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
+    KV_REST_API_URL: process.env.KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
+    KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
     TURNOS_KV_REST_API_URL: process.env.TURNOS_KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
     TURNOS_KV_REST_API_TOKEN: process.env.TURNOS_KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
     REDIS_URL: process.env.REDIS_URL ? "✓ Configurado" : "✗ No configurado",
-    REDIS_TOKEN: process.env.REDIS_TOKEN ? "✓ Configurado" : "✗ No configurado",
   })
 
   throw new Error("No se encontraron variables de entorno válidas para Upstash Redis")
