@@ -58,7 +58,7 @@ export default function NombreModal({ isOpen, onConfirm, onCancel, generandoTick
   return (
     <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4 animate-fadeIn">
       <div className="absolute inset-0 bg-red-500 opacity-10 animate-pulse"></div>
-      <Card className="w-full max-w-lg bg-white border-8 border-red-500 shadow-2xl animate-scaleIn relative">
+      <Card className="w-full max-w-lg bg-white border-8 border-red-500 shadow-2xl animate-scaleIn relative max-h-[90vh] overflow-y-auto">
         {/* Indicador parpadeante */}
         <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-6 py-2 rounded-full text-sm font-bold animate-bounce">
           {generandoTicket ? "¡GENERANDO TICKET!" : "¡ESCRIBA SU NOMBRE AQUÍ!"}
@@ -74,10 +74,10 @@ export default function NombreModal({ isOpen, onConfirm, onCancel, generandoTick
           </Button>
         </CardHeader>
 
-        <CardContent className="pt-8 pb-8">
-          <form onSubmit={handleSubmit} className="space-y-8">
+        <CardContent className="pt-6 pb-6 px-4 md:px-6">
+          <form onSubmit={handleSubmit} className="space-y-6 md:space-y-8">
             {/* SECCIÓN DEL NOMBRE - MUY DESTACADA */}
-            <div className="bg-gradient-to-r from-yellow-100 to-orange-100 border-4 border-yellow-400 rounded-xl p-6 shadow-lg">
+            <div className="bg-gradient-to-r from-yellow-100 to-orange-100 border-4 border-yellow-400 rounded-xl p-4 md:p-6 shadow-lg">
               <div className="flex items-center justify-center mb-4">
                 <div className="bg-red-500 text-white px-4 py-2 rounded-full flex items-center gap-2 animate-pulse">
                   <AlertCircle className="h-5 w-5" />
@@ -129,7 +129,7 @@ export default function NombreModal({ isOpen, onConfirm, onCancel, generandoTick
                 type="button"
                 variant="outline"
                 onClick={onCancel}
-                className="flex-1 text-lg py-6 border-2 border-gray-300 hover:bg-gray-50"
+                className="flex-1 text-lg py-6 border-2 border-gray-300 hover:bg-gray-50 bg-transparent"
                 disabled={generandoTicket}
               >
                 ❌ Cancelar
