@@ -29,10 +29,10 @@ interface EstadoSistema {
   lastSync?: number
 }
 
-// Inicializar cliente de Upstash Redis para operaciones directas en la API
+// Inicializar cliente de Upstash Redis para operaciones directas en la API con las variables correctas
 const redis = new Redis({
-  url: process.env.KV_REST_API_URL!,
-  token: process.env.KV_REST_API_TOKEN!,
+  url: process.env.TURNOS_KV_REST_API_URL!,
+  token: process.env.TURNOS_KV_REST_API_TOKEN!,
 })
 
 // Prefijos para las claves de Redis (duplicados para uso directo aquí)

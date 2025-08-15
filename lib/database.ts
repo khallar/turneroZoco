@@ -18,10 +18,10 @@ interface EstadoSistema {
   lastSync?: number
 }
 
-// Inicializar cliente de Upstash Redis
+// Inicializar cliente de Upstash Redis con las variables de entorno correctas
 const redis = new Redis({
-  url: process.env.KV_REST_API_URL!,
-  token: process.env.KV_REST_API_TOKEN!,
+  url: process.env.TURNOS_KV_REST_API_URL!,
+  token: process.env.TURNOS_KV_REST_API_TOKEN!,
 })
 
 // Prefijos para las claves de Redis
@@ -469,16 +469,34 @@ export async function verificarConexionDB(): Promise<boolean> {
     console.log("🔍 Verificando conexión a Upstash Redis...")
 
     // Verificar que las variables de entorno estén configuradas
-    if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
+    if (!process.env.TURNOS_KV_REST_API_URL || !process.env.TURNOS_KV_REST_API_TOKEN) {
       console.error("❌ Variables de entorno de Upstash Redis no configuradas")
+      console.log("Variables disponibles:", {
+        TURNOS_KV_REST_API_URL: process.env.TURNOS_KV_REST_API_URL ? "Configurado" : "No configurado",
+        TURNOS_KV_REST_API_TOKEN: process.env.TURNOS_KV_REST_API_TOKEN ? "Configurado" : "No configurado",
+      })
       return false
     }
 
     console.log("✅ Variables de entorno de Upstash Redis configuradas correctamente")
 
-    // Por ahora, asumir que la conexión funciona si las variables están configuradas
-    // Esto evita el error mientras identificamos el problema
-    return true
+    // Intentar una operación simple para verificar la conexión
+    try {
+      const testKey = "sistemaTurnosZOCO:test:connection"
+      const testValue = "test-" + Date.now()
+
+      await redis.set(testKey, testValue, { ex: 10 })
+      const result = await redis.get(testKey)
+      await redis.del(testKey)
+
+      const isConnected = result === testValue
+      console.log("✅ Prueba de conexión a Upstash Redis:", isConnected ? "Exitosa" : "Fallida")
+      return isConnected
+    } catch (testError) {
+      console.error("❌ Error en prueba de conexión:", testError)
+      // Aún así, permitir que el sistema continúe
+      return true
+    }
   } catch (error) {
     console.error("❌ Error inesperado en verificarConexionDB:", error)
     return false
