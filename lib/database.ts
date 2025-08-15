@@ -24,7 +24,12 @@ function getRedisConfig() {
   const configs = [
     {
       url: process.env.KV_REST_API_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      token: process.env.KV_REST_API_TOKEN,
+      name: "KV_REST_API (Principal)",
+    },
+    {
+      url: process.env.KV_REST_API_URL,
+      token: process.env.KV_REST_API_TOKEN,
       name: "UPSTASH_REDIS_REST",
     },
     {
@@ -33,48 +38,67 @@ function getRedisConfig() {
       name: "TURNOS_KV_REST_API",
     },
     {
-      url: process.env.KV_REST_API_URL,
-      token: process.env.KV_REST_API_TOKEN,
-      name: "KV_REST_API",
+      url: process.env.REDIS_URL,
+      token: process.env.REDIS_TOKEN,
+      name: "REDIS_URL",
     },
   ]
+
+  console.log("🔍 Detectando configuración de Upstash Redis...")
 
   for (const config of configs) {
     if (config.url && config.token) {
       console.log(`✅ Usando configuración Redis: ${config.name}`)
+      console.log(`📡 URL: ${config.url.substring(0, 30)}...`)
+      console.log(`🔑 Token: ${config.token.substring(0, 10)}...`)
       return { url: config.url, token: config.token, name: config.name }
     }
   }
 
-  console.error("❌ No se encontraron variables de entorno válidas para Redis")
-  console.log("Variables disponibles:", {
-    UPSTASH_REDIS_REST_URL: process.env.KV_REST_API_URL ? "✓" : "✗",
-    UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN ? "✓" : "✗",
-    TURNOS_KV_REST_API_URL: process.env.TURNOS_KV_REST_API_URL ? "✓" : "✗",
-    TURNOS_KV_REST_API_TOKEN: process.env.TURNOS_KV_REST_API_TOKEN ? "✓" : "✗",
-    KV_REST_API_URL: process.env.KV_REST_API_URL ? "✓" : "✗",
-    KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ? "✓" : "✗",
+  console.error("❌ No se encontraron variables de entorno válidas para Upstash Redis")
+  console.log("🔍 Variables disponibles en el entorno:")
+  console.log({
+    KV_REST_API_URL: process.env.KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
+    KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
+    UPSTASH_REDIS_REST_URL: process.env.KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
+    UPSTASH_REDIS_REST_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
+    TURNOS_KV_REST_API_URL: process.env.TURNOS_KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
+    TURNOS_KV_REST_API_TOKEN: process.env.TURNOS_KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
+    REDIS_URL: process.env.REDIS_URL ? "✓ Configurado" : "✗ No configurado",
+    REDIS_TOKEN: process.env.REDIS_TOKEN ? "✓ Configurado" : "✗ No configurado",
   })
 
-  throw new Error("No se encontraron variables de entorno válidas para Redis")
+  throw new Error("No se encontraron variables de entorno válidas para Upstash Redis")
 }
 
-// Inicializar cliente de Upstash Redis con configuración dinámica
+// Inicializar cliente de Upstash Redis con configuración dinámica y retry
 let redis: Redis
+let redisConfig: { url: string; token: string; name: string }
+
 try {
-  const config = getRedisConfig()
+  redisConfig = getRedisConfig()
   redis = new Redis({
-    url: config.url,
-    token: config.token,
+    url: redisConfig.url,
+    token: redisConfig.token,
+    retry: {
+      retries: 3,
+      backoff: (retryCount) => Math.exp(retryCount) * 50, // Exponential backoff
+    },
+    automaticDeserialization: true,
   })
-  console.log(`🔗 Cliente Redis inicializado con: ${config.name}`)
+  console.log(`🔗 Cliente Upstash Redis inicializado exitosamente`)
+  console.log(`📊 Configuración: ${redisConfig.name}`)
+  console.log(
+    `🌐 Región: ${redisConfig.url.includes("us1") ? "US East" : redisConfig.url.includes("eu1") ? "EU West" : "Global"}`,
+  )
 } catch (error) {
-  console.error("❌ Error al inicializar cliente Redis:", error)
+  console.error("❌ Error al inicializar cliente Upstash Redis:", error)
   // Crear un cliente mock para evitar errores de compilación
   redis = new Redis({
-    url: "http://localhost:6379",
+    url: "https://mock-redis.upstash.io",
     token: "mock-token",
   })
+  redisConfig = { url: "mock", token: "mock", name: "Mock (Error de configuración)" }
 }
 
 // Prefijos para las claves de Redis - ACTUALIZADOS CON NUEVO NOMBRE
@@ -85,7 +109,7 @@ const LOGS_KEY = "TURNOS_ZOCO:logs"
 const COUNTER_KEY_PREFIX = "TURNOS_ZOCO:counter:" // Para el contador atómico de número de ticket
 
 // Función auxiliar para obtener la fecha actual en formato YYYY-MM-DD (Argentina)
-function getTodayDateString(): string {
+export function getTodayDateString(): string {
   const now = new Date()
   const options: Intl.DateTimeFormatOptions = {
     year: "numeric",
@@ -99,106 +123,142 @@ function getTodayDateString(): string {
 
 // --- Core State Management ---
 
+// Función helper para retry con backoff exponencial
+async function retryOperation<T>(
+  operation: () => Promise<T>,
+  maxRetries = 3,
+  baseDelay = 1000,
+  operationName = "operación",
+): Promise<T> {
+  let lastError: Error
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`🔄 ${operationName} - Intento ${attempt}/${maxRetries}`)
+      const result = await operation()
+      if (attempt > 1) {
+        console.log(`✅ ${operationName} exitosa después de ${attempt} intentos`)
+      }
+      return result
+    } catch (error) {
+      lastError = error as Error
+      console.error(`❌ ${operationName} falló en intento ${attempt}:`, error)
+
+      if (attempt === maxRetries) {
+        console.error(`💥 ${operationName} falló después de ${maxRetries} intentos`)
+        throw lastError
+      }
+
+      // Backoff exponencial con jitter
+      const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000
+      console.log(`⏳ Esperando ${Math.round(delay)}ms antes del siguiente intento...`)
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+  }
+
+  throw lastError!
+}
+
 // leerEstadoSistema ahora devuelve el estado (metadata) Y los tickets
 export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: TicketInfo[] }> {
-  try {
-    console.log("📖 Leyendo estado y tickets desde TURNOS_ZOCO (Upstash Redis)...")
-    const fechaHoy = getTodayDateString()
-    const estadoKey = STATE_KEY_PREFIX + fechaHoy
-    const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
-    const counterKey = COUNTER_KEY_PREFIX + fechaHoy
+  return retryOperation(
+    async () => {
+      console.log("📖 Leyendo estado y tickets desde TURNOS_ZOCO (Upstash Redis)...")
+      const fechaHoy = getTodayDateString()
+      const estadoKey = STATE_KEY_PREFIX + fechaHoy
+      const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
+      const counterKey = COUNTER_KEY_PREFIX + fechaHoy
 
-    // OPTIMIZACIÓN: Usamos MULTI/EXEC para obtener el estado, la lista de tickets y el contador
-    // en una sola operación de red. Esto reduce la latencia y asegura la atomicidad.
-    const results = await redis
-      .multi()
-      .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado
-      .lrange<TicketInfo>(ticketsListKey, 0, -1) // Obtiene todos los tickets del día
-      .get(counterKey) // Obtiene el valor actual del contador
-      .exists(estadoKey) // Verificar si existe el estado
-      .exists(ticketsListKey) // Verificar si existe la lista de tickets
-      .exec()
+      // Pipeline optimizado para reducir latencia
+      const pipeline = redis.pipeline()
+      pipeline.get(estadoKey)
+      pipeline.lrange(ticketsListKey, 0, -1)
+      pipeline.get(counterKey)
+      pipeline.exists(estadoKey)
+      pipeline.exists(ticketsListKey)
 
-    // Validar que tenemos los resultados esperados
-    if (!Array.isArray(results) || results.length !== 5) {
-      throw new Error("Respuesta inesperada de Redis MULTI/EXEC")
-    }
+      const results = await pipeline.exec()
 
-    const [estadoRaw, ticketsRaw, contadorActual, estadoExists, ticketsExists] = results
-    let estado: EstadoSistema
-    const tickets: TicketInfo[] = Array.isArray(ticketsRaw) ? ticketsRaw : []
-    const contador = typeof contadorActual === "number" ? contadorActual : 0
+      if (!Array.isArray(results) || results.length !== 5) {
+        throw new Error("Respuesta inesperada de Upstash Redis pipeline")
+      }
 
-    console.log(`🔍 Verificación al leer: Tickets en lista: ${tickets.length}, Contador: ${contador}`)
-    console.log(`🔍 Existencia: Estado: ${estadoExists}, Tickets: ${ticketsExists}`)
+      const [estadoRaw, ticketsRaw, contadorActual, estadoExists, ticketsExists] = results
+      let estado: EstadoSistema
+      const tickets: TicketInfo[] = Array.isArray(ticketsRaw) ? ticketsRaw : []
+      const contador = typeof contadorActual === "number" ? contadorActual : 0
 
-    if (estadoRaw && typeof estadoRaw === "object") {
-      estado = estadoRaw
+      console.log(`🔍 Datos leídos: ${tickets.length} tickets, contador: ${contador}`)
+      console.log(`📊 Existencia: Estado: ${estadoExists ? "✓" : "✗"}, Tickets: ${ticketsExists ? "✓" : "✗"}`)
 
-      // Verificar y corregir inconsistencias entre el estado y los datos reales
-      const ticketsReales = tickets.length
-      if (estado.totalAtendidos !== ticketsReales) {
-        console.log(
-          `⚠️ Corrigiendo inconsistencia: Estado decía ${estado.totalAtendidos}, pero hay ${ticketsReales} tickets`,
-        )
-        estado.totalAtendidos = ticketsReales
+      if (estadoRaw && typeof estadoRaw === "object") {
+        estado = estadoRaw
 
-        // Si hay tickets, actualizar el último número basado en el último ticket real
-        if (tickets.length > 0) {
-          const ultimoTicketReal = tickets[tickets.length - 1]
-          estado.ultimoNumero = ultimoTicketReal.numero
-          estado.numeroActual = ultimoTicketReal.numero + 1
+        // Verificar y corregir inconsistencias entre el estado y los datos reales
+        const ticketsReales = tickets.length
+        if (estado.totalAtendidos !== ticketsReales) {
+          console.log(
+            `⚠️ Corrigiendo inconsistencia: Estado decía ${estado.totalAtendidos}, pero hay ${ticketsReales} tickets`,
+          )
+          estado.totalAtendidos = ticketsReales
+
+          // Si hay tickets, actualizar el último número basado en el último ticket real
+          if (tickets.length > 0) {
+            const ultimoTicketReal = tickets[tickets.length - 1]
+            estado.ultimoNumero = ultimoTicketReal.numero
+            estado.numeroActual = ultimoTicketReal.numero + 1
+          }
+
+          // Actualizar el estado corregido en Redis con persistencia extendida
+          estado.lastSync = Date.now()
+          await redis.set(estadoKey, estado, { ex: 48 * 60 * 60 }) // 48 horas de persistencia
+          console.log("✅ Estado corregido y guardado con persistencia extendida")
         }
 
-        // Actualizar el estado corregido en Redis con persistencia extendida
-        estado.lastSync = Date.now()
-        await redis.set(estadoKey, estado, { ex: 48 * 60 * 60 }) // 48 horas de persistencia
-        console.log("✅ Estado corregido y guardado con persistencia extendida")
+        // Asegurar persistencia de datos existentes
+        if (ticketsExists && tickets.length > 0) {
+          await redis.expire(ticketsListKey, 48 * 60 * 60) // 48 horas
+        }
+        if (contador > 0) {
+          await redis.expire(counterKey, 48 * 60 * 60) // 48 horas
+        }
+
+        console.log("✅ Estado y tickets cargados desde TURNOS_ZOCO (Upstash Redis) con persistencia verificada.")
+      } else {
+        // Crear estado inicial para el día si no existe
+        console.log("⚠️ No se encontró estado para hoy, creando inicial en TURNOS_ZOCO (Upstash Redis)...")
+
+        // Si hay tickets pero no hay estado, reconstruir el estado basado en los tickets existentes
+        let ultimoNumero = 0
+        if (tickets.length > 0) {
+          ultimoNumero = Math.max(...tickets.map((t) => t.numero))
+          console.log(`🔧 Reconstruyendo estado: Encontrados ${tickets.length} tickets, último número: ${ultimoNumero}`)
+        }
+
+        estado = {
+          numeroActual: ultimoNumero + 1,
+          ultimoNumero: ultimoNumero,
+          totalAtendidos: tickets.length,
+          numerosLlamados: 0, // Esto se debe calcular o mantener por separado
+          fechaInicio: fechaHoy,
+          ultimoReinicio: new Date().toISOString(),
+          lastSync: Date.now(),
+        }
+
+        // Guardar el estado inicial con persistencia extendida
+        await redis.set(estadoKey, estado, { ex: 48 * 60 * 60 }) // 48 horas
+        console.log("✅ Estado inicial creado con persistencia extendida")
       }
 
-      // Asegurar persistencia de datos existentes
-      if (ticketsExists && tickets.length > 0) {
-        await redis.expire(ticketsListKey, 48 * 60 * 60) // 48 horas
-      }
-      if (contador > 0) {
-        await redis.expire(counterKey, 48 * 60 * 60) // 48 horas
-      }
-
-      console.log("✅ Estado y tickets cargados desde TURNOS_ZOCO (Upstash Redis) con persistencia verificada.")
-    } else {
-      // Crear estado inicial para el día si no existe
-      console.log("⚠️ No se encontró estado para hoy, creando inicial en TURNOS_ZOCO (Upstash Redis)...")
-
-      // Si hay tickets pero no hay estado, reconstruir el estado basado en los tickets existentes
-      let ultimoNumero = 0
-      if (tickets.length > 0) {
-        ultimoNumero = Math.max(...tickets.map((t) => t.numero))
-        console.log(`🔧 Reconstruyendo estado: Encontrados ${tickets.length} tickets, último número: ${ultimoNumero}`)
-      }
-
-      estado = {
-        numeroActual: ultimoNumero + 1,
-        ultimoNumero: ultimoNumero,
-        totalAtendidos: tickets.length,
-        numerosLlamados: 0, // Esto se debe calcular o mantener por separado
-        fechaInicio: fechaHoy,
-        ultimoReinicio: new Date().toISOString(),
-        lastSync: Date.now(),
-      }
-
-      // Guardar el estado inicial con persistencia extendida
-      await redis.set(estadoKey, estado, { ex: 48 * 60 * 60 }) // 48 horas
-      console.log("✅ Estado inicial creado con persistencia extendida")
-    }
-
-    console.log(
-      `📊 Estado final: Total: ${estado.totalAtendidos}, Último: ${estado.ultimoNumero}, Próximo: ${estado.numeroActual}`,
-    )
-    return { ...estado, tickets }
-  } catch (error) {
-    console.error("❌ Error al leer estado del sistema desde TURNOS_ZOCO (Upstash Redis):", error)
-    throw error
-  }
+      console.log(
+        `📊 Estado final: Total: ${estado.totalAtendidos}, Último: ${estado.ultimoNumero}, Próximo: ${estado.numeroActual}`,
+      )
+      return { ...estado, tickets }
+    },
+    3,
+    1000,
+    "Lectura de estado",
+  )
 }
 
 // escribirEstadoSistema ahora solo escribe la metadata del estado
@@ -520,39 +580,58 @@ export async function obtenerEstadisticas(estado: EstadoSistema & { tickets: Tic
   }
 }
 
-export async function verificarConexionDB(): Promise<boolean> {
+export async function verificarConexionDB(): Promise<{ connected: boolean; details: any }> {
   try {
     console.log("🔍 Verificando conexión a TURNOS_ZOCO (Upstash Redis)...")
 
-    // Intentar obtener la configuración de Redis
-    let config
+    const startTime = Date.now()
+
+    // Test 1: Ping básico
     try {
-      config = getRedisConfig()
-      console.log(`✅ Configuración encontrada: ${config.name}`)
-    } catch (configError) {
-      console.error("❌ No se pudo obtener configuración de Redis:", configError)
-      return false
+      const pingResult = await redis.ping()
+      console.log("✅ Ping exitoso:", pingResult)
+    } catch (pingError) {
+      console.log("⚠️ Ping falló, probando con operación SET/GET...")
     }
 
-    // Intentar una operación simple para verificar la conexión
-    try {
-      const testKey = "TURNOS_ZOCO:test:connection"
-      const testValue = "test-" + Date.now()
+    // Test 2: Operación SET/GET
+    const testKey = "TURNOS_ZOCO:health_check:" + Date.now()
+    const testValue = "health_check_" + Math.random()
 
-      await redis.set(testKey, testValue, { ex: 10 })
-      const result = await redis.get(testKey)
-      await redis.del(testKey)
+    await redis.set(testKey, testValue, { ex: 30 }) // 30 segundos de expiración
+    const result = await redis.get(testKey)
+    await redis.del(testKey) // Limpiar
 
-      const isConnected = result === testValue
-      console.log("✅ Prueba de conexión a TURNOS_ZOCO (Upstash Redis):", isConnected ? "Exitosa" : "Fallida")
-      return isConnected
-    } catch (testError) {
-      console.error("❌ Error en prueba de conexión:", testError)
-      return false
+    const responseTime = Date.now() - startTime
+    const isConnected = result === testValue
+
+    const details = {
+      connected: isConnected,
+      responseTime: responseTime + "ms",
+      config: redisConfig.name,
+      region: redisConfig.url.includes("us1") ? "US East" : redisConfig.url.includes("eu1") ? "EU West" : "Global",
+      testResult: result === testValue ? "✅ Exitoso" : "❌ Fallido",
+      timestamp: new Date().toISOString(),
     }
+
+    if (isConnected) {
+      console.log("✅ Conexión a TURNOS_ZOCO (Upstash Redis) verificada exitosamente")
+      console.log(`⚡ Tiempo de respuesta: ${responseTime}ms`)
+    } else {
+      console.error("❌ Fallo en la verificación de conexión")
+    }
+
+    return { connected: isConnected, details }
   } catch (error) {
     console.error("❌ Error inesperado en verificarConexionDB:", error)
-    return false
+    return {
+      connected: false,
+      details: {
+        error: error instanceof Error ? error.message : "Error desconocido",
+        config: redisConfig?.name || "No configurado",
+        timestamp: new Date().toISOString(),
+      },
+    }
   }
 }
 
