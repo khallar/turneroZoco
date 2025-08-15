@@ -60,12 +60,12 @@ export default function NombreModal({ isOpen, onConfirm, onCancel, generandoTick
       <div className="absolute inset-0 bg-red-500 opacity-10 animate-pulse"></div>
       <Card className="w-full max-w-lg bg-white border-8 border-red-500 shadow-2xl animate-scaleIn relative max-h-[90vh] overflow-y-auto">
         {/* Indicador parpadeante */}
-        <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-6 py-2 rounded-full text-sm font-bold animate-bounce">
+        <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-6 py-2 rounded-full text-sm font-bold animate-bounce mx-0">
           {generandoTicket ? "¡GENERANDO TICKET!" : "¡ESCRIBA SU NOMBRE AQUÍ!"}
         </div>
 
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 bg-gradient-to-r from-red-50 to-orange-50 border-b-4 border-red-200">
-          <CardTitle className="text-3xl flex items-center gap-3 text-red-700 font-black">
+          <CardTitle className="flex items-center gap-3 text-red-700 font-black text-2xl">
             <User className="h-8 w-8" />
             {generandoTicket ? "GENERANDO..." : "PASO 1: SU NOMBRE"}
           </CardTitle>
