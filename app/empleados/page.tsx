@@ -3,25 +3,12 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Phone,
-  Users,
-  Clock,
-  ArrowLeft,
-  CheckCircle,
-  Wifi,
-  WifiOff,
-  User,
-  RefreshCw,
-  TrendingUp,
-  BarChart3,
-  Timer,
-  Activity,
-} from "lucide-react"
+import { Phone, Users, Clock, ArrowLeft, CheckCircle, Wifi, WifiOff, User, RefreshCw } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 
 export default function PaginaEmpleados() {
-  const { estado, estadisticas, loading, error, guardarEstado, cargarEstado, ultimaSincronizacion } = useSistemaEstado()
+  const { estado, estadisticas, loading, error, guardarEstado, cargarEstado, ultimaSincronizacion, cacheStats } =
+    useSistemaEstado("empleados") // Especificar página empleados
   const [numeroEnAtencion, setNumeroEnAtencion] = useState(0)
   const [nombreEnAtencion, setNombreEnAtencion] = useState("")
   const [horaActual, setHoraActual] = useState(new Date())
@@ -36,35 +23,6 @@ export default function PaginaEmpleados() {
     setIsClient(true)
   }, [])
 
-  // Actualizar datos automáticamente cada 15 segundos (más frecuente para empleados)
-  useEffect(() => {
-    if (!isClient) return
-
-    const actualizarAutomaticamente = async () => {
-      try {
-        console.log("🔄 Actualizando datos automáticamente (empleados - TURNOS_ZOCO)...")
-        setUltimaActualizacionAutomatica(new Date())
-        setContadorActualizaciones((prev) => prev + 1)
-        await cargarEstado(true) // Con estadísticas para el panel de empleados
-
-        // Log adicional para debug
-        console.log(
-          `📊 Estado después de actualización: Total emitidos: ${estado?.totalAtendidos}, Números llamados: ${estado?.numerosLlamados}`,
-        )
-      } catch (error) {
-        console.error("Error en actualización automática de empleados (TURNOS_ZOCO):", error)
-      }
-    }
-
-    // Ejecutar inmediatamente al montar
-    actualizarAutomaticamente()
-
-    // Configurar intervalo más frecuente para empleados
-    const interval = setInterval(actualizarAutomaticamente, 15000) // 15 segundos
-
-    return () => clearInterval(interval)
-  }, [cargarEstado, isClient])
-
   // Verificar el estado de conexión después del montaje
   useEffect(() => {
     if (!isClient) return
@@ -75,7 +33,7 @@ export default function PaginaEmpleados() {
       setIsOnline(true)
       // Cuando vuelve la conexión, actualizar inmediatamente
       console.log("Conexión restaurada (TURNOS_ZOCO), actualizando datos...")
-      cargarEstado(true)
+      cargarEstado(true, true) // Forzar actualización
     }
     const handleOffline = () => setIsOnline(false)
 
@@ -149,9 +107,9 @@ export default function PaginaEmpleados() {
     setNumeroEnAtencion(proximoNumeroALlamar)
     setNombreEnAtencion(ticketALlamar?.nombre || "Cliente ZOCO")
 
-    // Actualizar datos inmediatamente después de llamar
+    // Actualizar datos inmediatamente después de llamar (forzado)
     setTimeout(() => {
-      cargarEstado(true)
+      cargarEstado(true, true)
     }, 500)
   }
 
@@ -159,7 +117,7 @@ export default function PaginaEmpleados() {
     setActualizandoDatos(true)
     try {
       console.log("Actualizando datos manualmente (TURNOS_ZOCO)...")
-      await cargarEstado(true) // Una sola llamada con estadísticas
+      await cargarEstado(true, true) // Forzar actualización con estadísticas
       setContadorActualizaciones((prev) => prev + 1)
     } catch (error) {
       console.error("Error al actualizar datos (TURNOS_ZOCO):", error)
@@ -243,6 +201,7 @@ export default function PaginaEmpleados() {
     hayNumerosParaLlamar: hayNumerosParaLlamar,
     totalTicketsEnArray: estado?.tickets?.length || 0,
     ultimoTicketEnArray: estado?.tickets?.[estado.tickets.length - 1]?.numero || "N/A",
+    cacheStats: cacheStats,
   }
 
   console.log("🔍 Debug info empleados:", debugInfo)
@@ -252,7 +211,7 @@ export default function PaginaEmpleados() {
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 md:h-32 md:w-32 border-b-2 border-green-600 mx-auto mb-4"></div>
-          <p className="text-base md:text-lg text-gray-600">Cargando panel de empleados (TURNOS_ZOCO)...</p>
+          <p className="text-base md:text-lg text-gray-600">Cargando panel de empleados (Cache Optimizado)...</p>
         </div>
       </div>
     )
@@ -276,12 +235,17 @@ export default function PaginaEmpleados() {
           </div>
           <h1 className="text-2xl md:text-4xl font-bold text-gray-800 mb-1 md:mb-2">Panel de Empleados</h1>
 
-          {/* Indicador de actualización automática */}
+          {/* Indicador de actualización automática optimizado */}
           <div className="flex justify-center items-center gap-2 mb-2">
             <div className={`w-2 h-2 rounded-full ${isOnline ? "bg-green-500 animate-pulse" : "bg-red-500"}`}></div>
             <span className="text-xs text-gray-600">
-              Auto-actualización cada 30s {contadorActualizaciones > 0 && `(${contadorActualizaciones} updates)`}
+              Auto-actualización optimizada cada 30s{" "}
+              {contadorActualizaciones > 0 && `(${contadorActualizaciones} updates)`}
             </span>
+            {/* Indicador de cache */}
+            {cacheStats.totalEntries > 0 && (
+              <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">📦 {cacheStats.totalEntries}</span>
+            )}
           </div>
 
           {/* Botón de refresh manual */}
@@ -332,12 +296,12 @@ export default function PaginaEmpleados() {
               {isOnline ? (
                 <>
                   <Wifi className="h-3 w-3 md:h-4 md:w-4 text-green-500" />
-                  <span className="text-green-500">Online (TURNOS_ZOCO)</span>
+                  <span className="text-green-500">Online (Cache Optimizado)</span>
                 </>
               ) : (
                 <>
                   <WifiOff className="h-3 w-3 md:h-4 md:w-4 text-red-500" />
-                  <span className="text-red-500">Offline (TURNOS_ZOCO)</span>
+                  <span className="text-red-500">Offline</span>
                 </>
               )}
             </div>
@@ -482,208 +446,14 @@ export default function PaginaEmpleados() {
           </CardContent>
         </Card>
 
-        {/* Resumen del día - stack en móvil */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-6 mb-4 md:mb-8">
-          <Card>
-            <CardHeader className="p-3 md:p-6">
-              <CardTitle className="text-base md:text-lg">Estado del Sistema</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 md:space-y-3 p-3 md:p-6 pt-0">
-              <div className="flex justify-between text-sm md:text-base">
-                <span>Tickets emitidos hoy:</span>
-                <span className="font-bold text-blue-600">{estado?.totalAtendidos}</span>
-              </div>
-              <div className="flex justify-between text-sm md:text-base">
-                <span>Números ya llamados:</span>
-                <span className="font-bold text-green-600">{estado?.numerosLlamados}</span>
-              </div>
-              <div className="flex justify-between text-sm md:text-base">
-                <span>Números en espera:</span>
-                <span className="font-bold text-orange-600">{numerosEnEspera}</span>
-              </div>
-              <div className="flex justify-between text-sm md:text-base">
-                <span>Próximo a emitir:</span>
-                <span className="font-bold text-purple-600">{estado?.numeroActual?.toString().padStart(3, "0")}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="p-3 md:p-6">
-              <CardTitle className="text-base md:text-lg">Últimos Llamados</CardTitle>
-            </CardHeader>
-            <CardContent className="p-3 md:p-6 pt-0">
-              <div className="space-y-2">
-                {Array.from({ length: Math.min(5, estado?.numerosLlamados || 0) }, (_, i) => {
-                  const numero = (estado?.numerosLlamados || 0) - i
-                  const ticket = estado?.tickets?.find((t) => t.numero === numero)
-                  return (
-                    <div key={numero} className="flex justify-between items-center p-2 bg-gray-50 rounded text-sm">
-                      <div className="min-w-0 flex-1">
-                        <span className="font-mono font-bold">#{numero.toString().padStart(3, "0")}</span>
-                        {ticket && (
-                          <div className="text-xs md:text-sm text-blue-600 font-medium truncate">{ticket.nombre}</div>
-                        )}
-                      </div>
-                      <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
-                        {i === 0 ? "Atendiendo" : "Atendido"}
-                      </span>
-                    </div>
-                  )
-                })}
-                {(estado?.numerosLlamados || 0) === 0 && (
-                  <p className="text-gray-500 text-center py-4 text-sm">Aún no se han llamado números</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Instrucciones - compactas en móvil */}
-        <Card className="border-green-200 bg-green-50 mb-6">
-          <CardHeader className="p-3 md:p-6">
-            <CardTitle className="text-green-800 text-base md:text-lg">📋 Instrucciones</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-xs md:text-sm p-3 md:p-6 pt-0">
-            <div className="bg-white p-2 md:p-3 rounded border-l-4 border-green-400">
-              <ul className="list-disc list-inside space-y-1 text-gray-700">
-                <li>
-                  <strong>Llamar:</strong> Presione el botón verde para llamar al siguiente cliente
-                </li>
-                <li>
-                  <strong>Información:</strong> Ve número, nombre y estado de cada ticket
-                </li>
-                <li>
-                  <strong>Persistencia:</strong> Los números se mantienen hasta las 12:00 AM
-                </li>
-                <li>
-                  <strong>Actualización:</strong> Se actualiza automáticamente cada 30 segundos
-                </li>
-                <li>
-                  <strong>Manual:</strong> Use "Actualizar Ahora" si no ve tickets nuevos
-                </li>
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Estadísticas Avanzadas del Día */}
-        <Card className="mb-6 bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
-          <CardHeader className="p-3 md:p-6">
-            <CardTitle className="text-lg md:text-xl flex items-center gap-2 text-indigo-800">
-              <BarChart3 className="h-5 w-5 md:h-6 md:w-6" />📊 Estadísticas Avanzadas del Día
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-3 md:p-6 pt-0">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Eficiencia */}
-              <div className="bg-white p-3 md:p-4 rounded-lg border-l-4 border-green-500">
-                <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="h-4 w-4 text-green-600" />
-                  <span className="text-xs md:text-sm font-medium text-gray-600">Eficiencia</span>
-                </div>
-                <div className="text-xl md:text-2xl font-bold text-green-600">{estadisticasAvanzadas.eficiencia}%</div>
-                <p className="text-xs text-gray-500">Tickets atendidos vs emitidos</p>
-              </div>
-
-              {/* Velocidad de Atención */}
-              <div className="bg-white p-3 md:p-4 rounded-lg border-l-4 border-blue-500">
-                <div className="flex items-center gap-2 mb-2">
-                  <Activity className="h-4 w-4 text-blue-600" />
-                  <span className="text-xs md:text-sm font-medium text-gray-600">Velocidad</span>
-                </div>
-                <div className="text-xl md:text-2xl font-bold text-blue-600">
-                  {estadisticasAvanzadas.velocidadAtencion}
-                </div>
-                <p className="text-xs text-gray-500">Tickets/hora atendidos</p>
-              </div>
-
-              {/* Tiempo Promedio */}
-              <div className="bg-white p-3 md:p-4 rounded-lg border-l-4 border-orange-500">
-                <div className="flex items-center gap-2 mb-2">
-                  <Timer className="h-4 w-4 text-orange-600" />
-                  <span className="text-xs md:text-sm font-medium text-gray-600">Tiempo Promedio</span>
-                </div>
-                <div className="text-xl md:text-2xl font-bold text-orange-600">
-                  {estadisticasAvanzadas.tiempoPromedioEspera}
-                </div>
-                <p className="text-xs text-gray-500">Minutos por ticket</p>
-              </div>
-
-              {/* Productividad */}
-              <div className="bg-white p-3 md:p-4 rounded-lg border-l-4 border-purple-500">
-                <div className="flex items-center gap-2 mb-2">
-                  <BarChart3 className="h-4 w-4 text-purple-600" />
-                  <span className="text-xs md:text-sm font-medium text-gray-600">Productividad</span>
-                </div>
-                <div className="text-xl md:text-2xl font-bold text-purple-600">
-                  {estadisticasAvanzadas.ticketsPorHora}
-                </div>
-                <p className="text-xs text-gray-500">Tickets/hora emitidos</p>
-              </div>
-            </div>
-
-            {/* Información adicional */}
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white p-3 rounded-lg">
-                <h4 className="font-semibold text-sm text-gray-700 mb-2">⏰ Tiempo de Operación</h4>
-                <p className="text-lg font-bold text-indigo-600">{estadisticasAvanzadas.tiempoOperacion} horas</p>
-                <p className="text-xs text-gray-500">Desde inicio del día</p>
-              </div>
-
-              <div className="bg-white p-3 rounded-lg">
-                <h4 className="font-semibold text-sm text-gray-700 mb-2">📈 Progreso del Día</h4>
-                <p className="text-lg font-bold text-indigo-600">{estadisticasAvanzadas.porcentajeCompletado}%</p>
-                <p className="text-xs text-gray-500">Tickets completados</p>
-              </div>
-
-              <div className="bg-white p-3 rounded-lg">
-                <h4 className="font-semibold text-sm text-gray-700 mb-2">🕐 Horas Pico</h4>
-                <p className="text-lg font-bold text-indigo-600">{estadisticasAvanzadas.horasPico}</p>
-                <p className="text-xs text-gray-500">Mayor actividad</p>
-              </div>
-            </div>
-
-            {/* Estadísticas de la API si están disponibles */}
-            {estadisticas && (
-              <div className="mt-4 bg-white p-3 rounded-lg border border-gray-200">
-                <h4 className="font-semibold text-sm text-gray-700 mb-3">📊 Datos del Servidor</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                  <div>
-                    <span className="text-gray-600">Última hora:</span>
-                    <p className="font-bold text-blue-600">{estadisticas.ticketsUltimaHora} tickets</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Inicio:</span>
-                    <p className="font-bold text-green-600">{estadisticas.horaInicioOperaciones}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Última actividad:</span>
-                    <p className="font-bold text-orange-600">
-                      {estadisticas.ultimaActividad !== "Sin actividad"
-                        ? new Date(estadisticas.ultimaActividad).toLocaleTimeString("es-AR", {
-                            timeZone: "America/Argentina/Buenos_Aires",
-                          })
-                        : "Sin actividad"}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Promedio servidor:</span>
-                    <p className="font-bold text-purple-600">{estadisticas.promedioTiempoPorTicket.toFixed(1)} min</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Footer */}
+        <footer className="text-center mt-8 pt-4 border-t border-gray-200">
+          <div className="text-xs text-gray-400">
+            <p>Develop by: Karim :) | Versión 5.1 | Cache Optimizado - Menos consultas DB</p>
+            <p>Actualización inteligente cada 30s | Cache compartido entre páginas</p>
+          </div>
+        </footer>
       </div>
-
-      {/* Footer */}
-      <footer className="text-center mt-8 pt-4 border-t border-gray-200">
-        <div className="text-xs text-gray-400">
-          <p>Develop by: Karim :) | Versión 5.0</p>
-        </div>
-      </footer>
     </div>
   )
 }

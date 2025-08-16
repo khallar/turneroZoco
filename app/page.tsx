@@ -56,9 +56,10 @@ export default function SistemaAtencion() {
     debugInfo,
     generarTicket,
     verificarIntegridad,
-    cargarEstado, // Importar cargarEstado para la sincronización manual
+    cargarEstado,
     isClient,
-  } = useSistemaEstado()
+    cacheStats, // Nueva utilidad de cache
+  } = useSistemaEstado("principal") // Especificar que es la página principal
 
   const [horaActual, setHoraActual] = useState<Date | null>(null)
   const [tiempoHastaReinicio, setTiempoHastaReinicio] = useState("")
@@ -150,17 +151,6 @@ export default function SistemaAtencion() {
     return () => clearInterval(interval)
   }, [isClient])
 
-  // Sincronización periódica para la página principal (cada 60 segundos)
-  useEffect(() => {
-    if (!isClient) return
-
-    const interval = setInterval(() => {
-      cargarEstado(false).catch((err) => console.error("Error en sincronización periódica de página principal:", err))
-    }, 60000) // 60 segundos
-
-    return () => clearInterval(interval)
-  }, [isClient, cargarEstado])
-
   // Verificar integridad de la numeración
   useEffect(() => {
     if (isClient && estado.tickets && estado.tickets.length > 0) {
@@ -248,14 +238,20 @@ export default function SistemaAtencion() {
           </div>
           <h1 className="text-4xl font-bold text-gray-800 mb-4">{fraseAleatoria || "¡Bienvenido a nuestro local!"}</h1>
 
-          {/* Indicador de conexión */}
+          {/* Indicador de conexión optimizado */}
           <div className="flex justify-center items-center gap-2 mb-4">
             <div
               className={`w-3 h-3 rounded-full ${isOnline && !error ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
             ></div>
             <span className="text-sm text-gray-600">
-              {error ? "Error de conexión" : isOnline ? "Conectado a TURNOS_ZOCO (Upstash Redis)" : "Sin conexión"}
+              {error ? "Error de conexión" : isOnline ? "Conectado a TURNOS_ZOCO (Cache Optimizado)" : "Sin conexión"}
             </span>
+            {/* Indicador de cache */}
+            {cacheStats.totalEntries > 0 && (
+              <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                📦 Cache: {cacheStats.totalEntries} entradas
+              </span>
+            )}
           </div>
 
           {/* Botón principal */}
@@ -272,13 +268,13 @@ export default function SistemaAtencion() {
           </div>
         </div>
 
-        {/* Panel de debug */}
+        {/* Panel de debug optimizado */}
         {mostrarDebug && debugInfo && (
           <Card className="mb-6 bg-gray-50 border-gray-300">
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
                 <Bug className="h-4 w-4" />
-                Información de Debug - TURNOS_ZOCO (Upstash Redis)
+                Información de Debug - TURNOS_ZOCO (Cache Optimizado)
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -288,29 +284,27 @@ export default function SistemaAtencion() {
                   {debugInfo.environment?.VERCEL_ENV || "local"})
                 </div>
                 <div>
-                  <strong>Plataforma:</strong> {debugInfo.database?.PLATFORM || "N/A"}
+                  <strong>Cache Stats:</strong> {cacheStats.totalEntries} entradas, {cacheStats.subscribers}{" "}
+                  suscriptores
                 </div>
                 <div>
-                  <strong>DB URL:</strong> {debugInfo.database?.url || "No configurado"}
+                  <strong>Cache Entries:</strong>
+                  <ul className="ml-4 mt-1">
+                    {cacheStats.entries.map((entry) => (
+                      <li key={entry.key} className={entry.fresh ? "text-green-600" : "text-orange-600"}>
+                        {entry.key}: {entry.age}s/{entry.ttl}s {entry.fresh ? "✓" : "⚠️"}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
                 <div>
-                  <strong>DB Tipo:</strong> {debugInfo.database?.type || "N/A"}
-                </div>
-                <div>
-                  <strong>DB Nombre:</strong> {debugInfo.database?.name || "N/A"}
-                </div>
-                <div>
-                  <strong>Conexión DB:</strong>
-                  <span className={debugInfo.database?.connection === "Exitosa" ? "text-green-600" : "text-red-600"}>
-                    {debugInfo.database?.connection || "Desconocido"}
+                  <strong>DB Conexión:</strong>
+                  <span
+                    className={debugInfo.upstash?.connection?.status === "healthy" ? "text-green-600" : "text-red-600"}
+                  >
+                    {debugInfo.upstash?.connection?.status || "Desconocido"}
                   </span>
                 </div>
-                {debugInfo.database?.estadoActual && (
-                  <div className="mt-2 p-2 bg-blue-50 rounded">
-                    <strong>Estado actual:</strong>
-                    <pre className="text-xs mt-1">{JSON.stringify(debugInfo.database.estadoActual, null, 2)}</pre>
-                  </div>
-                )}
                 {error && (
                   <div className="text-red-600">
                     <strong>Error actual:</strong> {error}
@@ -321,7 +315,7 @@ export default function SistemaAtencion() {
           </Card>
         )}
 
-        {/* Indicador de persistencia */}
+        {/* Indicador de persistencia optimizado */}
         <div className="text-center mb-6">
           <div
             className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${
@@ -332,7 +326,7 @@ export default function SistemaAtencion() {
             <span>
               {error
                 ? "Error de conexión a la base de datos"
-                : "Datos guardados en TURNOS_ZOCO (Upstash Redis) - Persistencia garantizada"}
+                : "Datos optimizados con Cache Inteligente - Menos consultas DB"}
             </span>
           </div>
         </div>
@@ -358,6 +352,19 @@ export default function SistemaAtencion() {
                 🏢 <strong>Paso 2: Dirigirse al Centro del Salón</strong>
               </p>
               <p className="ml-4">• Vaya al centro del salón y espere a ser llamado por su nombre o número</p>
+            </div>
+
+            <div>
+              <p className="font-bold text-lg text-purple-600 mb-2">
+                👀 <strong>Paso 3: Ver Próximos Turnos</strong>
+              </p>
+              <p className="ml-4 mb-2">• Puede ver los próximos turnos en la nueva página dedicada</p>
+              <a
+                href="/proximos"
+                className="ml-4 inline-block bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                Ver Próximos Turnos
+              </a>
             </div>
           </CardContent>
         </Card>
@@ -385,7 +392,7 @@ export default function SistemaAtencion() {
         />
       )}
 
-      {/* Footer con información adicional */}
+      {/* Footer con información adicional optimizada */}
       <footer className="text-center mt-8 text-gray-500 text-sm">
         <div className="flex justify-center items-center gap-4 mb-2">
           <div>
@@ -405,7 +412,7 @@ export default function SistemaAtencion() {
             {isOnline && !error ? (
               <>
                 <Wifi className="h-4 w-4 text-green-500" />
-                <span className="text-green-500">Online</span>
+                <span className="text-green-500">Online (Optimizado)</span>
               </>
             ) : (
               <>
@@ -416,11 +423,12 @@ export default function SistemaAtencion() {
           </div>
         </div>
         <button onClick={() => setMostrarDebug(!mostrarDebug)} className="hover:text-gray-700">
-          Mostrar Debug
+          Mostrar Debug & Cache Stats
         </button>
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="text-center text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 5.0 | Powered by TURNOS_ZOCO (Upstash Redis)</p>
+            <p>Develop by: Karim :) | Versión 5.1 | Cache Optimizado - Menos consultas DB</p>
+            <p>Actualización inteligente cada 90s | Cache compartido entre páginas</p>
           </div>
         </div>
       </footer>

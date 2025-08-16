@@ -34,7 +34,9 @@ export default function PaginaAdmin() {
     obtenerBackups,
     obtenerBackup,
     isClient,
-  } = useSistemaEstado()
+    cacheStats, // Nueva utilidad de cache
+    invalidateCache, // Nueva utilidad para limpiar cache
+  } = useSistemaEstado("admin") // Especificar que es la página admin
 
   const [backups, setBackups] = useState<any[]>([])
   const [backupSeleccionado, setBackupSeleccionado] = useState<any>(null)
@@ -65,7 +67,7 @@ export default function PaginaAdmin() {
 
   const cargarDatosAdmin = async () => {
     try {
-      await cargarEstado(true) // Con estadísticas
+      await cargarEstado(true, true) // Forzar actualización con estadísticas
     } catch (error) {
       console.error("Error al cargar datos admin:", error)
     }
@@ -104,6 +106,8 @@ export default function PaginaAdmin() {
       })
 
       if (response.ok) {
+        // Limpiar cache después de eliminar
+        invalidateCache()
         await cargarDatosAdmin()
         alert("Todos los registros han sido eliminados exitosamente")
       } else {
@@ -133,6 +137,8 @@ export default function PaginaAdmin() {
       })
 
       if (response.ok) {
+        // Limpiar cache después de reiniciar
+        invalidateCache()
         await cargarDatosAdmin()
         alert("Contador diario reiniciado exitosamente")
       } else {
@@ -153,6 +159,7 @@ export default function PaginaAdmin() {
       estado: estado,
       estadisticas: estadisticas,
       backups: backups,
+      cacheStats: cacheStats,
     }
 
     const blob = new Blob([JSON.stringify(datos, null, 2)], { type: "application/json" })
@@ -213,7 +220,7 @@ export default function PaginaAdmin() {
       <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-red-600 mx-auto mb-4"></div>
-          <p className="text-lg text-gray-600">Cargando panel de administración...</p>
+          <p className="text-lg text-gray-600">Cargando panel de administración (Cache Optimizado)...</p>
         </div>
       </div>
     )
@@ -239,9 +246,9 @@ export default function PaginaAdmin() {
             <Shield className="h-8 w-8 md:h-12 md:w-12 text-red-600" />
             Panel de Administración
           </h1>
-          <p className="text-lg text-gray-600 mb-4">Control total del sistema de atención</p>
+          <p className="text-lg text-gray-600 mb-4">Control total del sistema de atención (Cache Optimizado)</p>
 
-          {/* Información de estado */}
+          {/* Información de estado optimizada */}
           <div className="flex justify-center items-center gap-4 text-sm text-gray-500 mb-6">
             <div className="flex items-center gap-1">
               <Clock className="h-4 w-4" />
@@ -256,6 +263,14 @@ export default function PaginaAdmin() {
                   : "Nunca"}
               </span>
             </div>
+            {/* Indicador de cache */}
+            {cacheStats.totalEntries > 0 && (
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                  📦 Cache: {cacheStats.totalEntries} entradas
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Botones de navegación */}
@@ -277,12 +292,63 @@ export default function PaginaAdmin() {
           </div>
         </div>
 
+        {/* Estadísticas de Cache */}
+        {cacheStats.totalEntries > 0 && (
+          <Card className="mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+            <CardHeader>
+              <CardTitle className="text-xl flex items-center gap-2 text-blue-800">
+                <Database className="h-6 w-6" />
+                Estado del Cache Optimizado
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div className="bg-white p-4 rounded-lg border-l-4 border-blue-500">
+                  <div className="text-2xl font-bold text-blue-600">{cacheStats.totalEntries}</div>
+                  <p className="text-xs text-gray-500">Entradas en Cache</p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border-l-4 border-green-500">
+                  <div className="text-2xl font-bold text-green-600">{cacheStats.subscribers}</div>
+                  <p className="text-xs text-gray-500">Suscriptores Activos</p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border-l-4 border-orange-500">
+                  <div className="text-2xl font-bold text-orange-600">
+                    {cacheStats.entries.filter((e) => e.fresh).length}
+                  </div>
+                  <p className="text-xs text-gray-500">Entradas Frescas</p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border-l-4 border-purple-500">
+                  <Button onClick={invalidateCache} className="bg-purple-600 hover:bg-purple-700 text-white text-sm">
+                    Limpiar Cache
+                  </Button>
+                </div>
+              </div>
+              <div className="bg-white p-4 rounded-lg">
+                <h4 className="font-semibold text-gray-700 mb-3">📊 Detalles del Cache</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                  {cacheStats.entries.map((entry) => (
+                    <div
+                      key={entry.key}
+                      className={`p-2 rounded ${entry.fresh ? "bg-green-50 text-green-700" : "bg-orange-50 text-orange-700"}`}
+                    >
+                      <div className="font-semibold">{entry.key}</div>
+                      <div>
+                        {entry.age}s / {entry.ttl}s {entry.fresh ? "✓" : "⚠️"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Estadísticas Principales del Día */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Tickets Hoy</CardTitle>
-              <Users className="h-4 w-4" />
+              <Users className="h-4 w-4 md:h-12 md:w-12 text-red-600" />
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{estado?.totalAtendidos}</div>
@@ -293,7 +359,7 @@ export default function PaginaAdmin() {
           <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Atendidos</CardTitle>
-              <CheckCircle className="h-4 w-4" />
+              <CheckCircle className="h-4 w-4 md:h-12 md:w-12 text-red-600" />
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{estado?.numerosLlamados}</div>
@@ -304,7 +370,7 @@ export default function PaginaAdmin() {
           <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">En Espera</CardTitle>
-              <Clock className="h-4 w-4" />
+              <Clock className="h-4 w-4 md:h-12 md:w-12 text-red-600" />
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{estado?.totalAtendidos - estado?.numerosLlamados}</div>
@@ -315,7 +381,7 @@ export default function PaginaAdmin() {
           <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Eficiencia</CardTitle>
-              <TrendingUp className="h-4 w-4" />
+              <TrendingUp className="h-4 w-4 md:h-12 md:w-12 text-red-600" />
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{estadisticasAdminCalculadas.eficienciaGeneral}%</div>
@@ -627,7 +693,8 @@ export default function PaginaAdmin() {
         {/* Footer */}
         <footer className="text-center mt-8 pt-4 border-t border-gray-200">
           <div className="text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 5.0 | Powered by TURNOS_ZOCO (Upstash Redis)</p>
+            <p>Develop by: Karim :) | Versión 5.1 | Cache Optimizado - Menos consultas DB</p>
+            <p>Actualización inteligente cada 120s | Cache compartido entre páginas</p>
           </div>
         </footer>
       </div>

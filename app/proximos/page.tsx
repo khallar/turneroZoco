@@ -45,7 +45,17 @@ const FRASES_ALEATORIAS = [
 ]
 
 export default function PaginaProximos() {
-  const { estado, estadisticas, loading, error, cargarEstado, ultimaSincronizacion, isClient } = useSistemaEstado()
+  const {
+    estado,
+    estadisticas,
+    loading,
+    error,
+    cargarEstado,
+    ultimaSincronizacion,
+    isClient,
+    cacheStats, // Nueva utilidad de cache
+  } = useSistemaEstado("proximos") // Especificar que es la página próximos
+
   const [fraseAleatoria, setFraseAleatoria] = useState("")
   const [horaActual, setHoraActual] = useState<Date | null>(null)
   const [actualizandoDatos, setActualizandoDatos] = useState(false)
@@ -71,30 +81,10 @@ export default function PaginaProximos() {
     return () => clearInterval(interval)
   }, [isClient])
 
-  // Actualización automática cada 30 segundos
-  useEffect(() => {
-    if (!isClient) return
-
-    const actualizarAutomaticamente = async () => {
-      try {
-        await cargarEstado(true) // Con estadísticas
-      } catch (error) {
-        console.error("Error en actualización automática:", error)
-      }
-    }
-
-    // Ejecutar inmediatamente
-    actualizarAutomaticamente()
-
-    // Configurar intervalo
-    const interval = setInterval(actualizarAutomaticamente, 30000) // 30 segundos
-    return () => clearInterval(interval)
-  }, [cargarEstado, isClient])
-
   const actualizarDatosManual = async () => {
     setActualizandoDatos(true)
     try {
-      await cargarEstado(true)
+      await cargarEstado(true, true) // Forzar actualización con estadísticas
     } catch (error) {
       console.error("Error al actualizar datos:", error)
     } finally {
@@ -143,7 +133,7 @@ export default function PaginaProximos() {
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-lg text-gray-600">Cargando próximos turnos...</p>
+          <p className="text-lg text-gray-600">Cargando próximos turnos (Cache Optimizado)...</p>
         </div>
       </div>
     )
@@ -177,7 +167,7 @@ export default function PaginaProximos() {
             </Card>
           </div>
 
-          {/* Información de estado */}
+          {/* Información de estado optimizada */}
           <div className="flex justify-center items-center gap-4 text-sm text-gray-500 mb-6">
             <div className="flex items-center gap-1">
               <Clock className="h-4 w-4" />
@@ -195,6 +185,14 @@ export default function PaginaProximos() {
                   : "Nunca"}
               </span>
             </div>
+            {/* Indicador de cache */}
+            {cacheStats.totalEntries > 0 && (
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                  📦 Cache: {cacheStats.totalEntries} entradas
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Botones de navegación y actualización */}
@@ -375,8 +373,8 @@ export default function PaginaProximos() {
         {/* Footer */}
         <footer className="text-center mt-8 pt-4 border-t border-gray-200">
           <div className="text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 5.0 | Powered by TURNOS_ZOCO (Upstash Redis)</p>
-            <p className="mt-1">Actualización automática cada 30 segundos</p>
+            <p>Develop by: Karim :) | Versión 5.1 | Cache Optimizado - Menos consultas DB</p>
+            <p className="mt-1">Actualización inteligente cada 60s | Cache compartido entre páginas</p>
           </div>
         </footer>
       </div>
