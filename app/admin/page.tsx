@@ -448,39 +448,29 @@ export default function PaginaAdmin() {
           </div>
         </div>
 
-        {/* Estadísticas de Cache */}
+        {/* Estadísticas de Cache - MINIMIZADO */}
         {cacheStats.totalEntries > 0 && (
-          <Card className="mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-            <CardHeader>
-              <CardTitle className="text-xl flex items-center gap-2 text-blue-800">
-                <Database className="h-6 w-6" />
-                Estado del Cache Optimizado
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                <div className="bg-white p-4 rounded-lg border-l-4 border-blue-500">
-                  <div className="text-2xl font-bold text-blue-600">{cacheStats.totalEntries}</div>
-                  <p className="text-xs text-gray-500">Entradas en Cache</p>
-                </div>
-                <div className="bg-white p-4 rounded-lg border-l-4 border-green-500">
-                  <div className="text-2xl font-bold text-green-600">{cacheStats.subscribers}</div>
-                  <p className="text-xs text-gray-500">Suscriptores Activos</p>
-                </div>
-                <div className="bg-white p-4 rounded-lg border-l-4 border-orange-500">
-                  <div className="text-2xl font-bold text-orange-600">
-                    {cacheStats.entries.filter((e) => e.fresh).length}
-                  </div>
-                  <p className="text-xs text-gray-500">Entradas Frescas</p>
-                </div>
-                <div className="bg-white p-4 rounded-lg border-l-4 border-purple-500">
-                  <Button onClick={invalidateCache} className="bg-purple-600 hover:bg-purple-700 text-white text-sm">
-                    Limpiar Cache
-                  </Button>
-                </div>
+          <div className="mb-6 flex justify-center">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-blue-600" />
+                <span className="text-blue-800 font-medium">Cache:</span>
               </div>
-            </CardContent>
-          </Card>
+              <div className="flex items-center gap-4">
+                <span className="text-blue-700">{cacheStats.totalEntries} entradas</span>
+                <span className="text-green-700">{cacheStats.entries.filter((e) => e.fresh).length} frescas</span>
+                <span className="text-purple-700">{cacheStats.subscribers} suscriptores</span>
+                <Button
+                  onClick={invalidateCache}
+                  size="sm"
+                  variant="outline"
+                  className="text-xs px-2 py-1 h-6 bg-transparent"
+                >
+                  Limpiar
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Estadísticas Principales del Día */}
@@ -711,7 +701,13 @@ export default function PaginaAdmin() {
                             <div className="mt-2">
                               <div className="w-full bg-gray-200 rounded-full h-2">
                                 <div
-                                  className="bg-blue-500 h-2 rounded-full transition-all duration-500"
+                                  className={`h-2 rounded-full transition-all duration-500 ${
+                                    eficiencia >= 90
+                                      ? "bg-green-500"
+                                      : eficiencia >= 70
+                                        ? "bg-yellow-500"
+                                        : "bg-red-500"
+                                  }`}
                                   style={{ width: `${porcentaje}%` }}
                                 ></div>
                               </div>
