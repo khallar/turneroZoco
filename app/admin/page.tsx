@@ -20,6 +20,11 @@ import {
   Activity,
   Timer,
   CheckCircle,
+  Eye,
+  PieChart,
+  LineChart,
+  Target,
+  Zap,
 } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 
@@ -34,9 +39,9 @@ export default function PaginaAdmin() {
     obtenerBackups,
     obtenerBackup,
     isClient,
-    cacheStats, // Nueva utilidad de cache
-    invalidateCache, // Nueva utilidad para limpiar cache
-  } = useSistemaEstado("admin") // Especificar que es la página admin
+    cacheStats,
+    invalidateCache,
+  } = useSistemaEstado("admin")
 
   const [backups, setBackups] = useState<any[]>([])
   const [backupSeleccionado, setBackupSeleccionado] = useState<any>(null)
@@ -44,7 +49,7 @@ export default function PaginaAdmin() {
   const [mostrarConfirmacionReinicio, setMostrarConfirmacionReinicio] = useState(false)
   const [procesandoAccion, setProcesandoAccion] = useState(false)
   const [horaActual, setHoraActual] = useState(new Date())
-  const [estadisticasAdmin, setEstadisticasAdmin] = useState<any>(null)
+  const [mostrarMetricasAvanzadas, setMostrarMetricasAvanzadas] = useState(false)
 
   useEffect(() => {
     if (isClient) {
@@ -67,7 +72,7 @@ export default function PaginaAdmin() {
 
   const cargarDatosAdmin = async () => {
     try {
-      await cargarEstado(true, true) // Forzar actualización con estadísticas
+      await cargarEstado(true, true)
     } catch (error) {
       console.error("Error al cargar datos admin:", error)
     }
@@ -94,7 +99,6 @@ export default function PaginaAdmin() {
   const eliminarTodosLosRegistros = async () => {
     setProcesandoAccion(true)
     try {
-      // Llamar a la API para eliminar todos los registros
       const response = await fetch("/api/sistema", {
         method: "POST",
         headers: {
@@ -106,7 +110,6 @@ export default function PaginaAdmin() {
       })
 
       if (response.ok) {
-        // Limpiar cache después de eliminar
         invalidateCache()
         await cargarDatosAdmin()
         alert("Todos los registros han sido eliminados exitosamente")
@@ -125,7 +128,6 @@ export default function PaginaAdmin() {
   const reiniciarContadorDiario = async () => {
     setProcesandoAccion(true)
     try {
-      // Llamar a la API para reiniciar el contador
       const response = await fetch("/api/sistema", {
         method: "POST",
         headers: {
@@ -137,7 +139,6 @@ export default function PaginaAdmin() {
       })
 
       if (response.ok) {
-        // Limpiar cache después de reiniciar
         invalidateCache()
         await cargarDatosAdmin()
         alert("Contador diario reiniciado exitosamente")
@@ -160,6 +161,7 @@ export default function PaginaAdmin() {
       estadisticas: estadisticas,
       backups: backups,
       cacheStats: cacheStats,
+      metricasAvanzadas: calcularMetricasAvanzadas(),
     }
 
     const blob = new Blob([JSON.stringify(datos, null, 2)], { type: "application/json" })
@@ -194,7 +196,7 @@ export default function PaginaAdmin() {
       Math.ceil((ahora.getTime() - inicioOperaciones.getTime()) / (1000 * 60 * 60 * 24)),
     )
 
-    const totalTicketsHistorico = estado.totalAtendidos + backups.length * 50 // Estimación
+    const totalTicketsHistorico = estado.totalAtendidos + backups.length * 50
     const promedioTicketsPorDia = totalTicketsHistorico / diasOperativos
     const eficienciaGeneral = estado.totalAtendidos > 0 ? (estado.numerosLlamados / estado.totalAtendidos) * 100 : 0
 
@@ -207,13 +209,110 @@ export default function PaginaAdmin() {
       promedioTicketsPorDia: Math.round(promedioTicketsPorDia),
       diasOperativos,
       eficienciaGeneral: Math.round(eficienciaGeneral),
-      horasPicoGlobal: "14:00 - 16:00", // Estimación
+      horasPicoGlobal: "14:00 - 16:00",
       ticketsPorHora: Math.round(ticketsPorHora * 10) / 10,
       tiempoPromedioGlobal: Math.round(tiempoPromedioGlobal),
     }
   }
 
+  // NUEVAS MÉTRICAS AVANZADAS
+  const calcularMetricasAvanzadas = () => {
+    if (!estado.tickets || estado.tickets.length === 0) {
+      return {
+        distribucionPorHora: {},
+        nombresComunes: {},
+        tiempoEntreTickets: 0,
+        velocidadAtencion: 0,
+        eficienciaPorHora: {},
+        patronesUso: {},
+        metricsRendimiento: {},
+        analisisTendencias: {},
+      }
+    }
+
+    const tickets = estado.tickets
+    const ahora = new Date()
+
+    // 1. Distribución de tickets por hora del día
+    const distribucionPorHora = {}
+    tickets.forEach((ticket) => {
+      const hora = new Date(ticket.timestamp || Date.now()).getHours()
+      distribucionPorHora[hora] = (distribucionPorHora[hora] || 0) + 1
+    })
+
+    // 2. Análisis de nombres más comunes
+    const nombresComunes = {}
+    tickets.forEach((ticket) => {
+      const nombre = ticket.nombre.toLowerCase().trim()
+      nombresComunes[nombre] = (nombresComunes[nombre] || 0) + 1
+    })
+
+    // 3. Tiempo promedio entre tickets
+    let tiempoEntreTickets = 0
+    if (tickets.length > 1) {
+      const tiempos = []
+      for (let i = 1; i < tickets.length; i++) {
+        const diff = (tickets[i].timestamp || 0) - (tickets[i - 1].timestamp || 0)
+        tiempos.push(diff)
+      }
+      tiempoEntreTickets = tiempos.reduce((a, b) => a + b, 0) / tiempos.length / 1000 / 60 // en minutos
+    }
+
+    // 4. Velocidad de atención (tickets por minuto)
+    const tiempoOperacion = (ahora.getTime() - new Date(estado.fechaInicio).getTime()) / (1000 * 60) // en minutos
+    const velocidadAtencion = tiempoOperacion > 0 ? estado.numerosLlamados / tiempoOperacion : 0
+
+    // 5. Eficiencia por hora
+    const eficienciaPorHora = {}
+    Object.keys(distribucionPorHora).forEach((hora) => {
+      const ticketsHora = distribucionPorHora[hora]
+      eficienciaPorHora[hora] = {
+        emitidos: ticketsHora,
+        eficiencia: Math.round((ticketsHora / estado.totalAtendidos) * 100),
+      }
+    })
+
+    // 6. Patrones de uso
+    const patronesUso = {
+      horaPico: Object.keys(distribucionPorHora).reduce((a, b) =>
+        distribucionPorHora[a] > distribucionPorHora[b] ? a : b,
+      ),
+      horaMinima: Object.keys(distribucionPorHora).reduce((a, b) =>
+        distribucionPorHora[a] < distribucionPorHora[b] ? a : b,
+      ),
+      promedioTicketsPorHora: Object.values(distribucionPorHora).reduce((a, b) => a + b, 0) / 24,
+    }
+
+    // 7. Métricas de rendimiento del sistema
+    const metricsRendimiento = {
+      cacheHitRate: cacheStats.entries.filter((e) => e.fresh).length / Math.max(cacheStats.entries.length, 1),
+      tiempoRespuestaPromedio: ultimaSincronizacion ? Date.now() - ultimaSincronizacion.getTime() : 0,
+      disponibilidadSistema: error ? 0.95 : 1.0, // 95% si hay errores, 100% si no
+    }
+
+    // 8. Análisis de tendencias
+    const analisisTendencias = {
+      crecimientoDiario: estado.totalAtendidos / Math.max(1, calcularEstadisticasAdmin().diasOperativos),
+      tendenciaEficiencia: estado.numerosLlamados / Math.max(1, estado.totalAtendidos),
+      proyeccionDiaria: Math.round((estado.totalAtendidos / (ahora.getHours() || 1)) * 24),
+    }
+
+    return {
+      distribucionPorHora,
+      nombresComunes: Object.entries(nombresComunes)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 10),
+      tiempoEntreTickets: Math.round(tiempoEntreTickets * 10) / 10,
+      velocidadAtencion: Math.round(velocidadAtencion * 100) / 100,
+      eficienciaPorHora,
+      patronesUso,
+      metricsRendimiento,
+      analisisTendencias,
+    }
+  }
+
   const estadisticasAdminCalculadas = calcularEstadisticasAdmin()
+  const metricasAvanzadas = calcularMetricasAvanzadas()
 
   if (loading || !isClient) {
     return (
@@ -263,7 +362,6 @@ export default function PaginaAdmin() {
                   : "Nunca"}
               </span>
             </div>
-            {/* Indicador de cache */}
             {cacheStats.totalEntries > 0 && (
               <div className="flex items-center gap-1">
                 <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
@@ -273,7 +371,7 @@ export default function PaginaAdmin() {
             )}
           </div>
 
-          {/* Botones de navegación */}
+          {/* Botones de navegación - AGREGADO BOTÓN PRÓXIMOS */}
           <div className="flex justify-center gap-4">
             <a
               href="/"
@@ -288,6 +386,13 @@ export default function PaginaAdmin() {
             >
               <Users className="mr-2 h-4 w-4" />
               Panel Empleados
+            </a>
+            <a
+              href="/proximos"
+              className="inline-flex items-center justify-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              <Eye className="mr-2 h-4 w-4" />
+              Ver Próximos
             </a>
           </div>
         </div>
@@ -323,22 +428,6 @@ export default function PaginaAdmin() {
                   </Button>
                 </div>
               </div>
-              <div className="bg-white p-4 rounded-lg">
-                <h4 className="font-semibold text-gray-700 mb-3">📊 Detalles del Cache</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-                  {cacheStats.entries.map((entry) => (
-                    <div
-                      key={entry.key}
-                      className={`p-2 rounded ${entry.fresh ? "bg-green-50 text-green-700" : "bg-orange-50 text-orange-700"}`}
-                    >
-                      <div className="font-semibold">{entry.key}</div>
-                      <div>
-                        {entry.age}s / {entry.ttl}s {entry.fresh ? "✓" : "⚠️"}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </CardContent>
           </Card>
         )}
@@ -348,7 +437,7 @@ export default function PaginaAdmin() {
           <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Tickets Hoy</CardTitle>
-              <Users className="h-4 w-4 md:h-12 md:w-12 text-red-600" />
+              <Users className="h-4 w-4" />
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{estado?.totalAtendidos}</div>
@@ -359,7 +448,7 @@ export default function PaginaAdmin() {
           <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Atendidos</CardTitle>
-              <CheckCircle className="h-4 w-4 md:h-12 md:w-12 text-red-600" />
+              <CheckCircle className="h-4 w-4" />
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{estado?.numerosLlamados}</div>
@@ -370,7 +459,7 @@ export default function PaginaAdmin() {
           <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">En Espera</CardTitle>
-              <Clock className="h-4 w-4 md:h-12 md:w-12 text-red-600" />
+              <Clock className="h-4 w-4" />
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{estado?.totalAtendidos - estado?.numerosLlamados}</div>
@@ -381,7 +470,7 @@ export default function PaginaAdmin() {
           <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Eficiencia</CardTitle>
-              <TrendingUp className="h-4 w-4 md:h-12 md:w-12 text-red-600" />
+              <TrendingUp className="h-4 w-4" />
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{estadisticasAdminCalculadas.eficienciaGeneral}%</div>
@@ -390,7 +479,174 @@ export default function PaginaAdmin() {
           </Card>
         </div>
 
-        {/* Estadísticas Avanzadas */}
+        {/* NUEVAS MÉTRICAS AVANZADAS */}
+        <Card className="mb-8 bg-gradient-to-r from-cyan-50 to-blue-50 border-cyan-200">
+          <CardHeader>
+            <CardTitle className="text-xl flex items-center justify-between text-cyan-800">
+              <div className="flex items-center gap-2">
+                <PieChart className="h-6 w-6" />
+                Métricas Avanzadas de Análisis
+              </div>
+              <Button
+                onClick={() => setMostrarMetricasAvanzadas(!mostrarMetricasAvanzadas)}
+                variant="outline"
+                size="sm"
+              >
+                {mostrarMetricasAvanzadas ? "Ocultar" : "Mostrar"} Detalles
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              {/* Velocidad de Atención */}
+              <div className="bg-white p-4 rounded-lg border-l-4 border-cyan-500">
+                <div className="flex items-center gap-2 mb-2">
+                  <Zap className="h-4 w-4 text-cyan-600" />
+                  <span className="text-sm font-medium text-gray-600">Velocidad Atención</span>
+                </div>
+                <div className="text-2xl font-bold text-cyan-600">{metricasAvanzadas.velocidadAtencion}</div>
+                <p className="text-xs text-gray-500">Tickets/minuto</p>
+              </div>
+
+              {/* Tiempo Entre Tickets */}
+              <div className="bg-white p-4 rounded-lg border-l-4 border-teal-500">
+                <div className="flex items-center gap-2 mb-2">
+                  <Timer className="h-4 w-4 text-teal-600" />
+                  <span className="text-sm font-medium text-gray-600">Intervalo Promedio</span>
+                </div>
+                <div className="text-2xl font-bold text-teal-600">{metricasAvanzadas.tiempoEntreTickets}</div>
+                <p className="text-xs text-gray-500">Minutos entre tickets</p>
+              </div>
+
+              {/* Hora Pico */}
+              <div className="bg-white p-4 rounded-lg border-l-4 border-amber-500">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="h-4 w-4 text-amber-600" />
+                  <span className="text-sm font-medium text-gray-600">Hora Pico</span>
+                </div>
+                <div className="text-2xl font-bold text-amber-600">{metricasAvanzadas.patronesUso.horaPico}:00</div>
+                <p className="text-xs text-gray-500">Mayor actividad</p>
+              </div>
+
+              {/* Proyección Diaria */}
+              <div className="bg-white p-4 rounded-lg border-l-4 border-indigo-500">
+                <div className="flex items-center gap-2 mb-2">
+                  <Target className="h-4 w-4 text-indigo-600" />
+                  <span className="text-sm font-medium text-gray-600">Proyección Diaria</span>
+                </div>
+                <div className="text-2xl font-bold text-indigo-600">
+                  {metricasAvanzadas.analisisTendencias.proyeccionDiaria}
+                </div>
+                <p className="text-xs text-gray-500">Tickets estimados hoy</p>
+              </div>
+            </div>
+
+            {/* Detalles expandidos */}
+            {mostrarMetricasAvanzadas && (
+              <div className="space-y-6">
+                {/* Distribución por Hora */}
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4" />📊 Distribución de Tickets por Hora
+                  </h4>
+                  <div className="grid grid-cols-6 md:grid-cols-12 gap-2 text-xs">
+                    {Array.from({ length: 24 }, (_, i) => {
+                      const tickets = metricasAvanzadas.distribucionPorHora[i] || 0
+                      const maxTickets = Math.max(...Object.values(metricasAvanzadas.distribucionPorHora))
+                      const altura = maxTickets > 0 ? (tickets / maxTickets) * 100 : 0
+                      return (
+                        <div key={i} className="text-center">
+                          <div className="text-xs font-bold mb-1">{tickets}</div>
+                          <div
+                            className="bg-blue-500 rounded-t"
+                            style={{ height: `${Math.max(altura, 5)}px`, minHeight: "5px" }}
+                          ></div>
+                          <div className="text-xs mt-1">{i}h</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Nombres Más Comunes */}
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <Users className="h-4 w-4" />👥 Nombres Más Frecuentes
+                  </h4>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
+                    {metricasAvanzadas.nombresComunes.slice(0, 10).map(([nombre, cantidad], index) => (
+                      <div key={nombre} className="bg-gray-50 p-2 rounded">
+                        <div className="font-semibold text-gray-800 truncate" title={nombre}>
+                          {nombre}
+                        </div>
+                        <div className="text-blue-600 font-bold">{cantidad} veces</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Métricas de Rendimiento del Sistema */}
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <Activity className="h-4 w-4" />⚡ Rendimiento del Sistema
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">
+                        {Math.round(metricasAvanzadas.metricsRendimiento.cacheHitRate * 100)}%
+                      </div>
+                      <p className="text-sm text-gray-600">Cache Hit Rate</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">
+                        {Math.round(metricasAvanzadas.metricsRendimiento.disponibilidadSistema * 100)}%
+                      </div>
+                      <p className="text-sm text-gray-600">Disponibilidad</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-purple-600">
+                        {Math.round(metricasAvanzadas.analisisTendencias.crecimientoDiario)}
+                      </div>
+                      <p className="text-sm text-gray-600">Tickets/día promedio</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Análisis de Tendencias */}
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <LineChart className="h-4 w-4" />📈 Análisis de Tendencias
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    <div className="bg-blue-50 p-3 rounded">
+                      <div className="font-semibold text-blue-800">Eficiencia Actual</div>
+                      <div className="text-2xl font-bold text-blue-600">
+                        {Math.round(metricasAvanzadas.analisisTendencias.tendenciaEficiencia * 100)}%
+                      </div>
+                      <p className="text-xs text-blue-600">Tickets atendidos vs emitidos</p>
+                    </div>
+                    <div className="bg-green-50 p-3 rounded">
+                      <div className="font-semibold text-green-800">Crecimiento Diario</div>
+                      <div className="text-2xl font-bold text-green-600">
+                        +{Math.round(metricasAvanzadas.analisisTendencias.crecimientoDiario)}
+                      </div>
+                      <p className="text-xs text-green-600">Tickets por día operativo</p>
+                    </div>
+                    <div className="bg-orange-50 p-3 rounded">
+                      <div className="font-semibold text-orange-800">Proyección Restante</div>
+                      <div className="text-2xl font-bold text-orange-600">
+                        {Math.max(0, metricasAvanzadas.analisisTendencias.proyeccionDiaria - estado.totalAtendidos)}
+                      </div>
+                      <p className="text-xs text-orange-600">Tickets estimados restantes</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Estadísticas Avanzadas Existentes */}
         <Card className="mb-8 bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardHeader>
             <CardTitle className="text-xl flex items-center gap-2 text-indigo-800">
@@ -576,7 +832,7 @@ export default function PaginaAdmin() {
           </CardContent>
         </Card>
 
-        {/* Modal de Confirmación - Eliminar */}
+        {/* Modales existentes... */}
         {mostrarConfirmacionEliminar && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <Card className="w-full max-w-md bg-white">
@@ -613,7 +869,6 @@ export default function PaginaAdmin() {
           </div>
         )}
 
-        {/* Modal de Confirmación - Reinicio */}
         {mostrarConfirmacionReinicio && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <Card className="w-full max-w-md bg-white">
@@ -650,7 +905,6 @@ export default function PaginaAdmin() {
           </div>
         )}
 
-        {/* Modal de Backup Seleccionado */}
         {backupSeleccionado && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <Card className="w-full max-w-2xl bg-white max-h-96 overflow-y-auto">
