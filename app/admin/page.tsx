@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Shield,
-  Trash2,
   RotateCcw,
   BarChart3,
   Calendar,
@@ -14,7 +13,6 @@ import {
   TrendingUp,
   AlertTriangle,
   Database,
-  Download,
   RefreshCw,
   ArrowLeft,
   Activity,
@@ -22,7 +20,6 @@ import {
   CheckCircle,
   Eye,
   PieChart,
-  LineChart,
   Target,
   Zap,
 } from "lucide-react"
@@ -215,7 +212,7 @@ export default function PaginaAdmin() {
     }
   }
 
-  // NUEVAS MÉTRICAS AVANZADAS
+  // MÉTRICAS AVANZADAS MEJORADAS
   const calcularMetricasAvanzadas = () => {
     if (!estado.tickets || estado.tickets.length === 0) {
       return {
@@ -223,6 +220,9 @@ export default function PaginaAdmin() {
         nombresComunes: {},
         tiempoEntreTickets: 0,
         velocidadAtencion: 0,
+        tiempoEsperaReal: 0,
+        horaPico: { hora: 0, cantidad: 0 },
+        proyeccionDiaria: 0,
         eficienciaPorHora: {},
         patronesUso: {},
         metricsRendimiento: {},
@@ -232,11 +232,13 @@ export default function PaginaAdmin() {
 
     const tickets = estado.tickets
     const ahora = new Date()
+    const inicioOperaciones = new Date(estado.fechaInicio)
 
     // 1. Distribución de tickets por hora del día
     const distribucionPorHora = {}
     tickets.forEach((ticket) => {
-      const hora = new Date(ticket.timestamp || Date.now()).getHours()
+      const fecha = ticket.timestamp ? new Date(ticket.timestamp) : new Date(ticket.fecha)
+      const hora = fecha.getHours()
       distribucionPorHora[hora] = (distribucionPorHora[hora] || 0) + 1
     })
 
@@ -244,25 +246,71 @@ export default function PaginaAdmin() {
     const nombresComunes = {}
     tickets.forEach((ticket) => {
       const nombre = ticket.nombre.toLowerCase().trim()
-      nombresComunes[nombre] = (nombresComunes[nombre] || 0) + 1
+      if (nombre !== "cliente zoco") {
+        // Excluir nombre por defecto
+        nombresComunes[nombre] = (nombresComunes[nombre] || 0) + 1
+      }
     })
 
-    // 3. Tiempo promedio entre tickets
+    // 3. Tiempo promedio entre tickets (Intervalo Promedio)
     let tiempoEntreTickets = 0
     if (tickets.length > 1) {
       const tiempos = []
       for (let i = 1; i < tickets.length; i++) {
-        const diff = (tickets[i].timestamp || 0) - (tickets[i - 1].timestamp || 0)
-        tiempos.push(diff)
+        const timestamp1 = tickets[i - 1].timestamp || new Date(tickets[i - 1].fecha).getTime()
+        const timestamp2 = tickets[i].timestamp || new Date(tickets[i].fecha).getTime()
+        const diff = timestamp2 - timestamp1
+        if (diff > 0) tiempos.push(diff)
       }
-      tiempoEntreTickets = tiempos.reduce((a, b) => a + b, 0) / tiempos.length / 1000 / 60 // en minutos
+      if (tiempos.length > 0) {
+        tiempoEntreTickets = tiempos.reduce((a, b) => a + b, 0) / tiempos.length / 1000 / 60 // en minutos
+      }
     }
 
-    // 4. Velocidad de atención (tickets por minuto)
-    const tiempoOperacion = (ahora.getTime() - new Date(estado.fechaInicio).getTime()) / (1000 * 60) // en minutos
-    const velocidadAtencion = tiempoOperacion > 0 ? estado.numerosLlamados / tiempoOperacion : 0
+    // 4. Velocidad de atención (tickets atendidos por minuto)
+    const tiempoOperacionMinutos = (ahora.getTime() - inicioOperaciones.getTime()) / (1000 * 60)
+    const velocidadAtencion = tiempoOperacionMinutos > 0 ? estado.numerosLlamados / tiempoOperacionMinutos : 0
 
-    // 5. Eficiencia por hora
+    // 5. NUEVO: Tiempo de espera real promedio
+    let tiempoEsperaReal = 0
+    if (estado.numerosLlamados > 0 && tickets.length > 0) {
+      const ticketsAtendidos = tickets.slice(0, estado.numerosLlamados)
+      const tiemposEspera = []
+
+      ticketsAtendidos.forEach((ticket, index) => {
+        // Calcular tiempo desde que se emitió hasta que fue llamado
+        // Asumimos que los tickets se llaman en orden, entonces el ticket en posición 'index'
+        // fue llamado cuando se procesaron 'index + 1' tickets
+        const tiempoEmision = ticket.timestamp || new Date(ticket.fecha).getTime()
+        const tiempoEstimadoLlamada =
+          inicioOperaciones.getTime() + (index + 1) * (tiempoOperacionMinutos / estado.numerosLlamados) * 60 * 1000
+        const espera = (tiempoEstimadoLlamada - tiempoEmision) / 1000 / 60 // en minutos
+        if (espera > 0) tiemposEspera.push(espera)
+      })
+
+      if (tiemposEspera.length > 0) {
+        tiempoEsperaReal = tiemposEspera.reduce((a, b) => a + b, 0) / tiemposEspera.length
+      }
+    }
+
+    // 6. Hora pico mejorada
+    const horaPico = Object.entries(distribucionPorHora).reduce(
+      (max, [hora, cantidad]) => {
+        return cantidad > max.cantidad ? { hora: Number.parseInt(hora), cantidad } : max
+      },
+      { hora: 0, cantidad: 0 },
+    )
+
+    // 7. Proyección diaria mejorada
+    const horaActual = ahora.getHours()
+    const minutosTranscurridos = ahora.getHours() * 60 + ahora.getMinutes()
+    const minutosEnDia = 24 * 60
+    const proyeccionDiaria =
+      minutosTranscurridos > 0
+        ? Math.round((estado.totalAtendidos / minutosTranscurridos) * minutosEnDia)
+        : estado.totalAtendidos
+
+    // 8. Eficiencia por hora
     const eficienciaPorHora = {}
     Object.keys(distribucionPorHora).forEach((hora) => {
       const ticketsHora = distribucionPorHora[hora]
@@ -272,29 +320,29 @@ export default function PaginaAdmin() {
       }
     })
 
-    // 6. Patrones de uso
+    // 9. Patrones de uso
     const patronesUso = {
-      horaPico: Object.keys(distribucionPorHora).reduce((a, b) =>
-        distribucionPorHora[a] > distribucionPorHora[b] ? a : b,
-      ),
+      horaPico: horaPico.hora,
       horaMinima: Object.keys(distribucionPorHora).reduce((a, b) =>
         distribucionPorHora[a] < distribucionPorHora[b] ? a : b,
       ),
-      promedioTicketsPorHora: Object.values(distribucionPorHora).reduce((a, b) => a + b, 0) / 24,
+      promedioTicketsPorHora:
+        Object.values(distribucionPorHora).reduce((a, b) => a + b, 0) /
+        Math.max(Object.keys(distribucionPorHora).length, 1),
     }
 
-    // 7. Métricas de rendimiento del sistema
+    // 10. Métricas de rendimiento del sistema
     const metricsRendimiento = {
       cacheHitRate: cacheStats.entries.filter((e) => e.fresh).length / Math.max(cacheStats.entries.length, 1),
       tiempoRespuestaPromedio: ultimaSincronizacion ? Date.now() - ultimaSincronizacion.getTime() : 0,
-      disponibilidadSistema: error ? 0.95 : 1.0, // 95% si hay errores, 100% si no
+      disponibilidadSistema: error ? 0.95 : 1.0,
     }
 
-    // 8. Análisis de tendencias
+    // 11. Análisis de tendencias
     const analisisTendencias = {
       crecimientoDiario: estado.totalAtendidos / Math.max(1, calcularEstadisticasAdmin().diasOperativos),
       tendenciaEficiencia: estado.numerosLlamados / Math.max(1, estado.totalAtendidos),
-      proyeccionDiaria: Math.round((estado.totalAtendidos / (ahora.getHours() || 1)) * 24),
+      proyeccionDiaria: proyeccionDiaria,
     }
 
     return {
@@ -304,6 +352,9 @@ export default function PaginaAdmin() {
         .slice(0, 10),
       tiempoEntreTickets: Math.round(tiempoEntreTickets * 10) / 10,
       velocidadAtencion: Math.round(velocidadAtencion * 100) / 100,
+      tiempoEsperaReal: Math.round(tiempoEsperaReal * 10) / 10,
+      horaPico,
+      proyeccionDiaria,
       eficienciaPorHora,
       patronesUso,
       metricsRendimiento,
@@ -479,7 +530,7 @@ export default function PaginaAdmin() {
           </Card>
         </div>
 
-        {/* NUEVAS MÉTRICAS AVANZADAS */}
+        {/* MÉTRICAS AVANZADAS MEJORADAS */}
         <Card className="mb-8 bg-gradient-to-r from-cyan-50 to-blue-50 border-cyan-200">
           <CardHeader>
             <CardTitle className="text-xl flex items-center justify-between text-cyan-800">
@@ -497,7 +548,7 @@ export default function PaginaAdmin() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
               {/* Velocidad de Atención */}
               <div className="bg-white p-4 rounded-lg border-l-4 border-cyan-500">
                 <div className="flex items-center gap-2 mb-2">
@@ -515,129 +566,248 @@ export default function PaginaAdmin() {
                   <span className="text-sm font-medium text-gray-600">Intervalo Promedio</span>
                 </div>
                 <div className="text-2xl font-bold text-teal-600">{metricasAvanzadas.tiempoEntreTickets}</div>
-                <p className="text-xs text-gray-500">Minutos entre tickets</p>
+                <p className="text-xs text-gray-500">Min entre tickets</p>
               </div>
 
-              {/* Hora Pico */}
+              {/* NUEVO: Tiempo de Espera Real */}
+              <div className="bg-white p-4 rounded-lg border-l-4 border-red-500">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="h-4 w-4 text-red-600" />
+                  <span className="text-sm font-medium text-gray-600">Espera Real</span>
+                </div>
+                <div className="text-2xl font-bold text-red-600">{metricasAvanzadas.tiempoEsperaReal}</div>
+                <p className="text-xs text-gray-500">Min promedio espera</p>
+              </div>
+
+              {/* Hora Pico Mejorada */}
               <div className="bg-white p-4 rounded-lg border-l-4 border-amber-500">
                 <div className="flex items-center gap-2 mb-2">
                   <TrendingUp className="h-4 w-4 text-amber-600" />
                   <span className="text-sm font-medium text-gray-600">Hora Pico</span>
                 </div>
-                <div className="text-2xl font-bold text-amber-600">{metricasAvanzadas.patronesUso.horaPico}:00</div>
-                <p className="text-xs text-gray-500">Mayor actividad</p>
+                <div className="text-2xl font-bold text-amber-600">{metricasAvanzadas.horaPico.hora}:00</div>
+                <p className="text-xs text-gray-500">{metricasAvanzadas.horaPico.cantidad} tickets</p>
               </div>
 
-              {/* Proyección Diaria */}
+              {/* Proyección Diaria Mejorada */}
               <div className="bg-white p-4 rounded-lg border-l-4 border-indigo-500">
                 <div className="flex items-center gap-2 mb-2">
                   <Target className="h-4 w-4 text-indigo-600" />
                   <span className="text-sm font-medium text-gray-600">Proyección Diaria</span>
                 </div>
-                <div className="text-2xl font-bold text-indigo-600">
-                  {metricasAvanzadas.analisisTendencias.proyeccionDiaria}
-                </div>
+                <div className="text-2xl font-bold text-indigo-600">{metricasAvanzadas.proyeccionDiaria}</div>
                 <p className="text-xs text-gray-500">Tickets estimados hoy</p>
               </div>
             </div>
 
-            {/* Detalles expandidos */}
+            {/* Detalles expandidos mejorados */}
             {mostrarMetricasAvanzadas && (
               <div className="space-y-6">
-                {/* Distribución por Hora */}
-                <div className="bg-white p-4 rounded-lg border border-gray-200">
-                  <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4" />📊 Distribución de Tickets por Hora
+                {/* Distribución por Hora MEJORADA */}
+                <div className="bg-white p-6 rounded-lg border border-gray-200">
+                  <h4 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5" />📊 Distribución de Tickets por Hora del Día
                   </h4>
-                  <div className="grid grid-cols-6 md:grid-cols-12 gap-2 text-xs">
-                    {Array.from({ length: 24 }, (_, i) => {
-                      const tickets = metricasAvanzadas.distribucionPorHora[i] || 0
-                      const maxTickets = Math.max(...Object.values(metricasAvanzadas.distribucionPorHora))
-                      const altura = maxTickets > 0 ? (tickets / maxTickets) * 100 : 0
+                  <div className="mb-4">
+                    <div className="grid grid-cols-6 md:grid-cols-12 gap-2 text-xs">
+                      {Array.from({ length: 24 }, (_, i) => {
+                        const tickets = metricasAvanzadas.distribucionPorHora[i] || 0
+                        const maxTickets = Math.max(...Object.values(metricasAvanzadas.distribucionPorHora), 1)
+                        const altura = (tickets / maxTickets) * 60 // Altura máxima 60px
+                        const esPico = i === metricasAvanzadas.horaPico.hora
+                        return (
+                          <div key={i} className="text-center">
+                            <div className={`text-xs font-bold mb-1 ${esPico ? "text-red-600" : "text-gray-700"}`}>
+                              {tickets}
+                            </div>
+                            <div
+                              className={`rounded-t transition-all duration-300 ${
+                                esPico ? "bg-red-500 animate-pulse" : tickets > 0 ? "bg-blue-500" : "bg-gray-200"
+                              }`}
+                              style={{ height: `${Math.max(altura, 4)}px`, minHeight: "4px" }}
+                            ></div>
+                            <div className={`text-xs mt-1 ${esPico ? "font-bold text-red-600" : "text-gray-500"}`}>
+                              {i}h
+                            </div>
+                            {esPico && <div className="text-xs text-red-500 font-bold">PICO</div>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded text-sm">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <span className="font-semibold text-gray-700">Hora más activa:</span>
+                        <p className="text-blue-600 font-bold">
+                          {metricasAvanzadas.horaPico.hora}:00 ({metricasAvanzadas.horaPico.cantidad} tickets)
+                        </p>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-gray-700">Promedio por hora:</span>
+                        <p className="text-green-600 font-bold">
+                          {Math.round(metricasAvanzadas.patronesUso.promedioTicketsPorHora * 10) / 10}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-gray-700">Horas activas:</span>
+                        <p className="text-purple-600 font-bold">
+                          {Object.keys(metricasAvanzadas.distribucionPorHora).length}/24
+                        </p>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-gray-700">Concentración:</span>
+                        <p className="text-orange-600 font-bold">
+                          {Math.round((metricasAvanzadas.horaPico.cantidad / estado.totalAtendidos) * 100)}% en pico
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Nombres Más Comunes MEJORADO */}
+                <div className="bg-white p-6 rounded-lg border border-gray-200">
+                  <h4 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <Users className="h-5 w-5" />👥 Top 10 Nombres Más Frecuentes
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {metricasAvanzadas.nombresComunes.slice(0, 10).map(([nombre, cantidad], index) => {
+                      const porcentaje = Math.round((cantidad / estado.totalAtendidos) * 100)
+                      const isTop3 = index < 3
                       return (
-                        <div key={i} className="text-center">
-                          <div className="text-xs font-bold mb-1">{tickets}</div>
-                          <div
-                            className="bg-blue-500 rounded-t"
-                            style={{ height: `${Math.max(altura, 5)}px`, minHeight: "5px" }}
-                          ></div>
-                          <div className="text-xs mt-1">{i}h</div>
+                        <div
+                          key={nombre}
+                          className={`p-3 rounded-lg border-l-4 ${
+                            isTop3 ? "bg-yellow-50 border-yellow-400" : "bg-gray-50 border-gray-300"
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-lg font-bold ${
+                                  index === 0
+                                    ? "text-yellow-600"
+                                    : index === 1
+                                      ? "text-gray-500"
+                                      : index === 2
+                                        ? "text-orange-600"
+                                        : "text-gray-700"
+                                }`}
+                              >
+                                #{index + 1}
+                              </span>
+                              <div>
+                                <div className="font-semibold text-gray-800 capitalize" title={nombre}>
+                                  {nombre.length > 20 ? nombre.substring(0, 20) + "..." : nombre}
+                                </div>
+                                <div className="text-sm text-gray-500">{porcentaje}% del total</div>
+                              </div>
+                            </div>
+                            <div className={`text-2xl font-bold ${isTop3 ? "text-blue-600" : "text-gray-600"}`}>
+                              {cantidad}
+                            </div>
+                          </div>
+                          {isTop3 && (
+                            <div className="mt-2">
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div
+                                  className="bg-blue-500 h-2 rounded-full transition-all duration-500"
+                                  style={{ width: `${porcentaje}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )
                     })}
                   </div>
+                  {metricasAvanzadas.nombresComunes.length === 0 && (
+                    <p className="text-gray-500 text-center py-4">
+                      No hay datos suficientes para mostrar nombres frecuentes
+                    </p>
+                  )}
                 </div>
 
-                {/* Nombres Más Comunes */}
-                <div className="bg-white p-4 rounded-lg border border-gray-200">
-                  <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    <Users className="h-4 w-4" />👥 Nombres Más Frecuentes
+                {/* Métricas de Tiempo Detalladas */}
+                <div className="bg-white p-6 rounded-lg border border-gray-200">
+                  <h4 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <Clock className="h-5 w-5" />
+                    ⏱️ Análisis Temporal Detallado
                   </h4>
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
-                    {metricasAvanzadas.nombresComunes.slice(0, 10).map(([nombre, cantidad], index) => (
-                      <div key={nombre} className="bg-gray-50 p-2 rounded">
-                        <div className="font-semibold text-gray-800 truncate" title={nombre}>
-                          {nombre}
-                        </div>
-                        <div className="text-blue-600 font-bold">{cantidad} veces</div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-500">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Timer className="h-5 w-5 text-blue-600" />
+                        <span className="font-semibold text-blue-800">Tiempo de Espera Real</span>
                       </div>
-                    ))}
+                      <div className="text-3xl font-bold text-blue-600 mb-2">
+                        {metricasAvanzadas.tiempoEsperaReal} min
+                      </div>
+                      <p className="text-sm text-blue-700">Promedio desde emisión hasta llamada</p>
+                      <div className="mt-2 text-xs text-blue-600">
+                        Basado en {estado.numerosLlamados} tickets atendidos
+                      </div>
+                    </div>
+
+                    <div className="bg-green-50 p-4 rounded-lg border-l-4 border-green-500">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Activity className="h-5 w-5 text-green-600" />
+                        <span className="font-semibold text-green-800">Velocidad de Atención</span>
+                      </div>
+                      <div className="text-3xl font-bold text-green-600 mb-2">
+                        {metricasAvanzadas.velocidadAtencion}/min
+                      </div>
+                      <p className="text-sm text-green-700">Tickets procesados por minuto</p>
+                      <div className="mt-2 text-xs text-green-600">
+                        {Math.round(metricasAvanzadas.velocidadAtencion * 60 * 10) / 10} tickets/hora
+                      </div>
+                    </div>
+
+                    <div className="bg-purple-50 p-4 rounded-lg border-l-4 border-purple-500">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Clock className="h-5 w-5 text-purple-600" />
+                        <span className="font-semibold text-purple-800">Intervalo Entre Tickets</span>
+                      </div>
+                      <div className="text-3xl font-bold text-purple-600 mb-2">
+                        {metricasAvanzadas.tiempoEntreTickets} min
+                      </div>
+                      <p className="text-sm text-purple-700">Tiempo promedio entre emisiones</p>
+                      <div className="mt-2 text-xs text-purple-600">
+                        {Math.round((60 / Math.max(metricasAvanzadas.tiempoEntreTickets, 1)) * 10) / 10} tickets/hora
+                        estimados
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Métricas de Rendimiento del Sistema */}
-                <div className="bg-white p-4 rounded-lg border border-gray-200">
-                  <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    <Activity className="h-4 w-4" />⚡ Rendimiento del Sistema
+                {/* Proyección y Tendencias */}
+                <div className="bg-white p-6 rounded-lg border border-gray-200">
+                  <h4 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <Target className="h-5 w-5" />🎯 Proyecciones y Tendencias
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-green-600">
-                        {Math.round(metricasAvanzadas.metricsRendimiento.cacheHitRate * 100)}%
+                    <div className="bg-indigo-50 p-4 rounded-lg text-center">
+                      <div className="text-3xl font-bold text-indigo-600 mb-2">
+                        {metricasAvanzadas.proyeccionDiaria}
                       </div>
-                      <p className="text-sm text-gray-600">Cache Hit Rate</p>
+                      <p className="text-sm font-semibold text-indigo-800">Proyección Total Día</p>
+                      <p className="text-xs text-indigo-600 mt-1">
+                        Faltan: {Math.max(0, metricasAvanzadas.proyeccionDiaria - estado.totalAtendidos)} tickets
+                      </p>
                     </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {Math.round(metricasAvanzadas.metricsRendimiento.disponibilidadSistema * 100)}%
-                      </div>
-                      <p className="text-sm text-gray-600">Disponibilidad</p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-purple-600">
-                        {Math.round(metricasAvanzadas.analisisTendencias.crecimientoDiario)}
-                      </div>
-                      <p className="text-sm text-gray-600">Tickets/día promedio</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Análisis de Tendencias */}
-                <div className="bg-white p-4 rounded-lg border border-gray-200">
-                  <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    <LineChart className="h-4 w-4" />📈 Análisis de Tendencias
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    <div className="bg-blue-50 p-3 rounded">
-                      <div className="font-semibold text-blue-800">Eficiencia Actual</div>
-                      <div className="text-2xl font-bold text-blue-600">
+                    <div className="bg-orange-50 p-4 rounded-lg text-center">
+                      <div className="text-3xl font-bold text-orange-600 mb-2">
                         {Math.round(metricasAvanzadas.analisisTendencias.tendenciaEficiencia * 100)}%
                       </div>
-                      <p className="text-xs text-blue-600">Tickets atendidos vs emitidos</p>
+                      <p className="text-sm font-semibold text-orange-800">Eficiencia Actual</p>
+                      <p className="text-xs text-orange-600 mt-1">Tickets atendidos vs emitidos</p>
                     </div>
-                    <div className="bg-green-50 p-3 rounded">
-                      <div className="font-semibold text-green-800">Crecimiento Diario</div>
-                      <div className="text-2xl font-bold text-green-600">
-                        +{Math.round(metricasAvanzadas.analisisTendencias.crecimientoDiario)}
+                    <div className="bg-teal-50 p-4 rounded-lg text-center">
+                      <div className="text-3xl font-bold text-teal-600 mb-2">
+                        {Math.round(metricasAvanzadas.analisisTendencias.crecimientoDiario)}
                       </div>
-                      <p className="text-xs text-green-600">Tickets por día operativo</p>
-                    </div>
-                    <div className="bg-orange-50 p-3 rounded">
-                      <div className="font-semibold text-orange-800">Proyección Restante</div>
-                      <div className="text-2xl font-bold text-orange-600">
-                        {Math.max(0, metricasAvanzadas.analisisTendencias.proyeccionDiaria - estado.totalAtendidos)}
-                      </div>
-                      <p className="text-xs text-orange-600">Tickets estimados restantes</p>
+                      <p className="text-sm font-semibold text-teal-800">Promedio Diario</p>
+                      <p className="text-xs text-teal-600 mt-1">Tickets por día operativo</p>
                     </div>
                   </div>
                 </div>
@@ -646,188 +816,251 @@ export default function PaginaAdmin() {
           </CardContent>
         </Card>
 
-        {/* Estadísticas Avanzadas Existentes */}
-        <Card className="mb-8 bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
-          <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2 text-indigo-800">
-              <BarChart3 className="h-6 w-6" />
-              Estadísticas Administrativas Completas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-white p-4 rounded-lg border-l-4 border-blue-500">
-                <div className="flex items-center gap-2 mb-2">
-                  <Calendar className="h-4 w-4 text-blue-600" />
-                  <span className="text-sm font-medium text-gray-600">Días Operativos</span>
-                </div>
-                <div className="text-2xl font-bold text-blue-600">{estadisticasAdminCalculadas.diasOperativos}</div>
-                <p className="text-xs text-gray-500">Desde inicio</p>
-              </div>
-
-              <div className="bg-white p-4 rounded-lg border-l-4 border-green-500">
-                <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="h-4 w-4 text-green-600" />
-                  <span className="text-sm font-medium text-gray-600">Promedio Diario</span>
-                </div>
-                <div className="text-2xl font-bold text-green-600">
-                  {estadisticasAdminCalculadas.promedioTicketsPorDia}
-                </div>
-                <p className="text-xs text-gray-500">Tickets por día</p>
-              </div>
-
-              <div className="bg-white p-4 rounded-lg border-l-4 border-orange-500">
-                <div className="flex items-center gap-2 mb-2">
-                  <Activity className="h-4 w-4 text-orange-600" />
-                  <span className="text-sm font-medium text-gray-600">Productividad</span>
-                </div>
-                <div className="text-2xl font-bold text-orange-600">{estadisticasAdminCalculadas.ticketsPorHora}</div>
-                <p className="text-xs text-gray-500">Tickets/hora</p>
-              </div>
-
-              <div className="bg-white p-4 rounded-lg border-l-4 border-purple-500">
-                <div className="flex items-center gap-2 mb-2">
-                  <Timer className="h-4 w-4 text-purple-600" />
-                  <span className="text-sm font-medium text-gray-600">Tiempo Promedio</span>
-                </div>
-                <div className="text-2xl font-bold text-purple-600">
-                  {estadisticasAdminCalculadas.tiempoPromedioGlobal}
-                </div>
-                <p className="text-xs text-gray-500">Min por ticket</p>
-              </div>
-            </div>
-
-            {/* Estadísticas del servidor si están disponibles */}
-            {estadisticas && (
-              <div className="bg-white p-4 rounded-lg border border-gray-200">
-                <h4 className="font-semibold text-gray-700 mb-3">📊 Datos en Tiempo Real del Servidor</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-600">Tickets última hora:</span>
-                    <p className="font-bold text-blue-600">{estadisticas.ticketsUltimaHora}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Inicio operaciones:</span>
-                    <p className="font-bold text-green-600">{estadisticas.horaInicioOperaciones}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Última actividad:</span>
-                    <p className="font-bold text-orange-600">
-                      {estadisticas.ultimaActividad !== "Sin actividad"
-                        ? new Date(estadisticas.ultimaActividad).toLocaleTimeString("es-AR", {
-                            timeZone: "America/Argentina/Buenos_Aires",
-                          })
-                        : "Sin actividad"}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Promedio servidor:</span>
-                    <p className="font-bold text-purple-600">{estadisticas.promedioTiempoPorTicket.toFixed(1)} min</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Controles Administrativos */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          {/* Acciones Principales */}
-          <Card className="border-red-200 bg-red-50">
-            <CardHeader>
-              <CardTitle className="text-red-800 flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5" />
-                Controles Administrativos
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="bg-white p-4 rounded-lg border-l-4 border-red-500">
-                <h4 className="font-semibold text-red-800 mb-2">🗑️ Eliminar Todos los Registros</h4>
-                <p className="text-sm text-gray-600 mb-3">
-                  Elimina permanentemente todos los tickets y datos del sistema. Esta acción no se puede deshacer.
-                </p>
-                <Button
-                  onClick={() => setMostrarConfirmacionEliminar(true)}
-                  className="bg-red-600 hover:bg-red-700 text-white"
-                  disabled={procesandoAccion}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Eliminar Todo
-                </Button>
-              </div>
-
-              <div className="bg-white p-4 rounded-lg border-l-4 border-orange-500">
-                <h4 className="font-semibold text-orange-800 mb-2">🔄 Reiniciar Contador Diario</h4>
-                <p className="text-sm text-gray-600 mb-3">
-                  Reinicia el contador de tickets del día actual. Los datos se respaldan automáticamente.
-                </p>
-                <Button
-                  onClick={() => setMostrarConfirmacionReinicio(true)}
-                  className="bg-orange-600 hover:bg-orange-700 text-white"
-                  disabled={procesandoAccion}
-                >
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Reiniciar Día
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Herramientas */}
-          <Card className="border-blue-200 bg-blue-50">
-            <CardHeader>
-              <CardTitle className="text-blue-800 flex items-center gap-2">
-                <Database className="h-5 w-5" />
-                Herramientas de Datos
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="bg-white p-4 rounded-lg border-l-4 border-blue-500">
-                <h4 className="font-semibold text-blue-800 mb-2">📥 Exportar Datos</h4>
-                <p className="text-sm text-gray-600 mb-3">
-                  Descarga un archivo JSON con todos los datos del sistema para respaldo o análisis.
-                </p>
-                <Button onClick={exportarDatos} className="bg-blue-600 hover:bg-blue-700 text-white">
-                  <Download className="mr-2 h-4 w-4" />
-                  Exportar JSON
-                </Button>
-              </div>
-
-              <div className="bg-white p-4 rounded-lg border-l-4 border-green-500">
-                <h4 className="font-semibold text-green-800 mb-2">🔄 Actualizar Datos</h4>
-                <p className="text-sm text-gray-600 mb-3">Fuerza una actualización completa de todos los datos.</p>
-                <Button onClick={cargarDatosAdmin} className="bg-green-600 hover:bg-green-700 text-white">
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Actualizar
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Historial de Backups */}
+        {/* Historial de Días Anteriores MEJORADO */}
         <Card className="mb-8">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Historial de Días Anteriores
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                Historial de Días Anteriores
+              </div>
+              <Button onClick={cargarBackups} variant="outline" size="sm">
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Actualizar
+              </Button>
             </CardTitle>
           </CardHeader>
           <CardContent>
             {backups.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {backups.map((backup, index) => (
-                  <div key={index} className="bg-gray-50 p-4 rounded-lg border">
-                    <h4 className="font-semibold text-gray-800 mb-2">📅 {backup.fecha}</h4>
-                    <p className="text-sm text-gray-600 mb-3">Backup automático del día</p>
-                    <Button onClick={() => verBackup(backup.fecha)} variant="outline" size="sm" className="w-full">
-                      Ver Detalles
-                    </Button>
+              <div className="space-y-4">
+                {/* Resumen del historial */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+                  <h4 className="font-semibold text-blue-800 mb-3">📊 Resumen del Historial</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">{backups.length}</div>
+                      <p className="text-blue-700">Días registrados</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">
+                        {Math.round(
+                          backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) /
+                            backups.length,
+                        )}
+                      </div>
+                      <p className="text-green-700">Promedio tickets/día</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-orange-600">
+                        {Math.max(...backups.map((backup) => backup.resumen?.totalTicketsEmitidos || 0))}
+                      </div>
+                      <p className="text-orange-700">Día más activo</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-purple-600">
+                        {Math.round(
+                          backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0), 0) /
+                            backups.length,
+                        )}
+                      </div>
+                      <p className="text-purple-700">Promedio atendidos/día</p>
+                    </div>
                   </div>
-                ))}
+                </div>
+
+                {/* Lista de días con métricas */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {backups.map((backup, index) => {
+                    const emitidos = backup.resumen?.totalTicketsEmitidos || 0
+                    const atendidos = backup.resumen?.totalTicketsAtendidos || 0
+                    const eficiencia = emitidos > 0 ? Math.round((atendidos / emitidos) * 100) : 0
+                    const pendientes = emitidos - atendidos
+                    const esReciente = index < 3
+                    const esMejorDia =
+                      emitidos === Math.max(...backups.map((b) => b.resumen?.totalTicketsEmitidos || 0))
+
+                    return (
+                      <div
+                        key={index}
+                        className={`p-4 rounded-lg border-2 transition-all duration-200 hover:shadow-lg ${
+                          esMejorDia
+                            ? "bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-300"
+                            : esReciente
+                              ? "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300"
+                              : "bg-gray-50 border-gray-300"
+                        }`}
+                      >
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h4
+                              className={`font-bold text-lg ${
+                                esMejorDia ? "text-yellow-800" : esReciente ? "text-blue-800" : "text-gray-800"
+                              }`}
+                            >
+                              📅 {backup.fecha}
+                            </h4>
+                            <p className="text-xs text-gray-500">
+                              {new Date(backup.fecha).toLocaleDateString("es-AR", {
+                                weekday: "long",
+                                year: "numeric",
+                                month: "long",
+                                day: "numeric",
+                              })}
+                            </p>
+                          </div>
+                          {esMejorDia && (
+                            <div className="bg-yellow-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                              🏆 RÉCORD
+                            </div>
+                          )}
+                          {esReciente && !esMejorDia && (
+                            <div className="bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                              RECIENTE
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Métricas del día */}
+                        <div className="space-y-2 mb-4">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-600">Tickets emitidos:</span>
+                            <span className="font-bold text-blue-600">{emitidos}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-600">Atendidos:</span>
+                            <span className="font-bold text-green-600">{atendidos}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-600">Pendientes:</span>
+                            <span className="font-bold text-orange-600">{pendientes}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-600">Eficiencia:</span>
+                            <span
+                              className={`font-bold ${
+                                eficiencia >= 90
+                                  ? "text-green-600"
+                                  : eficiencia >= 70
+                                    ? "text-yellow-600"
+                                    : "text-red-600"
+                              }`}
+                            >
+                              {eficiencia}%
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Barra de progreso */}
+                        <div className="mb-4">
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full transition-all duration-500 ${
+                                eficiencia >= 90 ? "bg-green-500" : eficiencia >= 70 ? "bg-yellow-500" : "bg-red-500"
+                              }`}
+                              style={{ width: `${eficiencia}%` }}
+                            ></div>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1 text-center">Eficiencia del día</p>
+                        </div>
+
+                        {/* Rango de tickets */}
+                        {backup.resumen?.primerTicket && backup.resumen?.ultimoTicket && (
+                          <div className="bg-white p-2 rounded border mb-3">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-gray-600">Rango:</span>
+                              <span className="font-mono font-bold text-gray-800">
+                                #{backup.resumen.primerTicket.toString().padStart(3, "0")} - #
+                                {backup.resumen.ultimoTicket.toString().padStart(3, "0")}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        <Button
+                          onClick={() => verBackup(backup.fecha)}
+                          variant="outline"
+                          size="sm"
+                          className="w-full hover:bg-blue-50"
+                        >
+                          Ver Detalles Completos
+                        </Button>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Comparativa con día actual */}
+                <div className="bg-gradient-to-r from-green-50 to-teal-50 p-4 rounded-lg border border-green-200">
+                  <h4 className="font-semibold text-green-800 mb-3">📈 Comparativa con Hoy</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-green-600">{estado.totalAtendidos}</div>
+                      <p className="text-green-700">Tickets hoy</p>
+                      <p className="text-xs text-green-600">
+                        vs promedio:{" "}
+                        {estado.totalAtendidos >
+                        Math.round(
+                          backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) /
+                            backups.length,
+                        )
+                          ? "↗️"
+                          : "↘️"}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-blue-600">{estado.numerosLlamados}</div>
+                      <p className="text-blue-700">Atendidos hoy</p>
+                      <p className="text-xs text-blue-600">
+                        vs promedio:{" "}
+                        {estado.numerosLlamados >
+                        Math.round(
+                          backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0), 0) /
+                            backups.length,
+                        )
+                          ? "↗️"
+                          : "↘️"}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-orange-600">
+                        {Math.round((estado.numerosLlamados / Math.max(estado.totalAtendidos, 1)) * 100)}%
+                      </div>
+                      <p className="text-orange-700">Eficiencia hoy</p>
+                      <p className="text-xs text-orange-600">
+                        vs promedio:{" "}
+                        {Math.round((estado.numerosLlamados / Math.max(estado.totalAtendidos, 1)) * 100) >
+                        Math.round(
+                          backups.reduce(
+                            (sum, backup) =>
+                              sum +
+                              ((backup.resumen?.totalTicketsAtendidos || 0) /
+                                Math.max(backup.resumen?.totalTicketsEmitidos || 1, 1)) *
+                                100,
+                            0,
+                          ) / backups.length,
+                        )
+                          ? "↗️"
+                          : "↘️"}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-purple-600">
+                        {new Date().getHours() > 0
+                          ? Math.round(estado.totalAtendidos / new Date().getHours())
+                          : estado.totalAtendidos}
+                      </div>
+                      <p className="text-purple-700">Tickets/hora hoy</p>
+                      <p className="text-xs text-purple-600">Ritmo actual</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-8">No hay backups disponibles</p>
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">📊</div>
+                <p className="text-xl text-gray-500 mb-2">No hay historial disponible</p>
+                <p className="text-gray-400">Los backups aparecerán aquí después del primer día de operación</p>
+              </div>
             )}
           </CardContent>
         </Card>
