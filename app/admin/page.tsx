@@ -47,8 +47,6 @@ export default function PaginaAdmin() {
   const [procesandoAccion, setProcesandoAccion] = useState(false)
   const [horaActual, setHoraActual] = useState(new Date())
   const [mostrarMetricasAvanzadas, setMostrarMetricasAvanzadas] = useState(false)
-  const [mostrarGrafico, setMostrarGrafico] = useState(false)
-  const [datosGrafico, setDatosGrafico] = useState<any[]>([])
 
   useEffect(() => {
     if (isClient) {
@@ -366,102 +364,6 @@ export default function PaginaAdmin() {
 
   const estadisticasAdminCalculadas = calcularEstadisticasAdmin()
   const metricasAvanzadas = calcularMetricasAvanzadas()
-
-  const descargarDatosDia = (backup: any) => {
-    const datos = {
-      fecha: backup.fecha,
-      resumen: backup.resumen,
-      estadoFinal: backup.estadoFinal,
-      tickets: backup.tickets || [],
-      analisis: {
-        distribucionHoraria: calcularDistribucionHoraria(backup.tickets || []),
-        tiempoPromedioDia: calcularTiempoPromedioDia(backup),
-        horaPicoDia: calcularHoraPicoDia(backup.tickets || []),
-        eficiencia: backup.resumen
-          ? Math.round((backup.resumen.totalTicketsAtendidos / Math.max(backup.resumen.totalTicketsEmitidos, 1)) * 100)
-          : 0,
-      },
-      exportadoEn: new Date().toISOString(),
-    }
-
-    const blob = new Blob([JSON.stringify(datos, null, 2)], { type: "application/json" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `datos-dia-${backup.fecha}.json`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-  }
-
-  const calcularDistribucionHoraria = (tickets: any[]) => {
-    const distribucion = {}
-    tickets.forEach((ticket) => {
-      const fecha = ticket.timestamp ? new Date(ticket.timestamp) : new Date(ticket.fecha)
-      const hora = fecha.getHours()
-      distribucion[hora] = (distribucion[hora] || 0) + 1
-    })
-    return distribucion
-  }
-
-  const calcularTiempoPromedioDia = (backup: any) => {
-    if (!backup.tickets || backup.tickets.length < 2) return 0
-
-    const tickets = backup.tickets
-    let tiempoTotal = 0
-    let intervalos = 0
-
-    for (let i = 1; i < tickets.length; i++) {
-      const tiempo1 = tickets[i - 1].timestamp || new Date(tickets[i - 1].fecha).getTime()
-      const tiempo2 = tickets[i].timestamp || new Date(tickets[i].fecha).getTime()
-      const diferencia = tiempo2 - tiempo1
-      if (diferencia > 0) {
-        tiempoTotal += diferencia
-        intervalos++
-      }
-    }
-
-    return intervalos > 0 ? Math.round(tiempoTotal / intervalos / 1000 / 60) : 0 // en minutos
-  }
-
-  const calcularHoraPicoDia = (tickets: any[]) => {
-    const distribucion = calcularDistribucionHoraria(tickets)
-    let horaPico = { hora: 0, cantidad: 0 }
-
-    Object.entries(distribucion).forEach(([hora, cantidad]) => {
-      if (cantidad > horaPico.cantidad) {
-        horaPico = { hora: Number.parseInt(hora), cantidad: cantidad as number }
-      }
-    })
-
-    return horaPico
-  }
-
-  const prepararDatosGrafico = () => {
-    const datos = backups
-      .map((backup) => {
-        const emitidos = backup.resumen?.totalTicketsEmitidos || 0
-        const atendidos = backup.resumen?.totalTicketsAtendidos || 0
-        const eficiencia = emitidos > 0 ? Math.round((atendidos / emitidos) * 100) : 0
-        const tiempoPromedio = calcularTiempoPromedioDia(backup)
-        const horaPico = calcularHoraPicoDia(backup.tickets || [])
-
-        return {
-          fecha: backup.fecha,
-          emitidos,
-          atendidos,
-          eficiencia,
-          tiempoPromedio,
-          horaPico: horaPico.hora,
-          cantidadPico: horaPico.cantidad,
-        }
-      })
-      .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
-
-    setDatosGrafico(datos)
-    setMostrarGrafico(true)
-  }
 
   if (loading || !isClient) {
     return (
@@ -800,13 +702,9 @@ export default function PaginaAdmin() {
                               <div className="w-full bg-gray-200 rounded-full h-2">
                                 <div
                                   className={`h-2 rounded-full transition-all duration-500 ${
-                                    porcentaje >= 90
-                                      ? "bg-green-500"
-                                      : porcentaje >= 70
-                                        ? "bg-yellow-500"
-                                        : "bg-red-500"
+                                    porcentaje >= 10 ? "bg-green-500" : porcentaje >= 5 ? "bg-yellow-500" : "bg-red-500"
                                   }`}
-                                  style={{ width: `${porcentaje}%` }}
+                                  style={{ width: `${Math.min(porcentaje * 2, 100)}%` }}
                                 ></div>
                               </div>
                             </div>
@@ -962,17 +860,7 @@ export default function PaginaAdmin() {
                   </div>
                 </div>
 
-                {/* Botón para mostrar gráfico */}
-                <div className="text-center mb-4">
-                  <Button
-                    onClick={prepararDatosGrafico}
-                    className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
-                  >
-                    📊 Ver Gráfico Histórico
-                  </Button>
-                </div>
-
-                {/* Lista de días con métricas MEJORADA */}
+                {/* Lista de días con métricas */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {backups.map((backup, index) => {
                     const emitidos = backup.resumen?.totalTicketsEmitidos || 0
@@ -982,11 +870,6 @@ export default function PaginaAdmin() {
                     const esReciente = index < 3
                     const esMejorDia =
                       emitidos === Math.max(...backups.map((b) => b.resumen?.totalTicketsEmitidos || 0))
-
-                    // Calcular métricas adicionales
-                    const tiempoPromedio = calcularTiempoPromedioDia(backup)
-                    const horaPico = calcularHoraPicoDia(backup.tickets || [])
-                    const distribucionHoraria = calcularDistribucionHoraria(backup.tickets || [])
 
                     return (
                       <div
@@ -1017,36 +900,34 @@ export default function PaginaAdmin() {
                               })}
                             </p>
                           </div>
-                          <div className="flex flex-col gap-1">
-                            {esMejorDia && (
-                              <div className="bg-yellow-500 text-white px-2 py-1 rounded-full text-xs font-bold">
-                                🏆 RÉCORD
-                              </div>
-                            )}
-                            {esReciente && !esMejorDia && (
-                              <div className="bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">
-                                RECIENTE
-                              </div>
-                            )}
-                          </div>
+                          {esMejorDia && (
+                            <div className="bg-yellow-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                              🏆 RÉCORD
+                            </div>
+                          )}
+                          {esReciente && !esMejorDia && (
+                            <div className="bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                              RECIENTE
+                            </div>
+                          )}
                         </div>
 
-                        {/* Métricas principales del día */}
+                        {/* Métricas del día */}
                         <div className="space-y-2 mb-4">
                           <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">📊 Tickets emitidos:</span>
+                            <span className="text-sm text-gray-600">Tickets emitidos:</span>
                             <span className="font-bold text-blue-600">{emitidos}</span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">✅ Atendidos:</span>
+                            <span className="text-sm text-gray-600">Atendidos:</span>
                             <span className="font-bold text-green-600">{atendidos}</span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">⏳ Pendientes:</span>
+                            <span className="text-sm text-gray-600">Pendientes:</span>
                             <span className="font-bold text-orange-600">{pendientes}</span>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">📈 Eficiencia:</span>
+                            <span className="text-sm text-gray-600">Eficiencia:</span>
                             <span
                               className={`font-bold ${
                                 eficiencia >= 90
@@ -1061,71 +942,7 @@ export default function PaginaAdmin() {
                           </div>
                         </div>
 
-                        {/* NUEVAS MÉTRICAS DETALLADAS */}
-                        <div className="bg-white p-3 rounded-lg border border-gray-200 mb-4">
-                          <h5 className="font-semibold text-gray-700 mb-2 text-sm">📊 Análisis del Día</h5>
-                          <div className="space-y-2 text-xs">
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-600">⏱️ Tiempo promedio entre tickets:</span>
-                              <span className="font-bold text-purple-600">
-                                {tiempoPromedio > 0 ? `${tiempoPromedio} min` : "N/A"}
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-600">🔥 Hora pico del día:</span>
-                              <span className="font-bold text-red-600">
-                                {horaPico.cantidad > 0 ? `${horaPico.hora}:00 (${horaPico.cantidad} tickets)` : "N/A"}
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-600">📈 Tickets por hora promedio:</span>
-                              <span className="font-bold text-indigo-600">
-                                {Object.keys(distribucionHoraria).length > 0
-                                  ? Math.round((emitidos / Object.keys(distribucionHoraria).length) * 10) / 10
-                                  : 0}
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-600">🕐 Horas operativas:</span>
-                              <span className="font-bold text-teal-600">
-                                {Object.keys(distribucionHoraria).length} horas
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Mini gráfico de distribución horaria */}
-                        {Object.keys(distribucionHoraria).length > 0 && (
-                          <div className="bg-gray-50 p-3 rounded-lg mb-4">
-                            <h6 className="text-xs font-semibold text-gray-600 mb-2">Distribución por Hora</h6>
-                            <div className="flex items-end gap-1 h-8">
-                              {Array.from({ length: 24 }, (_, i) => {
-                                const tickets = distribucionHoraria[i] || 0
-                                const maxTickets = Math.max(...Object.values(distribucionHoraria), 1)
-                                const altura = (tickets / maxTickets) * 100
-                                const esPicoHora = i === horaPico.hora
-                                return (
-                                  <div key={i} className="flex-1 flex flex-col items-center">
-                                    <div
-                                      className={`w-full rounded-t transition-all duration-300 ${
-                                        esPicoHora ? "bg-red-500" : tickets > 0 ? "bg-blue-400" : "bg-gray-200"
-                                      }`}
-                                      style={{ height: `${Math.max(altura, 2)}%`, minHeight: "2px" }}
-                                      title={`${i}:00 - ${tickets} tickets`}
-                                    ></div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                            <div className="flex justify-between text-xs text-gray-500 mt-1">
-                              <span>0h</span>
-                              <span>12h</span>
-                              <span>23h</span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Barra de progreso de eficiencia */}
+                        {/* Barra de progreso */}
                         <div className="mb-4">
                           <div className="w-full bg-gray-200 rounded-full h-2">
                             <div
@@ -1135,14 +952,14 @@ export default function PaginaAdmin() {
                               style={{ width: `${eficiencia}%` }}
                             ></div>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1 text-center">Eficiencia del día: {eficiencia}%</p>
+                          <p className="text-xs text-gray-500 mt-1 text-center">Eficiencia del día</p>
                         </div>
 
                         {/* Rango de tickets */}
                         {backup.resumen?.primerTicket && backup.resumen?.ultimoTicket && (
                           <div className="bg-white p-2 rounded border mb-3">
                             <div className="flex justify-between text-xs">
-                              <span className="text-gray-600">📋 Rango de tickets:</span>
+                              <span className="text-gray-600">Rango:</span>
                               <span className="font-mono font-bold text-gray-800">
                                 #{backup.resumen.primerTicket.toString().padStart(3, "0")} - #
                                 {backup.resumen.ultimoTicket.toString().padStart(3, "0")}
@@ -1151,25 +968,14 @@ export default function PaginaAdmin() {
                           </div>
                         )}
 
-                        {/* Botones de acción */}
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={() => verBackup(backup.fecha)}
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 hover:bg-blue-50"
-                          >
-                            👁️ Ver Detalles
-                          </Button>
-                          <Button
-                            onClick={() => descargarDatosDia(backup)}
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 hover:bg-green-50"
-                          >
-                            💾 Descargar
-                          </Button>
-                        </div>
+                        <Button
+                          onClick={() => verBackup(backup.fecha)}
+                          variant="outline"
+                          size="sm"
+                          className="w-full hover:bg-blue-50"
+                        >
+                          Ver Detalles Completos
+                        </Button>
                       </div>
                     )
                   })}
@@ -1250,196 +1056,6 @@ export default function PaginaAdmin() {
             )}
           </CardContent>
         </Card>
-
-        {/* Modal del Gráfico Histórico */}
-        {mostrarGrafico && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <Card className="w-full max-w-6xl bg-white max-h-[90vh] overflow-y-auto">
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span className="flex items-center gap-2">📊 Gráfico Histórico de Datos</span>
-                  <Button onClick={() => setMostrarGrafico(false)} variant="ghost" size="sm">
-                    ✕
-                  </Button>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {/* Gráfico de Tickets Emitidos vs Atendidos */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg">
-                    <h4 className="font-bold text-lg mb-4 text-center text-blue-800">
-                      📈 Tickets Emitidos vs Atendidos por Día
-                    </h4>
-                    <div className="space-y-3">
-                      {datosGrafico.map((dia, index) => {
-                        const maxEmitidos = Math.max(...datosGrafico.map((d) => d.emitidos), 1)
-                        const anchoEmitidos = (dia.emitidos / maxEmitidos) * 100
-                        const anchoAtendidos = (dia.atendidos / maxEmitidos) * 100
-
-                        return (
-                          <div key={index} className="space-y-1">
-                            <div className="flex justify-between text-sm font-medium">
-                              <span>{dia.fecha}</span>
-                              <span className="text-gray-600">
-                                {dia.emitidos} emitidos | {dia.atendidos} atendidos ({dia.eficiencia}%)
-                              </span>
-                            </div>
-                            <div className="relative">
-                              {/* Barra de emitidos (fondo) */}
-                              <div
-                                className="bg-blue-300 h-6 rounded-lg transition-all duration-500"
-                                style={{ width: `${anchoEmitidos}%` }}
-                              ></div>
-                              {/* Barra de atendidos (superpuesta) */}
-                              <div
-                                className="bg-green-500 h-6 rounded-lg absolute top-0 transition-all duration-500"
-                                style={{ width: `${anchoAtendidos}%` }}
-                              ></div>
-                              {/* Etiquetas */}
-                              <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">
-                                {dia.emitidos > 0 && `${dia.emitidos}`}
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <div className="flex justify-center gap-4 mt-4 text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 bg-blue-300 rounded"></div>
-                        <span>Tickets Emitidos</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 bg-green-500 rounded"></div>
-                        <span>Tickets Atendidos</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Gráfico de Eficiencia */}
-                  <div className="bg-gradient-to-r from-green-50 to-teal-50 p-6 rounded-lg">
-                    <h4 className="font-bold text-lg mb-4 text-center text-green-800">📊 Eficiencia por Día</h4>
-                    <div className="space-y-3">
-                      {datosGrafico.map((dia, index) => (
-                        <div key={index} className="space-y-1">
-                          <div className="flex justify-between text-sm font-medium">
-                            <span>{dia.fecha}</span>
-                            <span
-                              className={`font-bold ${
-                                dia.eficiencia >= 90
-                                  ? "text-green-600"
-                                  : dia.eficiencia >= 70
-                                    ? "text-yellow-600"
-                                    : "text-red-600"
-                              }`}
-                            >
-                              {dia.eficiencia}%
-                            </span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-4">
-                            <div
-                              className={`h-4 rounded-full transition-all duration-500 ${
-                                dia.eficiencia >= 90
-                                  ? "bg-green-500"
-                                  : dia.eficiencia >= 70
-                                    ? "bg-yellow-500"
-                                    : "bg-red-500"
-                              }`}
-                              style={{ width: `${dia.eficiencia}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Gráfico de Horas Pico */}
-                  <div className="bg-gradient-to-r from-orange-50 to-red-50 p-6 rounded-lg">
-                    <h4 className="font-bold text-lg mb-4 text-center text-orange-800">🔥 Horas Pico por Día</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {datosGrafico.map((dia, index) => (
-                        <div key={index} className="bg-white p-3 rounded-lg border">
-                          <div className="flex justify-between items-center">
-                            <span className="font-medium text-sm">{dia.fecha}</span>
-                            <div className="text-right">
-                              <div className="font-bold text-red-600">{dia.horaPico}:00</div>
-                              <div className="text-xs text-gray-600">{dia.cantidadPico} tickets</div>
-                            </div>
-                          </div>
-                          <div className="mt-2">
-                            <div className="flex items-center gap-1">
-                              {Array.from({ length: 24 }, (_, i) => (
-                                <div
-                                  key={i}
-                                  className={`flex-1 h-2 rounded ${i === dia.horaPico ? "bg-red-500" : "bg-gray-200"}`}
-                                  title={`${i}:00`}
-                                ></div>
-                              ))}
-                            </div>
-                            <div className="flex justify-between text-xs text-gray-500 mt-1">
-                              <span>0h</span>
-                              <span>12h</span>
-                              <span>23h</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Estadísticas del Gráfico */}
-                  <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-6 rounded-lg">
-                    <h4 className="font-bold text-lg mb-4 text-center text-purple-800">📋 Resumen Estadístico</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                      <div>
-                        <div className="text-2xl font-bold text-blue-600">
-                          {Math.round(datosGrafico.reduce((sum, d) => sum + d.emitidos, 0) / datosGrafico.length)}
-                        </div>
-                        <p className="text-sm text-blue-700">Promedio Emitidos/Día</p>
-                      </div>
-                      <div>
-                        <div className="text-2xl font-bold text-green-600">
-                          {Math.round(datosGrafico.reduce((sum, d) => sum + d.eficiencia, 0) / datosGrafico.length)}%
-                        </div>
-                        <p className="text-sm text-green-700">Eficiencia Promedio</p>
-                      </div>
-                      <div>
-                        <div className="text-2xl font-bold text-orange-600">
-                          {Math.max(...datosGrafico.map((d) => d.emitidos))}
-                        </div>
-                        <p className="text-sm text-orange-700">Máximo en un Día</p>
-                      </div>
-                      <div>
-                        <div className="text-2xl font-bold text-purple-600">
-                          {Math.round(datosGrafico.reduce((sum, d) => sum + d.tiempoPromedio, 0) / datosGrafico.length)}
-                        </div>
-                        <p className="text-sm text-purple-700">Tiempo Promedio (min)</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Botón para descargar datos del gráfico */}
-                  <div className="text-center">
-                    <Button
-                      onClick={() => {
-                        const blob = new Blob([JSON.stringify(datosGrafico, null, 2)], { type: "application/json" })
-                        const url = URL.createObjectURL(blob)
-                        const link = document.createElement("a")
-                        link.href = url
-                        link.download = `grafico-historico-${new Date().toISOString().split("T")[0]}.json`
-                        link.click()
-                        URL.revokeObjectURL(url)
-                      }}
-                      className="bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600 text-white"
-                    >
-                      💾 Descargar Datos del Gráfico
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
 
         {/* Modales existentes... */}
         {mostrarConfirmacionEliminar && (
