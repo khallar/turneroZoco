@@ -398,10 +398,13 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
 // crearBackupDiario ahora espera el estado completo (metadata + tickets)
 export async function crearBackupDiario(estado: EstadoSistema & { tickets: TicketInfo[] }): Promise<void> {
   try {
-    console.log("📦 Creando backup diario en TURNOS_ZOCO (Upstash Redis)...")
+    console.log("📦 Creando backup diario mejorado en TURNOS_ZOCO (Upstash Redis)...")
 
     const fecha = estado.fechaInicio
     const backupKey = BACKUP_KEY_PREFIX + fecha
+
+    // Calcular métricas avanzadas para el backup
+    const metricas = calcularMetricasParaBackup(estado)
 
     const backupData = {
       fecha,
@@ -422,16 +425,199 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
         ultimoTicket: estado.ultimoNumero,
         horaInicio: estado.fechaInicio,
         horaBackup: new Date().toISOString(),
+        // NUEVAS MÉTRICAS SOLICITADAS
+        tiempoPromedioEsperaReal: metricas.tiempoEsperaReal,
+        horaPico: metricas.horaPico,
+        distribucionPorHora: metricas.distribucionPorHora,
+        velocidadAtencion: metricas.velocidadAtencion,
+        tiempoEntreTickets: metricas.tiempoEntreTickets,
+        eficienciaDiaria:
+          estado.totalAtendidos > 0 ? Math.round((estado.numerosLlamados / estado.totalAtendidos) * 100) : 0,
+        proyeccionCumplida: metricas.proyeccionCumplida,
+        nombresComunes: metricas.nombresComunes,
       },
       tickets: estado.tickets, // Incluye el array completo de tickets en el backup
+      // DATOS DETALLADOS PARA DESCARGA
+      datosDetallados: {
+        ticketsPorHora: metricas.distribucionPorHora,
+        analisisTemporal: {
+          inicioOperaciones: estado.fechaInicio,
+          finOperaciones: new Date().toISOString(),
+          duracionTotal: metricas.duracionOperaciones,
+          horasPico: metricas.horasPico,
+          horasMinimas: metricas.horasMinimas,
+        },
+        estadisticasClientes: {
+          nombresUnicos: metricas.nombresUnicos,
+          clientesRecurrentes: metricas.clientesRecurrentes,
+          promedioCaracteresPorNombre: metricas.promedioCaracteresPorNombre,
+        },
+        rendimiento: {
+          tiempoPromedioEsperaReal: metricas.tiempoEsperaReal,
+          velocidadAtencion: metricas.velocidadAtencion,
+          eficienciaOperativa: metricas.eficienciaOperativa,
+          tiempoEntreTickets: metricas.tiempoEntreTickets,
+        },
+      },
     }
 
     // OPTIMIZACIÓN: SET con expiración para el backup.
     await redis.set(backupKey, backupData, { ex: 60 * 24 * 60 * 60 }) // 60 días de expiración para los backups
-    console.log("✅ Backup diario creado exitosamente en TURNOS_ZOCO (Upstash Redis)")
+    console.log("✅ Backup diario mejorado creado exitosamente en TURNOS_ZOCO (Upstash Redis)")
   } catch (error) {
     console.error("❌ Error al crear backup diario en TURNOS_ZOCO (Upstash Redis):", error)
     // No lanzar error para no bloquear otras operaciones
+  }
+}
+
+// Nueva función para calcular métricas específicas para el backup
+function calcularMetricasParaBackup(estado: EstadoSistema & { tickets: TicketInfo[] }) {
+  if (!estado.tickets || estado.tickets.length === 0) {
+    return {
+      tiempoEsperaReal: 0,
+      horaPico: { hora: 0, cantidad: 0, porcentaje: 0 },
+      distribucionPorHora: {},
+      velocidadAtencion: 0,
+      tiempoEntreTickets: 0,
+      proyeccionCumplida: 0,
+      nombresComunes: [],
+      duracionOperaciones: 0,
+      horasPico: [],
+      horasMinimas: [],
+      nombresUnicos: 0,
+      clientesRecurrentes: 0,
+      promedioCaracteresPorNombre: 0,
+      eficienciaOperativa: 0,
+    }
+  }
+
+  const tickets = estado.tickets
+  const ahora = new Date()
+  const inicioOperaciones = new Date(estado.fechaInicio)
+  const duracionOperaciones = (ahora.getTime() - inicioOperaciones.getTime()) / (1000 * 60 * 60) // en horas
+
+  // 1. Distribución de tickets por hora del día
+  const distribucionPorHora = {}
+  tickets.forEach((ticket) => {
+    const fecha = ticket.timestamp ? new Date(ticket.timestamp) : new Date(ticket.fecha)
+    const hora = fecha.getHours()
+    distribucionPorHora[hora] = (distribucionPorHora[hora] || 0) + 1
+  })
+
+  // 2. Hora pico con más detalles
+  const horaPico = Object.entries(distribucionPorHora).reduce(
+    (max, [hora, cantidad]) => {
+      const porcentaje = Math.round((cantidad / estado.totalAtendidos) * 100)
+      return cantidad > max.cantidad ? { hora: Number.parseInt(hora), cantidad, porcentaje } : max
+    },
+    { hora: 0, cantidad: 0, porcentaje: 0 },
+  )
+
+  // 3. Tiempo de espera real promedio mejorado
+  let tiempoEsperaReal = 0
+  if (estado.numerosLlamados > 0 && tickets.length > 0) {
+    const ticketsAtendidos = tickets.slice(0, estado.numerosLlamados)
+    const tiemposEspera = []
+
+    ticketsAtendidos.forEach((ticket, index) => {
+      const tiempoEmision = ticket.timestamp || new Date(ticket.fecha).getTime()
+      const tiempoEstimadoLlamada =
+        inicioOperaciones.getTime() + (index + 1) * (duracionOperaciones / estado.numerosLlamados) * 60 * 60 * 1000
+      const espera = (tiempoEstimadoLlamada - tiempoEmision) / 1000 / 60 // en minutos
+      if (espera > 0) tiemposEspera.push(espera)
+    })
+
+    if (tiemposEspera.length > 0) {
+      tiempoEsperaReal = tiemposEspera.reduce((a, b) => a + b, 0) / tiemposEspera.length
+    }
+  }
+
+  // 4. Velocidad de atención
+  const tiempoOperacionMinutos = duracionOperaciones * 60
+  const velocidadAtencion = tiempoOperacionMinutos > 0 ? estado.numerosLlamados / tiempoOperacionMinutos : 0
+
+  // 5. Tiempo entre tickets
+  let tiempoEntreTickets = 0
+  if (tickets.length > 1) {
+    const tiempos = []
+    for (let i = 1; i < tickets.length; i++) {
+      const timestamp1 = tickets[i - 1].timestamp || new Date(tickets[i - 1].fecha).getTime()
+      const timestamp2 = tickets[i].timestamp || new Date(tickets[i].fecha).getTime()
+      const diff = timestamp2 - timestamp1
+      if (diff > 0) tiempos.push(diff)
+    }
+    if (tiempos.length > 0) {
+      tiempoEntreTickets = tiempos.reduce((a, b) => a + b, 0) / tiempos.length / 1000 / 60 // en minutos
+    }
+  }
+
+  // 6. Análisis de nombres
+  const nombresMap = {}
+  let totalCaracteres = 0
+  tickets.forEach((ticket) => {
+    const nombre = ticket.nombre.toLowerCase().trim()
+    if (nombre !== "cliente zoco") {
+      nombresMap[nombre] = (nombresMap[nombre] || 0) + 1
+      totalCaracteres += ticket.nombre.length
+    }
+  })
+
+  const nombresComunes = Object.entries(nombresMap)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 10)
+    .map(([nombre, cantidad]) => ({
+      nombre,
+      cantidad,
+      porcentaje: Math.round((cantidad / estado.totalAtendidos) * 100),
+    }))
+
+  const nombresUnicos = Object.keys(nombresMap).length
+  const clientesRecurrentes = Object.values(nombresMap).filter((count) => count > 1).length
+  const promedioCaracteresPorNombre = tickets.length > 0 ? Math.round(totalCaracteres / tickets.length) : 0
+
+  // 7. Horas pico y mínimas
+  const horasOrdenadas = Object.entries(distribucionPorHora).sort(([, a], [, b]) => b - a)
+
+  const horasPico = horasOrdenadas.slice(0, 3).map(([hora, cantidad]) => ({
+    hora: Number.parseInt(hora),
+    cantidad,
+    porcentaje: Math.round((cantidad / estado.totalAtendidos) * 100),
+  }))
+
+  const horasMinimas = horasOrdenadas.slice(-3).map(([hora, cantidad]) => ({
+    hora: Number.parseInt(hora),
+    cantidad,
+    porcentaje: Math.round((cantidad / estado.totalAtendidos) * 100),
+  }))
+
+  // 8. Proyección cumplida
+  const horaActual = ahora.getHours()
+  const minutosTranscurridos = ahora.getHours() * 60 + ahora.getMinutes()
+  const proyeccionDiaria =
+    minutosTranscurridos > 0
+      ? Math.round((estado.totalAtendidos / minutosTranscurridos) * (24 * 60))
+      : estado.totalAtendidos
+  const proyeccionCumplida = proyeccionDiaria > 0 ? Math.round((estado.totalAtendidos / proyeccionDiaria) * 100) : 100
+
+  // 9. Eficiencia operativa
+  const eficienciaOperativa =
+    estado.totalAtendidos > 0 ? Math.round((estado.numerosLlamados / estado.totalAtendidos) * 100) : 0
+
+  return {
+    tiempoEsperaReal: Math.round(tiempoEsperaReal * 10) / 10,
+    horaPico,
+    distribucionPorHora,
+    velocidadAtencion: Math.round(velocidadAtencion * 100) / 100,
+    tiempoEntreTickets: Math.round(tiempoEntreTickets * 10) / 10,
+    proyeccionCumplida,
+    nombresComunes,
+    duracionOperaciones: Math.round(duracionOperaciones * 10) / 10,
+    horasPico,
+    horasMinimas,
+    nombresUnicos,
+    clientesRecurrentes,
+    promedioCaracteresPorNombre,
+    eficienciaOperativa,
   }
 }
 
