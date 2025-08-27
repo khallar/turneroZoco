@@ -238,22 +238,6 @@ export default function SistemaAtencion() {
           </div>
           <h1 className="text-4xl font-bold text-gray-800 mb-4">{fraseAleatoria || "¡Bienvenido a nuestro local!"}</h1>
 
-          {/* Indicador de conexión optimizado */}
-          <div className="flex justify-center items-center gap-2 mb-4">
-            <div
-              className={`w-3 h-3 rounded-full ${isOnline && !error ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
-            ></div>
-            <span className="text-sm text-gray-600">
-              {error ? "Error de conexión" : isOnline ? "Sistema conectado" : "Sin conexión"}
-            </span>
-            {/* Indicador de cache */}
-            {cacheStats.totalEntries > 0 && (
-              <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
-                📦 Cache: {cacheStats.totalEntries} entradas
-              </span>
-            )}
-          </div>
-
           {/* Botón principal */}
           <div className="mb-6">
             <Button
@@ -396,7 +380,7 @@ export default function SistemaAtencion() {
             {isOnline && !error ? (
               <>
                 <Wifi className="h-4 w-4 text-green-500" />
-                <span className="text-green-500">Online (Optimizado)</span>
+                <span className="text-green-500">Online</span>
               </>
             ) : (
               <>
