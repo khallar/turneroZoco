@@ -170,11 +170,6 @@ export default function SistemaAtencion() {
 
       console.log("=== GENERANDO TICKET ===")
       console.log("Nombre:", nombre)
-      console.log("Estado actual antes de generar:", {
-        numeroActual: estado?.numeroActual,
-        totalAtendidos: estado?.totalAtendidos,
-        ticketsLength: estado?.tickets?.length || 0,
-      })
 
       // Generar ticket de forma atómica en el servidor
       const ticketCreado = await generarTicket(nombre)
@@ -184,7 +179,7 @@ export default function SistemaAtencion() {
 
         const fraseAleatoria = FRASES_ALEATORIAS[Math.floor(Math.random() * FRASES_ALEATORIAS.length)]
 
-        // Cerrar modal y mostrar ticket
+        // Cerrar modal y mostrar ticket inmediatamente
         setMostrarModalNombre(false)
         setTicketGenerado({
           numero: ticketCreado.numero,
@@ -194,11 +189,21 @@ export default function SistemaAtencion() {
         })
       } else {
         console.error("No se pudo crear el ticket")
-        alert("Error: No se pudo generar el ticket")
+        alert("Error: No se pudo generar el ticket. Por favor, intente nuevamente.")
       }
     } catch (error) {
       console.error("Error al generar ticket:", error)
-      alert(`Error al generar el ticket: ${error instanceof Error ? error.message : "Error desconocido"}`)
+
+      // Mensaje de error más amigable
+      const errorMessage = error instanceof Error ? error.message : "Error desconocido"
+
+      if (errorMessage.includes("503") || errorMessage.includes("ocupado")) {
+        alert("El sistema está ocupado en este momento. Por favor, espere unos segundos e intente nuevamente.")
+      } else if (errorMessage.includes("timeout") || errorMessage.includes("Timeout")) {
+        alert("La conexión está lenta. Por favor, verifique su conexión a internet e intente nuevamente.")
+      } else {
+        alert(`Error al generar el ticket: ${errorMessage}\n\nPor favor, intente nuevamente.`)
+      }
     } finally {
       setGenerandoTicket(false)
     }

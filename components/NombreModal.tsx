@@ -44,6 +44,13 @@ export default function NombreModal({ isOpen, onConfirm, onCancel, generandoTick
     if (generandoTicket) return // Evitar doble envío
 
     const nombreFinal = nombre.trim() || "Cliente ZOCO"
+
+    // Validación básica del nombre
+    if (nombreFinal.length < 2) {
+      alert("Por favor, ingrese un nombre válido (mínimo 2 caracteres)")
+      return
+    }
+
     onConfirm(nombreFinal)
   }
 
@@ -119,7 +126,8 @@ export default function NombreModal({ isOpen, onConfirm, onCancel, generandoTick
               <div className="text-center bg-green-50 p-4 rounded-lg border-2 border-green-200">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-2"></div>
                 <p className="text-green-700 font-bold">Generando su ticket...</p>
-                <p className="text-sm text-green-600">Por favor espere un momento</p>
+                <p className="text-sm text-green-600">Esto puede tomar unos segundos</p>
+                <div className="mt-2 text-xs text-gray-500">Por favor, no cierre esta ventana</div>
               </div>
             )}
 

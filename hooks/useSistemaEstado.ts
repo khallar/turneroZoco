@@ -331,7 +331,8 @@ export function useSistemaEstado(pagina: keyof typeof INTERVALOS_ACTUALIZACION =
 
   // Función optimizada para generar ticket
   const generarTicket = useCallback(
-    async (nombre: string, reintentos = 2) => {
+    async (nombre: string, reintentos = 1) => {
+      // Reducir reintentos de 2 a 1
       if (!isClient) return null
 
       for (let intento = 1; intento <= reintentos; intento++) {
@@ -354,7 +355,7 @@ export function useSistemaEstado(pagina: keyof typeof INTERVALOS_ACTUALIZACION =
 
           if (response.status === 503) {
             console.log("⏳ Sistema ocupado, reintentando...")
-            await new Promise((resolve) => setTimeout(resolve, 2000 * intento))
+            await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
             continue
           }
 
@@ -371,8 +372,6 @@ export function useSistemaEstado(pagina: keyof typeof INTERVALOS_ACTUALIZACION =
 
             // Invalidar cache de estadísticas para forzar recarga
             cacheManager.invalidate(CACHE_KEYS.ESTADISTICAS)
-
-            await cargarDebugInfo()
 
             return data.ticketGenerado
           } else {
@@ -393,14 +392,14 @@ export function useSistemaEstado(pagina: keyof typeof INTERVALOS_ACTUALIZACION =
             setError(`Error al generar ticket: ${err instanceof Error ? err.message : "Error desconocido"}`)
             throw err
           } else {
-            await new Promise((resolve) => setTimeout(resolve, 2000 * intento))
+            await new Promise((resolve) => setTimeout(resolve, 1000 * intento))
           }
         }
       }
 
       return null
     },
-    [isClient, cargarDebugInfo],
+    [isClient], // Remover cargarDebugInfo de las dependencias
   )
 
   // Función para obtener backups (con cache)

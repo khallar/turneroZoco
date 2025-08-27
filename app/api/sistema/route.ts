@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
       // No es necesario escribir el estado aquí, se hará si la acción lo requiere
     }
 
-    // Acción especial para generar ticket de forma atómica
+    // Acción especial para generar ticket de forma atómica - OPTIMIZADA
     if (action === "GENERAR_TICKET") {
       const { nombre } = body
 
@@ -210,9 +210,8 @@ export async function POST(request: NextRequest) {
         // Generar ticket de forma atómica en la base de datos
         const nuevoTicket = await generarTicketAtomico(nombre)
 
-        // Después de generar el ticket, volvemos a leer el estado para asegurar consistencia
-        // Esto es importante porque generarTicketAtomico actualiza el estado directamente en Redis
-        const estadoActualizado = await leerEstadoSistema() // Esto ya devuelve el estado con los tickets
+        // Después de generar el ticket, leer el estado actualizado
+        const estadoActualizado = await leerEstadoSistema()
 
         console.log("✅ Ticket generado exitosamente en TURNOS_ZOCO (Upstash Redis)")
 
@@ -222,10 +221,24 @@ export async function POST(request: NextRequest) {
         })
       } catch (error) {
         console.error("❌ Error al generar ticket (TURNOS_ZOCO):", error)
+
+        // Respuesta de error más específica
+        const errorMessage = error instanceof Error ? error.message : "Error desconocido"
+
+        if (errorMessage.includes("timeout") || errorMessage.includes("Timeout")) {
+          return NextResponse.json(
+            {
+              error: "Timeout al generar ticket - conexión lenta",
+              details: "La operación tardó demasiado. Por favor, intente nuevamente.",
+            },
+            { status: 408 },
+          )
+        }
+
         return NextResponse.json(
           {
             error: "Error al generar ticket en TURNOS_ZOCO (Upstash Redis)",
-            details: error instanceof Error ? error.message : "Error desconocido",
+            details: errorMessage,
           },
           { status: 500 },
         )

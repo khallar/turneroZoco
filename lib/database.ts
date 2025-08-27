@@ -285,112 +285,80 @@ export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void
 
 // Función para generar un nuevo ticket de forma atómica
 export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> {
-  try {
-    console.log("🎫 Generando ticket atómico para:", nombre, "en TURNOS_ZOCO (Upstash Redis)...")
-    const fechaHoy = getTodayDateString()
-    const estadoKey = STATE_KEY_PREFIX + fechaHoy
-    const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
-    const counterKey = COUNTER_KEY_PREFIX + fechaHoy
+  return retryOperation(
+    async () => {
+      console.log("🎫 Generando ticket atómico para:", nombre, "en TURNOS_ZOCO (Upstash Redis)...")
+      const fechaHoy = getTodayDateString()
+      const estadoKey = STATE_KEY_PREFIX + fechaHoy
+      const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
+      const counterKey = COUNTER_KEY_PREFIX + fechaHoy
 
-    // OPTIMIZACIÓN: Transacción 1 - Obtener el estado actual y el contador de ticket
-    // Esto se hace en un solo viaje de ida y vuelta a Redis para minimizar latencia.
-    const results = await redis
-      .multi()
-      .incr(counterKey) // Incrementa el contador diario de tickets (atómico)
-      .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado actual
-      .llen(ticketsListKey) // Obtiene el número total de tickets en la lista para verificar consistencia
-      .exec()
+      // OPTIMIZACIÓN: Una sola transacción más simple y rápida
+      const results = await redis
+        .multi()
+        .incr(counterKey) // Incrementa el contador diario de tickets (atómico)
+        .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado actual
+        .exec()
 
-    // Validar que tenemos los resultados esperados
-    if (!Array.isArray(results) || results.length !== 3) {
-      throw new Error("Respuesta inesperada de Redis MULTI/EXEC en generarTicketAtomico")
-    }
-
-    const [numeroAsignadoRaw, estadoRaw, totalTicketsEnLista] = results
-    const numeroAsignado = typeof numeroAsignadoRaw === "number" ? numeroAsignadoRaw : 1
-    const ticketsExistentes = typeof totalTicketsEnLista === "number" ? totalTicketsEnLista : 0
-
-    console.log(
-      `🔍 Verificación de consistencia: Número asignado: ${numeroAsignado}, Tickets en lista: ${ticketsExistentes}`,
-    )
-
-    let estadoActual: EstadoSistema
-    if (estadoRaw && typeof estadoRaw === "object") {
-      estadoActual = estadoRaw
-      // Verificar y corregir inconsistencias
-      if (estadoActual.totalAtendidos !== ticketsExistentes) {
-        console.log(
-          `⚠️ Inconsistencia detectada: Estado dice ${estadoActual.totalAtendidos}, lista tiene ${ticketsExistentes}`,
-        )
-        estadoActual.totalAtendidos = ticketsExistentes
+      if (!Array.isArray(results) || results.length !== 2) {
+        throw new Error("Respuesta inesperada de Redis MULTI/EXEC en generarTicketAtomico")
       }
-    } else {
-      // Si el estado no existe (primer ticket del día), inicializarlo
-      estadoActual = {
-        numeroActual: 1,
-        ultimoNumero: 0,
-        totalAtendidos: ticketsExistentes,
-        numerosLlamados: 0,
-        fechaInicio: fechaHoy,
-        ultimoReinicio: new Date().toISOString(),
-        lastSync: Date.now(),
+
+      const [numeroAsignadoRaw, estadoRaw] = results
+      const numeroAsignado = typeof numeroAsignadoRaw === "number" ? numeroAsignadoRaw : 1
+
+      console.log(`🔍 Número asignado: ${numeroAsignado}`)
+
+      let estadoActual: EstadoSistema
+      if (estadoRaw && typeof estadoRaw === "object") {
+        estadoActual = estadoRaw
+      } else {
+        // Si el estado no existe (primer ticket del día), inicializarlo
+        estadoActual = {
+          numeroActual: 1,
+          ultimoNumero: 0,
+          totalAtendidos: 0,
+          numerosLlamados: 0,
+          fechaInicio: fechaHoy,
+          ultimoReinicio: new Date().toISOString(),
+          lastSync: Date.now(),
+        }
+        // Establecer expiración para la clave del contador si es nueva
+        await redis.expire(counterKey, 48 * 60 * 60) // 48 horas
       }
-      // Establecer expiración extendida para la clave del contador si es nueva
-      await redis.expire(counterKey, 48 * 60 * 60) // 48 horas
-    }
 
-    const fecha = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
-    const timestamp = Date.now()
+      const fecha = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
+      const timestamp = Date.now()
 
-    const nuevoTicket: TicketInfo = {
-      numero: numeroAsignado,
-      nombre: nombre.trim(),
-      fecha,
-      timestamp,
-    }
+      const nuevoTicket: TicketInfo = {
+        numero: numeroAsignado,
+        nombre: nombre.trim(),
+        fecha,
+        timestamp,
+      }
 
-    // Actualizar la metadata del estado en memoria con el nuevo ticket
-    estadoActual.numeroActual = numeroAsignado + 1
-    estadoActual.ultimoNumero = numeroAsignado
-    estadoActual.totalAtendidos = ticketsExistentes + 1 // Usar el conteo real de la lista + 1
-    estadoActual.lastSync = Date.now()
+      // Actualizar la metadata del estado
+      estadoActual.numeroActual = numeroAsignado + 1
+      estadoActual.ultimoNumero = numeroAsignado
+      estadoActual.totalAtendidos = numeroAsignado // Usar el contador como fuente de verdad
+      estadoActual.lastSync = Date.now()
 
-    // OPTIMIZACIÓN: Transacción 2 - Guardar el estado actualizado, añadir el nuevo ticket
-    // a la lista de tickets del día y registrar el log. Todo en un solo viaje de ida y vuelta a Redis.
-    const transactionResults = await redis
-      .multi()
-      .set(estadoKey, estadoActual, { ex: 48 * 60 * 60 }) // Guarda la metadata del estado actualizada con persistencia extendida
-      .rpush(ticketsListKey, nuevoTicket) // Añade el nuevo ticket al final de la lista de tickets del día
-      .expire(ticketsListKey, 48 * 60 * 60) // Asegurar persistencia extendida de la lista
-      .expire(counterKey, 48 * 60 * 60) // Asegurar persistencia extendida del contador
-      .lpush(
-        LOGS_KEY,
-        JSON.stringify({
-          accion: "GENERAR_TICKET",
-          detalles: { numero: numeroAsignado, nombre: nombre.trim(), totalEnSistema: estadoActual.totalAtendidos },
-          timestamp_log: timestamp,
-        }),
-      )
-      .ltrim(LOGS_KEY, 0, 1999) // Mantener solo los últimos 2000 logs
-      .exec()
+      // OPTIMIZACIÓN: Transacción más simple - solo lo esencial
+      await redis
+        .multi()
+        .set(estadoKey, estadoActual, { ex: 48 * 60 * 60 }) // Estado actualizado
+        .rpush(ticketsListKey, nuevoTicket) // Añadir ticket a la lista
+        .expire(ticketsListKey, 48 * 60 * 60) // Asegurar persistencia
+        .expire(counterKey, 48 * 60 * 60) // Asegurar persistencia del contador
+        .exec()
 
-    // Crear backup inmediato del ticket para mayor seguridad
-    const ticketBackupKey = `${ticketsListKey}:backup:${numeroAsignado}`
-    await redis.set(ticketBackupKey, nuevoTicket, { ex: 72 * 60 * 60 }) // 72 horas para backup individual
-
-    console.log(
-      "✅ Ticket generado exitosamente en TURNOS_ZOCO (Upstash Redis) con persistencia mejorada:",
-      nuevoTicket,
-    )
-    console.log(
-      `📊 Estado actualizado: Total atendidos: ${estadoActual.totalAtendidos}, Último número: ${estadoActual.ultimoNumero}`,
-    )
-
-    return nuevoTicket
-  } catch (error) {
-    console.error("❌ Error al generar ticket en TURNOS_ZOCO (Upstash Redis):", error)
-    throw error
-  }
+      console.log("✅ Ticket generado exitosamente:", nuevoTicket)
+      return nuevoTicket
+    },
+    2, // Reducir reintentos de 3 a 2
+    500, // Reducir delay inicial de 1000ms a 500ms
+    "Generación de ticket",
+  )
 }
 
 // --- Backup & Admin Functions ---
