@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Printer, Database, Bug, Wifi, WifiOff } from "lucide-react"
+import { Printer, Bug, Wifi, WifiOff } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 import TicketDisplay from "@/components/TicketDisplay"
 import NombreModal from "@/components/NombreModal"
@@ -314,22 +314,6 @@ export default function SistemaAtencion() {
             </CardContent>
           </Card>
         )}
-
-        {/* Indicador de persistencia optimizado */}
-        <div className="text-center mb-6">
-          <div
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${
-              error ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"
-            }`}
-          >
-            <Database className="h-4 w-4" />
-            <span>
-              {error
-                ? "Error de conexión a la base de datos"
-                : "Datos optimizados con Cache Inteligente - Menos consultas DB"}
-            </span>
-          </div>
-        </div>
 
         {/* Instrucciones */}
         <Card className="mt-4">
