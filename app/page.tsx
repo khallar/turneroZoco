@@ -244,7 +244,7 @@ export default function SistemaAtencion() {
               className={`w-3 h-3 rounded-full ${isOnline && !error ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
             ></div>
             <span className="text-sm text-gray-600">
-              {error ? "Error de conexión" : isOnline ? "Conectado a TURNOS_ZOCO (Cache Optimizado)" : "Sin conexión"}
+              {error ? "Error de conexión" : isOnline ? "Sistema conectado" : "Sin conexión"}
             </span>
             {/* Indicador de cache */}
             {cacheStats.totalEntries > 0 && (
