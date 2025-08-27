@@ -365,6 +365,153 @@ export default function PaginaAdmin() {
   const estadisticasAdminCalculadas = calcularEstadisticasAdmin()
   const metricasAvanzadas = calcularMetricasAvanzadas()
 
+  // Agregar función para descargar datos de un día específico
+  const descargarDatosDia = async (backup: any) => {
+    try {
+      // Obtener datos completos del backup
+      const backupCompleto = await obtenerBackup(backup.fecha)
+
+      if (!backupCompleto) {
+        alert("No se pudieron obtener los datos completos del día")
+        return
+      }
+
+      // Preparar datos para descarga
+      const datosDescarga = {
+        // INFORMACIÓN BÁSICA
+        fecha: backup.fecha,
+        fechaFormateada: new Date(backup.fecha).toLocaleDateString("es-AR", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }),
+
+        // MÉTRICAS PRINCIPALES SOLICITADAS
+        cantidadTicketsEmitidos: backupCompleto.resumen?.totalTicketsEmitidos || 0,
+        tiempoPromedioEsperaReal: backupCompleto.resumen?.tiempoPromedioEsperaReal || 0,
+        horaPico: backupCompleto.resumen?.horaPico || { hora: 0, cantidad: 0, porcentaje: 0 },
+
+        // RESUMEN OPERATIVO
+        resumenOperativo: {
+          ticketsEmitidos: backupCompleto.resumen?.totalTicketsEmitidos || 0,
+          ticketsAtendidos: backupCompleto.resumen?.totalTicketsAtendidos || 0,
+          ticketsPendientes: backupCompleto.resumen?.ticketsPendientes || 0,
+          eficienciaDiaria: backupCompleto.resumen?.eficienciaDiaria || 0,
+          primerTicket: backupCompleto.resumen?.primerTicket || 0,
+          ultimoTicket: backupCompleto.resumen?.ultimoTicket || 0,
+        },
+
+        // ANÁLISIS TEMPORAL DETALLADO
+        analisisTemporal: {
+          tiempoPromedioEsperaReal: `${backupCompleto.resumen?.tiempoPromedioEsperaReal || 0} minutos`,
+          velocidadAtencion: `${backupCompleto.resumen?.velocidadAtencion || 0} tickets/minuto`,
+          tiempoEntreTickets: `${backupCompleto.resumen?.tiempoEntreTickets || 0} minutos`,
+          duracionOperaciones: backupCompleto.datosDetallados?.analisisTemporal?.duracionTotal || 0,
+          inicioOperaciones: backupCompleto.datosDetallados?.analisisTemporal?.inicioOperaciones || backup.fecha,
+          finOperaciones: backupCompleto.datosDetallados?.analisisTemporal?.finOperaciones || backup.fecha,
+        },
+
+        // DISTRIBUCIÓN POR HORA (SOLICITADO)
+        distribucionPorHora: backupCompleto.resumen?.distribucionPorHora || {},
+        distribucionPorHoraDetallada: Object.entries(backupCompleto.resumen?.distribucionPorHora || {})
+          .map(([hora, cantidad]) => ({
+            hora: `${hora}:00 - ${Number.parseInt(hora) + 1}:00`,
+            horaNumero: Number.parseInt(hora),
+            cantidadTickets: cantidad,
+            porcentajeDelTotal: Math.round((cantidad / (backupCompleto.resumen?.totalTicketsEmitidos || 1)) * 100),
+          }))
+          .sort((a, b) => a.horaNumero - b.horaNumero),
+
+        // HORAS PICO Y MÍNIMAS
+        horasPico: backupCompleto.datosDetallados?.analisisTemporal?.horasPico || [],
+        horasMinimas: backupCompleto.datosDetallados?.analisisTemporal?.horasMinimas || [],
+
+        // ANÁLISIS DE CLIENTES
+        analisisClientes: {
+          nombresComunes: backupCompleto.resumen?.nombresComunes || [],
+          nombresUnicos: backupCompleto.datosDetallados?.estadisticasClientes?.nombresUnicos || 0,
+          clientesRecurrentes: backupCompleto.datosDetallados?.estadisticasClientes?.clientesRecurrentes || 0,
+          promedioCaracteresPorNombre:
+            backupCompleto.datosDetallados?.estadisticasClientes?.promedioCaracteresPorNombre || 0,
+        },
+
+        // MÉTRICAS DE RENDIMIENTO
+        rendimiento: backupCompleto.datosDetallados?.rendimiento || {},
+
+        // TICKETS COMPLETOS (si están disponibles)
+        tickets: backupCompleto.tickets || [],
+
+        // METADATOS DE DESCARGA
+        metadatos: {
+          fechaDescarga: new Date().toISOString(),
+          version: "5.1",
+          sistema: "TURNOS_ZOCO",
+          generadoPor: "Panel de Administración",
+        },
+      }
+
+      // Crear y descargar archivo JSON
+      const blob = new Blob([JSON.stringify(datosDescarga, null, 2)], {
+        type: "application/json",
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `ZOCO-Datos-${backup.fecha}-Completo.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      // También crear un archivo CSV con los datos principales
+      const csvData = [
+        // Encabezados
+        [
+          "Fecha",
+          "Tickets Emitidos",
+          "Tickets Atendidos",
+          "Tickets Pendientes",
+          "Eficiencia (%)",
+          "Tiempo Promedio Espera (min)",
+          "Hora Pico",
+          "Tickets en Hora Pico",
+          "Velocidad Atención (tickets/min)",
+          "Tiempo Entre Tickets (min)",
+        ],
+        // Datos
+        [
+          datosDescarga.fechaFormateada,
+          datosDescarga.cantidadTicketsEmitidos,
+          datosDescarga.resumenOperativo.ticketsAtendidos,
+          datosDescarga.resumenOperativo.ticketsPendientes,
+          datosDescarga.resumenOperativo.eficienciaDiaria,
+          datosDescarga.tiempoPromedioEsperaReal,
+          `${datosDescarga.horaPico.hora}:00`,
+          datosDescarga.horaPico.cantidad,
+          datosDescarga.analisisTemporal.velocidadAtencion.replace(" tickets/minuto", ""),
+          datosDescarga.analisisTemporal.tiempoEntreTickets.replace(" minutos", ""),
+        ],
+      ]
+
+      const csvContent = csvData.map((row) => row.join(",")).join("\n")
+      const csvBlob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+      const csvUrl = URL.createObjectURL(csvBlob)
+      const csvLink = document.createElement("a")
+      csvLink.href = csvUrl
+      csvLink.download = `ZOCO-Resumen-${backup.fecha}.csv`
+      document.body.appendChild(csvLink)
+      csvLink.click()
+      document.body.removeChild(csvLink)
+      URL.revokeObjectURL(csvUrl)
+
+      alert(`Datos del ${backup.fecha} descargados exitosamente:\n- Archivo JSON completo\n- Archivo CSV resumen`)
+    } catch (error) {
+      console.error("Error al descargar datos del día:", error)
+      alert("Error al descargar los datos del día")
+    }
+  }
+
   if (loading || !isClient) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 flex items-center justify-center p-4">
@@ -1208,151 +1355,4 @@ export default function PaginaAdmin() {
       </div>
     </div>
   )
-
-  // Agregar función para descargar datos de un día específico
-  const descargarDatosDia = async (backup: any) => {
-    try {
-      // Obtener datos completos del backup
-      const backupCompleto = await obtenerBackup(backup.fecha)
-
-      if (!backupCompleto) {
-        alert("No se pudieron obtener los datos completos del día")
-        return
-      }
-
-      // Preparar datos para descarga
-      const datosDescarga = {
-        // INFORMACIÓN BÁSICA
-        fecha: backup.fecha,
-        fechaFormateada: new Date(backup.fecha).toLocaleDateString("es-AR", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        }),
-
-        // MÉTRICAS PRINCIPALES SOLICITADAS
-        cantidadTicketsEmitidos: backupCompleto.resumen?.totalTicketsEmitidos || 0,
-        tiempoPromedioEsperaReal: backupCompleto.resumen?.tiempoPromedioEsperaReal || 0,
-        horaPico: backupCompleto.resumen?.horaPico || { hora: 0, cantidad: 0, porcentaje: 0 },
-
-        // RESUMEN OPERATIVO
-        resumenOperativo: {
-          ticketsEmitidos: backupCompleto.resumen?.totalTicketsEmitidos || 0,
-          ticketsAtendidos: backupCompleto.resumen?.totalTicketsAtendidos || 0,
-          ticketsPendientes: backupCompleto.resumen?.ticketsPendientes || 0,
-          eficienciaDiaria: backupCompleto.resumen?.eficienciaDiaria || 0,
-          primerTicket: backupCompleto.resumen?.primerTicket || 0,
-          ultimoTicket: backupCompleto.resumen?.ultimoTicket || 0,
-        },
-
-        // ANÁLISIS TEMPORAL DETALLADO
-        analisisTemporal: {
-          tiempoPromedioEsperaReal: `${backupCompleto.resumen?.tiempoPromedioEsperaReal || 0} minutos`,
-          velocidadAtencion: `${backupCompleto.resumen?.velocidadAtencion || 0} tickets/minuto`,
-          tiempoEntreTickets: `${backupCompleto.resumen?.tiempoEntreTickets || 0} minutos`,
-          duracionOperaciones: backupCompleto.datosDetallados?.analisisTemporal?.duracionTotal || 0,
-          inicioOperaciones: backupCompleto.datosDetallados?.analisisTemporal?.inicioOperaciones || backup.fecha,
-          finOperaciones: backupCompleto.datosDetallados?.analisisTemporal?.finOperaciones || backup.fecha,
-        },
-
-        // DISTRIBUCIÓN POR HORA (SOLICITADO)
-        distribucionPorHora: backupCompleto.resumen?.distribucionPorHora || {},
-        distribucionPorHoraDetallada: Object.entries(backupCompleto.resumen?.distribucionPorHora || {})
-          .map(([hora, cantidad]) => ({
-            hora: `${hora}:00 - ${Number.parseInt(hora) + 1}:00`,
-            horaNumero: Number.parseInt(hora),
-            cantidadTickets: cantidad,
-            porcentajeDelTotal: Math.round((cantidad / (backupCompleto.resumen?.totalTicketsEmitidos || 1)) * 100),
-          }))
-          .sort((a, b) => a.horaNumero - b.horaNumero),
-
-        // HORAS PICO Y MÍNIMAS
-        horasPico: backupCompleto.datosDetallados?.analisisTemporal?.horasPico || [],
-        horasMinimas: backupCompleto.datosDetallados?.analisisTemporal?.horasMinimas || [],
-
-        // ANÁLISIS DE CLIENTES
-        analisisClientes: {
-          nombresComunes: backupCompleto.resumen?.nombresComunes || [],
-          nombresUnicos: backupCompleto.datosDetallados?.estadisticasClientes?.nombresUnicos || 0,
-          clientesRecurrentes: backupCompleto.datosDetallados?.estadisticasClientes?.clientesRecurrentes || 0,
-          promedioCaracteresPorNombre:
-            backupCompleto.datosDetallados?.estadisticasClientes?.promedioCaracteresPorNombre || 0,
-        },
-
-        // MÉTRICAS DE RENDIMIENTO
-        rendimiento: backupCompleto.datosDetallados?.rendimiento || {},
-
-        // TICKETS COMPLETOS (si están disponibles)
-        tickets: backupCompleto.tickets || [],
-
-        // METADATOS DE DESCARGA
-        metadatos: {
-          fechaDescarga: new Date().toISOString(),
-          version: "5.1",
-          sistema: "TURNOS_ZOCO",
-          generadoPor: "Panel de Administración",
-        },
-      }
-
-      // Crear y descargar archivo JSON
-      const blob = new Blob([JSON.stringify(datosDescarga, null, 2)], {
-        type: "application/json",
-      })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `ZOCO-Datos-${backup.fecha}-Completo.json`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-
-      // También crear un archivo CSV con los datos principales
-      const csvData = [
-        // Encabezados
-        [
-          "Fecha",
-          "Tickets Emitidos",
-          "Tickets Atendidos",
-          "Tickets Pendientes",
-          "Eficiencia (%)",
-          "Tiempo Promedio Espera (min)",
-          "Hora Pico",
-          "Tickets en Hora Pico",
-          "Velocidad Atención (tickets/min)",
-          "Tiempo Entre Tickets (min)",
-        ],
-        // Datos
-        [
-          datosDescarga.fechaFormateada,
-          datosDescarga.cantidadTicketsEmitidos,
-          datosDescarga.resumenOperativo.ticketsAtendidos,
-          datosDescarga.resumenOperativo.ticketsPendientes,
-          datosDescarga.resumenOperativo.eficienciaDiaria,
-          datosDescarga.tiempoPromedioEsperaReal,
-          `${datosDescarga.horaPico.hora}:00`,
-          datosDescarga.horaPico.cantidad,
-          datosDescarga.analisisTemporal.velocidadAtencion.replace(" tickets/minuto", ""),
-          datosDescarga.analisisTemporal.tiempoEntreTickets.replace(" minutos", ""),
-        ],
-      ]
-
-      const csvContent = csvData.map((row) => row.join(",")).join("\n")
-      const csvBlob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const csvUrl = URL.createObjectURL(csvBlob)
-      const csvLink = document.createElement("a")
-      csvLink.href = csvUrl
-      csvLink.download = `ZOCO-Resumen-${backup.fecha}.csv`
-      document.body.appendChild(csvLink)
-      csvLink.click()
-      document.body.removeChild(csvLink)
-      URL.revokeObjectURL(csvUrl)
-
-      alert(`Datos del ${backup.fecha} descargados exitosamente:\n- Archivo JSON completo\n- Archivo CSV resumen`)
-    } catch (error) {
-      console.error("Error al descargar datos del día:", error)
-      alert("Error al descargar los datos del día")
-    }
-  }
 }
