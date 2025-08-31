@@ -22,6 +22,9 @@ import {
   PieChart,
   Target,
   Zap,
+  Download,
+  FileText,
+  Archive,
 } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 
@@ -47,6 +50,7 @@ export default function PaginaAdmin() {
   const [procesandoAccion, setProcesandoAccion] = useState(false)
   const [horaActual, setHoraActual] = useState(new Date())
   const [mostrarMetricasAvanzadas, setMostrarMetricasAvanzadas] = useState(false)
+  const [descargandoTodos, setDescargandoTodos] = useState(false)
 
   useEffect(() => {
     if (isClient) {
@@ -512,6 +516,307 @@ export default function PaginaAdmin() {
     }
   }
 
+  // NUEVA FUNCIÓN: Calcular totales históricos de todos los backups
+  const calcularTotalesHistoricos = () => {
+    if (backups.length === 0) {
+      return {
+        totalDias: 0,
+        totalTicketsEmitidos: 0,
+        totalTicketsAtendidos: 0,
+        totalTicketsPendientes: 0,
+        promedioTicketsPorDia: 0,
+        promedioAtendidosPorDia: 0,
+        eficienciaPromedio: 0,
+        mejorDia: null,
+        peorDia: null,
+        diasConMasActividad: [],
+        tendenciaGeneral: "estable",
+      }
+    }
+
+    const totalDias = backups.length
+    const totalTicketsEmitidos = backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0)
+    const totalTicketsAtendidos = backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0), 0)
+    const totalTicketsPendientes = backups.reduce((sum, backup) => sum + (backup.resumen?.ticketsPendientes || 0), 0)
+
+    const promedioTicketsPorDia = Math.round(totalTicketsEmitidos / totalDias)
+    const promedioAtendidosPorDia = Math.round(totalTicketsAtendidos / totalDias)
+    const eficienciaPromedio =
+      totalTicketsEmitidos > 0 ? Math.round((totalTicketsAtendidos / totalTicketsEmitidos) * 100) : 0
+
+    // Encontrar mejor y peor día
+    const mejorDia = backups.reduce((mejor, backup) => {
+      const emitidos = backup.resumen?.totalTicketsEmitidos || 0
+      const mejorEmitidos = mejor?.resumen?.totalTicketsEmitidos || 0
+      return emitidos > mejorEmitidos ? backup : mejor
+    }, null)
+
+    const peorDia = backups.reduce((peor, backup) => {
+      const emitidos = backup.resumen?.totalTicketsEmitidos || 0
+      const peorEmitidos = peor?.resumen?.totalTicketsEmitidos || Number.POSITIVE_INFINITY
+      return emitidos < peorEmitidos ? backup : peor
+    }, null)
+
+    // Días con más actividad (top 5)
+    const diasConMasActividad = [...backups]
+      .sort((a, b) => (b.resumen?.totalTicketsEmitidos || 0) - (a.resumen?.totalTicketsEmitidos || 0))
+      .slice(0, 5)
+
+    // Calcular tendencia general (comparar primera mitad vs segunda mitad)
+    const mitad = Math.floor(backups.length / 2)
+    const primeraMetad = backups.slice(-mitad) // Más recientes
+    const segundaMetad = backups.slice(0, mitad) // Más antiguos
+
+    const promedioReciente =
+      primeraMetad.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) / primeraMetad.length
+    const promedioAntiguo =
+      segundaMetad.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) / segundaMetad.length
+
+    let tendenciaGeneral = "estable"
+    if (promedioReciente > promedioAntiguo * 1.1) tendenciaGeneral = "creciente"
+    else if (promedioReciente < promedioAntiguo * 0.9) tendenciaGeneral = "decreciente"
+
+    return {
+      totalDias,
+      totalTicketsEmitidos,
+      totalTicketsAtendidos,
+      totalTicketsPendientes,
+      promedioTicketsPorDia,
+      promedioAtendidosPorDia,
+      eficienciaPromedio,
+      mejorDia,
+      peorDia,
+      diasConMasActividad,
+      tendenciaGeneral,
+    }
+  }
+
+  // NUEVA FUNCIÓN: Descargar todos los datos históricos
+  const descargarTodosLosDatos = async () => {
+    setDescargandoTodos(true)
+    try {
+      console.log("🔄 Iniciando descarga de todos los datos históricos...")
+
+      // Obtener todos los backups completos
+      const backupsCompletos = []
+      for (const backup of backups) {
+        try {
+          const backupCompleto = await obtenerBackup(backup.fecha)
+          if (backupCompleto) {
+            backupsCompletos.push(backupCompleto)
+          }
+        } catch (error) {
+          console.error(`Error al obtener backup de ${backup.fecha}:`, error)
+        }
+      }
+
+      const totalesHistoricos = calcularTotalesHistoricos()
+
+      // Preparar datos consolidados
+      const datosConsolidados = {
+        // METADATOS
+        metadatos: {
+          fechaDescarga: new Date().toISOString(),
+          version: "5.1",
+          sistema: "TURNOS_ZOCO",
+          generadoPor: "Panel de Administración - Descarga Completa",
+          totalDiasIncluidos: backupsCompletos.length,
+          rangoFechas: {
+            desde: backups[backups.length - 1]?.fecha || "N/A",
+            hasta: backups[0]?.fecha || "N/A",
+          },
+        },
+
+        // TOTALES HISTÓRICOS CONSOLIDADOS
+        totalesHistoricos: {
+          resumenGeneral: {
+            totalDiasOperativos: totalesHistoricos.totalDias,
+            totalTicketsEmitidos: totalesHistoricos.totalTicketsEmitidos,
+            totalTicketsAtendidos: totalesHistoricos.totalTicketsAtendidos,
+            totalTicketsPendientes: totalesHistoricos.totalTicketsPendientes,
+            promedioTicketsPorDia: totalesHistoricos.promedioTicketsPorDia,
+            promedioAtendidosPorDia: totalesHistoricos.promedioAtendidosPorDia,
+            eficienciaPromedioGeneral: totalesHistoricos.eficienciaPromedio,
+            tendenciaGeneral: totalesHistoricos.tendenciaGeneral,
+          },
+          recordsYExtremos: {
+            mejorDia: {
+              fecha: totalesHistoricos.mejorDia?.fecha || "N/A",
+              ticketsEmitidos: totalesHistoricos.mejorDia?.resumen?.totalTicketsEmitidos || 0,
+              eficiencia: totalesHistoricos.mejorDia?.resumen?.eficienciaDiaria || 0,
+            },
+            peorDia: {
+              fecha: totalesHistoricos.peorDia?.fecha || "N/A",
+              ticketsEmitidos: totalesHistoricos.peorDia?.resumen?.totalTicketsEmitidos || 0,
+              eficiencia: totalesHistoricos.peorDia?.resumen?.eficienciaDiaria || 0,
+            },
+            top5DiasActividad: totalesHistoricos.diasConMasActividad.map((dia) => ({
+              fecha: dia.fecha,
+              ticketsEmitidos: dia.resumen?.totalTicketsEmitidos || 0,
+              ticketsAtendidos: dia.resumen?.totalTicketsAtendidos || 0,
+              eficiencia: dia.resumen?.eficienciaDiaria || 0,
+            })),
+          },
+        },
+
+        // ANÁLISIS TEMPORAL CONSOLIDADO
+        analisisTemporalConsolidado: {
+          distribucionPorDiaSemana: {},
+          horasPicoGlobales: {},
+          tendenciasMensuales: {},
+          patronesEstacionales: {},
+        },
+
+        // DATOS DETALLADOS POR DÍA
+        datosPorDia: backupsCompletos.map((backup) => ({
+          fecha: backup.fecha,
+          fechaFormateada: new Date(backup.fecha).toLocaleDateString("es-AR", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          }),
+          resumen: backup.resumen || {},
+          analisisTemporal: backup.datosDetallados?.analisisTemporal || {},
+          estadisticasClientes: backup.datosDetallados?.estadisticasClientes || {},
+          rendimiento: backup.datosDetallados?.rendimiento || {},
+          ticketsCompletos: backup.tickets || [],
+        })),
+
+        // ESTADO ACTUAL (HOY)
+        estadoActual: {
+          fecha: new Date().toISOString().split("T")[0],
+          estado: estado,
+          estadisticas: estadisticas,
+          metricasAvanzadas: calcularMetricasAvanzadas(),
+        },
+      }
+
+      // Calcular análisis temporal consolidado
+      backupsCompletos.forEach((backup) => {
+        const fecha = new Date(backup.fecha)
+        const diaSemana = fecha.toLocaleDateString("es-AR", { weekday: "long" })
+        const mes = fecha.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+
+        // Distribución por día de la semana
+        if (!datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[diaSemana]) {
+          datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[diaSemana] = {
+            totalTickets: 0,
+            totalDias: 0,
+            promedio: 0,
+          }
+        }
+        datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[diaSemana].totalTickets +=
+          backup.resumen?.totalTicketsEmitidos || 0
+        datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[diaSemana].totalDias += 1
+
+        // Tendencias mensuales
+        if (!datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes]) {
+          datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes] = {
+            totalTickets: 0,
+            totalDias: 0,
+            promedio: 0,
+          }
+        }
+        datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes].totalTickets +=
+          backup.resumen?.totalTicketsEmitidos || 0
+        datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes].totalDias += 1
+
+        // Horas pico globales
+        if (backup.resumen?.distribucionPorHora) {
+          Object.entries(backup.resumen.distribucionPorHora).forEach(([hora, cantidad]) => {
+            if (!datosConsolidados.analisisTemporalConsolidado.horasPicoGlobales[hora]) {
+              datosConsolidados.analisisTemporalConsolidado.horasPicoGlobales[hora] = 0
+            }
+            datosConsolidados.analisisTemporalConsolidado.horasPicoGlobales[hora] += cantidad
+          })
+        }
+      })
+
+      // Calcular promedios
+      Object.keys(datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana).forEach((dia) => {
+        const data = datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[dia]
+        data.promedio = Math.round(data.totalTickets / data.totalDias)
+      })
+
+      Object.keys(datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales).forEach((mes) => {
+        const data = datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes]
+        data.promedio = Math.round(data.totalTickets / data.totalDias)
+      })
+
+      // Crear archivo JSON completo
+      const jsonBlob = new Blob([JSON.stringify(datosConsolidados, null, 2)], {
+        type: "application/json",
+      })
+      const jsonUrl = URL.createObjectURL(jsonBlob)
+      const jsonLink = document.createElement("a")
+      jsonLink.href = jsonUrl
+      jsonLink.download = `ZOCO-HistorialCompleto-${new Date().toISOString().split("T")[0]}.json`
+      document.body.appendChild(jsonLink)
+      jsonLink.click()
+      document.body.removeChild(jsonLink)
+      URL.revokeObjectURL(jsonUrl)
+
+      // Crear archivo CSV consolidado
+      const csvData = [
+        // Encabezados
+        [
+          "Fecha",
+          "Día Semana",
+          "Tickets Emitidos",
+          "Tickets Atendidos",
+          "Tickets Pendientes",
+          "Eficiencia (%)",
+          "Tiempo Promedio Espera (min)",
+          "Hora Pico",
+          "Tickets en Hora Pico",
+          "Velocidad Atención",
+          "Tiempo Entre Tickets",
+          "Nombres Únicos",
+          "Clientes Recurrentes",
+        ],
+        // Datos de cada día
+        ...datosConsolidados.datosPorDia.map((dia) => [
+          dia.fecha,
+          new Date(dia.fecha).toLocaleDateString("es-AR", { weekday: "long" }),
+          dia.resumen.totalTicketsEmitidos || 0,
+          dia.resumen.totalTicketsAtendidos || 0,
+          dia.resumen.ticketsPendientes || 0,
+          dia.resumen.eficienciaDiaria || 0,
+          dia.resumen.tiempoPromedioEsperaReal || 0,
+          dia.resumen.horaPico?.hora || 0,
+          dia.resumen.horaPico?.cantidad || 0,
+          dia.resumen.velocidadAtencion || 0,
+          dia.resumen.tiempoEntreTickets || 0,
+          dia.estadisticasClientes.nombresUnicos || 0,
+          dia.estadisticasClientes.clientesRecurrentes || 0,
+        ]),
+      ]
+
+      const csvContent = csvData.map((row) => row.join(",")).join("\n")
+      const csvBlob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+      const csvUrl = URL.createObjectURL(csvBlob)
+      const csvLink = document.createElement("a")
+      csvLink.href = csvUrl
+      csvLink.download = `ZOCO-HistorialConsolidado-${new Date().toISOString().split("T")[0]}.csv`
+      document.body.appendChild(csvLink)
+      csvLink.click()
+      document.body.removeChild(csvLink)
+      URL.revokeObjectURL(csvUrl)
+
+      alert(
+        `✅ Descarga completa exitosa!\n\n📊 Datos incluidos:\n- ${backupsCompletos.length} días de historial\n- ${totalesHistoricos.totalTicketsEmitidos} tickets totales\n- Análisis temporal consolidado\n- Tendencias y patrones\n\n📁 Archivos generados:\n- JSON completo con todos los detalles\n- CSV consolidado para análisis`,
+      )
+    } catch (error) {
+      console.error("Error al descargar todos los datos:", error)
+      alert("❌ Error al descargar los datos históricos completos")
+    } finally {
+      setDescargandoTodos(false)
+    }
+  }
+
+  const totalesHistoricos = calcularTotalesHistoricos()
+
   if (loading || !isClient) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 flex items-center justify-center p-4">
@@ -955,6 +1260,177 @@ export default function PaginaAdmin() {
           </CardContent>
         </Card>
 
+        {/* NUEVA SECCIÓN: Totales Históricos Consolidados */}
+        {backups.length > 0 && (
+          <Card className="mb-8 bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200">
+            <CardHeader>
+              <CardTitle className="text-xl flex items-center justify-between text-emerald-800">
+                <div className="flex items-center gap-2">
+                  <Archive className="h-6 w-6" />📊 Totales Históricos Consolidados
+                </div>
+                <Button
+                  onClick={descargarTodosLosDatos}
+                  disabled={descargandoTodos}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {descargandoTodos ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Descargando...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-4 w-4" />
+                      Descargar Todo el Historial
+                    </>
+                  )}
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* Resumen de totales históricos */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-white p-4 rounded-lg border-l-4 border-blue-500 text-center">
+                  <div className="text-3xl font-bold text-blue-600 mb-2">{totalesHistoricos.totalDias}</div>
+                  <p className="text-sm font-semibold text-blue-800">Días Operativos</p>
+                  <p className="text-xs text-blue-600">Registrados en historial</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-lg border-l-4 border-green-500 text-center">
+                  <div className="text-3xl font-bold text-green-600 mb-2">
+                    {totalesHistoricos.totalTicketsEmitidos.toLocaleString()}
+                  </div>
+                  <p className="text-sm font-semibold text-green-800">Total Tickets Emitidos</p>
+                  <p className="text-xs text-green-600">En todo el historial</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-lg border-l-4 border-orange-500 text-center">
+                  <div className="text-3xl font-bold text-orange-600 mb-2">
+                    {totalesHistoricos.totalTicketsAtendidos.toLocaleString()}
+                  </div>
+                  <p className="text-sm font-semibold text-orange-800">Total Tickets Atendidos</p>
+                  <p className="text-xs text-orange-600">Procesados históricamente</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-lg border-l-4 border-purple-500 text-center">
+                  <div className="text-3xl font-bold text-purple-600 mb-2">{totalesHistoricos.eficienciaPromedio}%</div>
+                  <p className="text-sm font-semibold text-purple-800">Eficiencia Promedio</p>
+                  <p className="text-xs text-purple-600">Histórica general</p>
+                </div>
+              </div>
+
+              {/* Promedios y tendencias */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-gradient-to-r from-cyan-50 to-blue-50 p-4 rounded-lg border border-cyan-200">
+                  <h4 className="font-semibold text-cyan-800 mb-3 flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5" />
+                    Promedios Diarios
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-cyan-700">Tickets emitidos:</span>
+                      <span className="font-bold text-cyan-800">{totalesHistoricos.promedioTicketsPorDia}/día</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-cyan-700">Tickets atendidos:</span>
+                      <span className="font-bold text-cyan-800">{totalesHistoricos.promedioAtendidosPorDia}/día</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-yellow-50 to-orange-50 p-4 rounded-lg border border-yellow-200">
+                  <h4 className="font-semibold text-yellow-800 mb-3 flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5" />
+                    Records Históricos
+                  </h4>
+                  <div className="space-y-2">
+                    <div>
+                      <span className="text-sm text-yellow-700">Mejor día:</span>
+                      <p className="font-bold text-yellow-800">
+                        {totalesHistoricos.mejorDia?.fecha || "N/A"} (
+                        {totalesHistoricos.mejorDia?.resumen?.totalTicketsEmitidos || 0} tickets)
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-sm text-yellow-700">Tendencia:</span>
+                      <p className="font-bold text-yellow-800 capitalize">
+                        {totalesHistoricos.tendenciaGeneral === "creciente" && "📈 Creciente"}
+                        {totalesHistoricos.tendenciaGeneral === "decreciente" && "📉 Decreciente"}
+                        {totalesHistoricos.tendenciaGeneral === "estable" && "📊 Estable"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-lg border border-indigo-200">
+                  <h4 className="font-semibold text-indigo-800 mb-3 flex items-center gap-2">
+                    <Target className="h-5 w-5" />
+                    Comparativa Hoy
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-indigo-700">vs Promedio:</span>
+                      <span
+                        className={`font-bold ${
+                          estado.totalAtendidos > totalesHistoricos.promedioTicketsPorDia
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {estado.totalAtendidos > totalesHistoricos.promedioTicketsPorDia ? "↗️ Mejor" : "↘️ Menor"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-indigo-700">Diferencia:</span>
+                      <span className="font-bold text-indigo-800">
+                        {Math.abs(estado.totalAtendidos - totalesHistoricos.promedioTicketsPorDia)} tickets
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Top 5 días más activos */}
+              <div className="bg-white p-4 rounded-lg border border-gray-200">
+                <h4 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />🏆 Top 5 Días Más Activos
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                  {totalesHistoricos.diasConMasActividad.map((dia, index) => (
+                    <div
+                      key={dia.fecha}
+                      className={`p-3 rounded-lg text-center border-2 ${
+                        index === 0
+                          ? "bg-yellow-50 border-yellow-300"
+                          : index === 1
+                            ? "bg-gray-50 border-gray-300"
+                            : index === 2
+                              ? "bg-orange-50 border-orange-300"
+                              : "bg-blue-50 border-blue-300"
+                      }`}
+                    >
+                      <div className="text-lg font-bold mb-1">
+                        {index === 0 && "🥇"}
+                        {index === 1 && "🥈"}
+                        {index === 2 && "🥉"}
+                        {index > 2 && `#${index + 1}`}
+                      </div>
+                      <div className="text-sm font-semibold text-gray-800">{dia.fecha}</div>
+                      <div className="text-2xl font-bold text-blue-600 my-1">
+                        {dia.resumen?.totalTicketsEmitidos || 0}
+                      </div>
+                      <div className="text-xs text-gray-600">tickets</div>
+                      <div className="text-xs text-green-600 mt-1">
+                        {dia.resumen?.eficienciaDiaria || 0}% eficiencia
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Historial de Días Anteriores MEJORADO */}
         <Card className="mb-8">
           <CardHeader>
@@ -963,10 +1439,32 @@ export default function PaginaAdmin() {
                 <Calendar className="h-5 w-5" />
                 Historial de Días Anteriores
               </div>
-              <Button onClick={cargarBackups} variant="outline" size="sm">
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Actualizar
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={cargarBackups} variant="outline" size="sm">
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Actualizar
+                </Button>
+                {backups.length > 0 && (
+                  <Button
+                    onClick={descargarTodosLosDatos}
+                    disabled={descargandoTodos}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                    size="sm"
+                  >
+                    {descargandoTodos ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Descargando...
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="mr-2 h-4 w-4" />
+                        Descargar Todos
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -1348,7 +1846,7 @@ export default function PaginaAdmin() {
         {/* Footer */}
         <footer className="text-center mt-8 pt-4 border-t border-gray-200">
           <div className="text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 5.1 | Cache Optimizado - Menos consultas DB</p>
+            <p>Develop by: Karim :) | Versión 5.2 | Historial Consolidado + Descarga Masiva</p>
             <p>Actualización inteligente cada 120s | Cache compartido entre páginas</p>
           </div>
         </footer>
