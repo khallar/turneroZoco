@@ -516,6 +516,211 @@ export default function PaginaAdmin() {
     }
   }
 
+  // NUEVA FUNCIÓN: Descargar backup completo JSON
+  const descargarBackupCompleto = async (backup: any) => {
+    try {
+      const backupCompleto = await obtenerBackup(backup.fecha)
+
+      if (!backupCompleto) {
+        alert("No se pudieron obtener los datos completos del día")
+        return
+      }
+
+      const datosCompletos = {
+        // INFORMACIÓN DEL DÍA
+        fecha: backup.fecha,
+        fechaFormateada: new Date(backup.fecha).toLocaleDateString("es-AR", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }),
+
+        // RESUMEN EJECUTIVO
+        resumenEjecutivo: {
+          ticketsEmitidos: backupCompleto.resumen?.totalTicketsEmitidos || 0,
+          ticketsAtendidos: backupCompleto.resumen?.totalTicketsAtendidos || 0,
+          ticketsPendientes: backupCompleto.resumen?.ticketsPendientes || 0,
+          eficienciaDiaria: backupCompleto.resumen?.eficienciaDiaria || 0,
+          tiempoPromedioEspera: backupCompleto.resumen?.tiempoPromedioEsperaReal || 0,
+          horaPico: backupCompleto.resumen?.horaPico || { hora: 0, cantidad: 0 },
+          rangoTickets: {
+            primero: backupCompleto.resumen?.primerTicket || 0,
+            ultimo: backupCompleto.resumen?.ultimoTicket || 0,
+          },
+        },
+
+        // ANÁLISIS TEMPORAL DETALLADO
+        analisisTemporal: {
+          distribucionPorHora: backupCompleto.resumen?.distribucionPorHora || {},
+          velocidadAtencion: backupCompleto.resumen?.velocidadAtencion || 0,
+          tiempoEntreTickets: backupCompleto.resumen?.tiempoEntreTickets || 0,
+          horasPico: backupCompleto.datosDetallados?.analisisTemporal?.horasPico || [],
+          horasMinimas: backupCompleto.datosDetallados?.analisisTemporal?.horasMinimas || [],
+        },
+
+        // ESTADÍSTICAS DE CLIENTES
+        estadisticasClientes: {
+          nombresComunes: backupCompleto.resumen?.nombresComunes || [],
+          nombresUnicos: backupCompleto.datosDetallados?.estadisticasClientes?.nombresUnicos || 0,
+          clientesRecurrentes: backupCompleto.datosDetallados?.estadisticasClientes?.clientesRecurrentes || 0,
+          promedioCaracteresPorNombre:
+            backupCompleto.datosDetallados?.estadisticasClientes?.promedioCaracteresPorNombre || 0,
+        },
+
+        // TICKETS COMPLETOS
+        ticketsCompletos: backupCompleto.tickets || [],
+
+        // MÉTRICAS DE RENDIMIENTO
+        rendimiento: backupCompleto.datosDetallados?.rendimiento || {},
+
+        // METADATOS
+        metadatos: {
+          fechaDescarga: new Date().toISOString(),
+          version: "5.2",
+          sistema: "TURNOS_ZOCO",
+          tipoDescarga: "Backup Completo JSON",
+          generadoPor: "Panel de Administración",
+        },
+      }
+
+      const blob = new Blob([JSON.stringify(datosCompletos, null, 2)], {
+        type: "application/json",
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `ZOCO-BackupCompleto-${backup.fecha}.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      alert(`✅ Backup completo descargado: ${backup.fecha}`)
+    } catch (error) {
+      console.error("Error al descargar backup completo:", error)
+      alert("❌ Error al descargar el backup completo")
+    }
+  }
+
+  // NUEVA FUNCIÓN: Descargar backup CSV
+  const descargarBackupCSV = async (backup: any) => {
+    try {
+      const backupCompleto = await obtenerBackup(backup.fecha)
+
+      if (!backupCompleto) {
+        alert("No se pudieron obtener los datos completos del día")
+        return
+      }
+
+      // Datos principales del día
+      const csvData = [
+        // ENCABEZADOS PRINCIPALES
+        ["=== RESUMEN DEL DÍA ==="],
+        ["Fecha", backup.fecha],
+        ["Día de la Semana", new Date(backup.fecha).toLocaleDateString("es-AR", { weekday: "long" })],
+        ["Tickets Emitidos", backupCompleto.resumen?.totalTicketsEmitidos || 0],
+        ["Tickets Atendidos", backupCompleto.resumen?.totalTicketsAtendidos || 0],
+        ["Tickets Pendientes", backupCompleto.resumen?.ticketsPendientes || 0],
+        ["Eficiencia (%)", backupCompleto.resumen?.eficienciaDiaria || 0],
+        ["Tiempo Promedio Espera (min)", backupCompleto.resumen?.tiempoPromedioEsperaReal || 0],
+        ["Hora Pico", `${backupCompleto.resumen?.horaPico?.hora || 0}:00`],
+        ["Tickets en Hora Pico", backupCompleto.resumen?.horaPico?.cantidad || 0],
+        ["Primer Ticket", backupCompleto.resumen?.primerTicket || 0],
+        ["Último Ticket", backupCompleto.resumen?.ultimoTicket || 0],
+        [""],
+
+        // DISTRIBUCIÓN POR HORA
+        ["=== DISTRIBUCIÓN POR HORA ==="],
+        ["Hora", "Cantidad de Tickets", "Porcentaje del Total"],
+        ...Object.entries(backupCompleto.resumen?.distribucionPorHora || {}).map(([hora, cantidad]) => [
+          `${hora}:00 - ${Number.parseInt(hora) + 1}:00`,
+          cantidad,
+          `${Math.round((cantidad / (backupCompleto.resumen?.totalTicketsEmitidos || 1)) * 100)}%`,
+        ]),
+        [""],
+
+        // NOMBRES MÁS COMUNES
+        ["=== TOP 10 NOMBRES MÁS COMUNES ==="],
+        ["Posición", "Nombre", "Cantidad", "Porcentaje"],
+        ...(backupCompleto.resumen?.nombresComunes || [])
+          .slice(0, 10)
+          .map(([nombre, cantidad], index) => [
+            index + 1,
+            nombre,
+            cantidad,
+            `${Math.round((cantidad / (backupCompleto.resumen?.totalTicketsEmitidos || 1)) * 100)}%`,
+          ]),
+        [""],
+
+        // TICKETS INDIVIDUALES (si hay pocos)
+        ...(backupCompleto.tickets && backupCompleto.tickets.length <= 100
+          ? [
+              ["=== TICKETS INDIVIDUALES ==="],
+              ["Número", "Nombre", "Fecha/Hora", "Estado"],
+              ...backupCompleto.tickets.map((ticket) => [
+                ticket.numero,
+                ticket.nombre,
+                new Date(ticket.timestamp || ticket.fecha).toLocaleString("es-AR"),
+                ticket.atendido ? "Atendido" : "Pendiente",
+              ]),
+            ]
+          : [
+              ["=== TICKETS INDIVIDUALES ==="],
+              ["Demasiados tickets para mostrar individualmente"],
+              [`Total de tickets: ${backupCompleto.tickets.length}`],
+            ]),
+      ]
+
+      const csvContent = csvData.map((row) => (Array.isArray(row) ? row.join(",") : row)).join("\n")
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `ZOCO-Resumen-${backup.fecha}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      alert(`✅ Resumen CSV descargado: ${backup.fecha}`)
+    } catch (error) {
+      console.error("Error al descargar CSV:", error)
+      alert("❌ Error al descargar el resumen CSV")
+    }
+  }
+
+  // NUEVA FUNCIÓN: Descargar backup raw (original)
+  const descargarBackupRaw = async (backup: any) => {
+    try {
+      const backupCompleto = await obtenerBackup(backup.fecha)
+
+      if (!backupCompleto) {
+        alert("No se pudieron obtener los datos del backup original")
+        return
+      }
+
+      // Descargar el backup exactamente como está almacenado
+      const blob = new Blob([JSON.stringify(backupCompleto, null, 2)], {
+        type: "application/json",
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `ZOCO-BackupRaw-${backup.fecha}.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      alert(`✅ Backup original descargado: ${backup.fecha}`)
+    } catch (error) {
+      console.error("Error al descargar backup raw:", error)
+      alert("❌ Error al descargar el backup original")
+    }
+  }
+
   // NUEVA FUNCIÓN: Calcular totales históricos de todos los backups
   const calcularTotalesHistoricos = () => {
     if (backups.length === 0) {
@@ -1632,7 +1837,7 @@ export default function PaginaAdmin() {
                           </div>
                         )}
 
-                        {/* Botones de acción */}
+                        {/* Botones de acción mejorados */}
                         <div className="space-y-2">
                           <Button
                             onClick={() => verBackup(backup.fecha)}
@@ -1642,12 +1847,32 @@ export default function PaginaAdmin() {
                           >
                             👁️ Ver Detalles Completos
                           </Button>
+
+                          {/* Botones de descarga mejorados */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button
+                              onClick={() => descargarBackupCompleto(backup)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                              size="sm"
+                            >
+                              📄 JSON Completo
+                            </Button>
+                            <Button
+                              onClick={() => descargarBackupCSV(backup)}
+                              className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                              size="sm"
+                            >
+                              📊 CSV Resumen
+                            </Button>
+                          </div>
+
                           <Button
-                            onClick={() => descargarDatosDia(backup)}
-                            className="w-full bg-green-600 hover:bg-green-700 text-white"
+                            onClick={() => descargarBackupRaw(backup)}
+                            variant="outline"
                             size="sm"
+                            className="w-full text-xs hover:bg-gray-50"
                           >
-                            💾 Descargar Datos del Día
+                            🗂️ Backup Raw (Original)
                           </Button>
                         </div>
                       </div>
