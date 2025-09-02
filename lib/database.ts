@@ -121,6 +121,77 @@ export function getTodayDateString(): string {
   return formatter.format(now)
 }
 
+// Función helper para validar y parsear JSON de forma segura
+function safeJsonParse(data: any, fallback: any = null): any {
+  if (data === null || data === undefined) {
+    return fallback
+  }
+
+  // Si ya es un objeto, devolverlo directamente
+  if (typeof data === "object" && data !== null) {
+    return data
+  }
+
+  // Si es una string, intentar parsear
+  if (typeof data === "string") {
+    try {
+      return JSON.parse(data)
+    } catch (error) {
+      console.error("❌ Error al parsear JSON:", error, "Data:", data.substring(0, 100))
+      return fallback
+    }
+  }
+
+  return fallback
+}
+
+// Función helper para validar estructura de datos
+function validateEstadoSistema(data: any): EstadoSistema | null {
+  if (!data || typeof data !== "object") {
+    return null
+  }
+
+  // Verificar que tenga las propiedades requeridas
+  const requiredFields = ["numeroActual", "ultimoNumero", "totalAtendidos", "numerosLlamados", "fechaInicio"]
+  for (const field of requiredFields) {
+    if (!(field in data)) {
+      console.log(`⚠️ Campo requerido faltante: ${field}`)
+      return null
+    }
+  }
+
+  // Validar tipos
+  if (
+    typeof data.numeroActual !== "number" ||
+    typeof data.ultimoNumero !== "number" ||
+    typeof data.totalAtendidos !== "number" ||
+    typeof data.numerosLlamados !== "number" ||
+    typeof data.fechaInicio !== "string"
+  ) {
+    console.log("⚠️ Tipos de datos inválidos en estado")
+    return null
+  }
+
+  return data as EstadoSistema
+}
+
+// Función helper para validar tickets
+function validateTickets(data: any): TicketInfo[] {
+  if (!Array.isArray(data)) {
+    return []
+  }
+
+  return data.filter((ticket) => {
+    return (
+      ticket &&
+      typeof ticket === "object" &&
+      typeof ticket.numero === "number" &&
+      typeof ticket.nombre === "string" &&
+      (typeof ticket.fecha === "string" || typeof ticket.timestamp === "number")
+    )
+  })
+}
+
 // --- Core State Management ---
 
 // Función helper para retry con backoff exponencial
@@ -185,14 +256,21 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
 
       const [estadoRaw, ticketsRaw, contadorActual, estadoExists, ticketsExists] = results
       let estado: EstadoSistema
-      const tickets: TicketInfo[] = Array.isArray(ticketsRaw) ? ticketsRaw : []
+
+      // Validar y parsear tickets de forma segura
+      const ticketsParsed = safeJsonParse(ticketsRaw, [])
+      const tickets: TicketInfo[] = validateTickets(ticketsParsed)
       const contador = typeof contadorActual === "number" ? contadorActual : 0
 
       console.log(`🔍 Datos leídos: ${tickets.length} tickets, contador: ${contador}`)
       console.log(`📊 Existencia: Estado: ${estadoExists ? "✓" : "✗"}, Tickets: ${ticketsExists ? "✓" : "✗"}`)
 
-      if (estadoRaw && typeof estadoRaw === "object") {
-        estado = estadoRaw
+      // Validar y parsear estado de forma segura
+      const estadoParsed = safeJsonParse(estadoRaw, null)
+      const estadoValidado = validateEstadoSistema(estadoParsed)
+
+      if (estadoValidado) {
+        estado = estadoValidado
 
         // Verificar y corregir inconsistencias entre el estado y los datos reales
         const ticketsReales = tickets.length
@@ -226,7 +304,7 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
         console.log("✅ Estado y tickets cargados desde TURNOS_ZOCO (Upstash Redis) con persistencia verificada.")
       } else {
         // Crear estado inicial para el día si no existe
-        console.log("⚠️ No se encontró estado para hoy, creando inicial en TURNOS_ZOCO (Upstash Redis)...")
+        console.log("⚠️ No se encontró estado válido para hoy, creando inicial en TURNOS_ZOCO (Upstash Redis)...")
 
         // Si hay tickets pero no hay estado, reconstruir el estado basado en los tickets existentes
         let ultimoNumero = 0
@@ -309,9 +387,13 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
 
       console.log(`🔍 Número asignado: ${numeroAsignado}`)
 
+      // Validar y parsear estado de forma segura
+      const estadoParsed = safeJsonParse(estadoRaw, null)
       let estadoActual: EstadoSistema
-      if (estadoRaw && typeof estadoRaw === "object") {
-        estadoActual = estadoRaw
+
+      const estadoValidado = validateEstadoSistema(estadoParsed)
+      if (estadoValidado) {
+        estadoActual = estadoValidado
       } else {
         // Si el estado no existe (primer ticket del día), inicializarlo
         estadoActual = {
@@ -745,12 +827,15 @@ export async function obtenerBackups(): Promise<any[]> {
               console.log(`🔍 Procesando backup ${index + 1}/${results.length}:`, fecha)
               console.log(`📊 Tipo de backup:`, typeof backup, backup ? "existe" : "null")
 
-              if (backup && typeof backup === "object") {
+              // Parsear backup de forma segura
+              const backupParsed = safeJsonParse(backup, null)
+
+              if (backupParsed && typeof backupParsed === "object") {
                 // Validar que la fecha sea válida
                 if (fecha && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
                   const backupProcessed = {
-                    fecha: backup.fecha || fecha,
-                    resumen: backup.resumen || {
+                    fecha: backupParsed.fecha || fecha,
+                    resumen: backupParsed.resumen || {
                       totalTicketsEmitidos: 0,
                       totalTicketsAtendidos: 0,
                       ticketsPendientes: 0,
@@ -761,14 +846,16 @@ export async function obtenerBackups(): Promise<any[]> {
                       horaPico: { hora: 0, cantidad: 0, porcentaje: 0 },
                     },
                     createdAt:
-                      backup.resumen?.horaBackup || backup.estadoFinal?.ultimoReinicio || new Date().toISOString(),
+                      backupParsed.resumen?.horaBackup ||
+                      backupParsed.estadoFinal?.ultimoReinicio ||
+                      new Date().toISOString(),
                     // Información de debugging
                     _debug: {
                       keyOriginal: key,
                       fechaExtraida: fecha,
-                      tieneResumen: !!backup.resumen,
-                      tieneTickets: !!(backup.tickets && backup.tickets.length > 0),
-                      cantidadTickets: backup.tickets ? backup.tickets.length : 0,
+                      tieneResumen: !!backupParsed.resumen,
+                      tieneTickets: !!(backupParsed.tickets && backupParsed.tickets.length > 0),
+                      cantidadTickets: backupParsed.tickets ? backupParsed.tickets.length : 0,
                     },
                   }
 
@@ -797,10 +884,12 @@ export async function obtenerBackups(): Promise<any[]> {
             const backup = await redis.get(key)
             const fecha = key.replace(BACKUP_KEY_PREFIX, "")
 
-            if (backup && typeof backup === "object" && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            const backupParsed = safeJsonParse(backup, null)
+
+            if (backupParsed && typeof backupParsed === "object" && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
               const backupProcessed = {
-                fecha: backup.fecha || fecha,
-                resumen: backup.resumen || {
+                fecha: backupParsed.fecha || fecha,
+                resumen: backupParsed.resumen || {
                   totalTicketsEmitidos: 0,
                   totalTicketsAtendidos: 0,
                   ticketsPendientes: 0,
@@ -810,13 +899,16 @@ export async function obtenerBackups(): Promise<any[]> {
                   tiempoPromedioEsperaReal: 0,
                   horaPico: { hora: 0, cantidad: 0, porcentaje: 0 },
                 },
-                createdAt: backup.resumen?.horaBackup || backup.estadoFinal?.ultimoReinicio || new Date().toISOString(),
+                createdAt:
+                  backupParsed.resumen?.horaBackup ||
+                  backupParsed.estadoFinal?.ultimoReinicio ||
+                  new Date().toISOString(),
                 _debug: {
                   keyOriginal: key,
                   fechaExtraida: fecha,
-                  tieneResumen: !!backup.resumen,
-                  tieneTickets: !!(backup.tickets && backup.tickets.length > 0),
-                  cantidadTickets: backup.tickets ? backup.tickets.length : 0,
+                  tieneResumen: !!backupParsed.resumen,
+                  tieneTickets: !!(backupParsed.tickets && backupParsed.tickets.length > 0),
+                  cantidadTickets: backupParsed.tickets ? backupParsed.tickets.length : 0,
                   procesamientoIndividual: true,
                 },
               }
@@ -871,7 +963,11 @@ export async function obtenerBackups(): Promise<any[]> {
     // Intentar extraer más información del error
     if (error && typeof error === "object") {
       console.error("Error object keys:", Object.keys(error))
-      console.error("Error object:", JSON.stringify(error, null, 2))
+      try {
+        console.error("Error object:", JSON.stringify(error, null, 2))
+      } catch (jsonError) {
+        console.error("No se pudo serializar el error object")
+      }
     }
 
     return []
@@ -888,7 +984,9 @@ export async function obtenerBackup(fecha: string): Promise<any | null> {
 
     if (backup) {
       console.log(`✅ Backup encontrado para ${fecha}`)
-      return backup
+      // Parsear de forma segura
+      const backupParsed = safeJsonParse(backup, null)
+      return backupParsed
     } else {
       console.log(`⚠️ No se encontró backup para ${fecha}`)
       return null
@@ -1386,7 +1484,7 @@ export async function cerrarConexiones(): Promise<void> {
   console.log("🔌 No es necesario cerrar conexiones para TURNOS_ZOCO (Upstash Redis - HTTP)")
 }
 
-// Nueva función para recuperar datos en caso de pérdida
+// Nueva función para recuperar datos en caso de pérdida - MEJORADA CON VALIDACIÓN
 export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSistema & { tickets: TicketInfo[] }> {
   try {
     console.log("🔧 Intentando recuperar datos perdidos para:", fecha)
@@ -1396,70 +1494,134 @@ export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSiste
     const counterKey = COUNTER_KEY_PREFIX + fecha
     const backupKey = `${estadoKey}:backup`
 
-    // Intentar recuperar desde backup
-    const [estadoBackup, ticketsOriginales, contador] = await redis
-      .multi()
-      .get<EstadoSistema>(backupKey)
-      .lrange<TicketInfo>(ticketsListKey, 0, -1)
-      .get(counterKey)
-      .exec()
+    // Intentar recuperar desde backup con validación mejorada
+    const pipeline = redis.pipeline()
+    pipeline.get(backupKey)
+    pipeline.lrange(ticketsListKey, 0, -1)
+    pipeline.get(counterKey)
 
-    if (estadoBackup && typeof estadoBackup === "object") {
-      console.log("✅ Datos recuperados desde backup")
-      const tickets = Array.isArray(ticketsOriginales) ? ticketsOriginales : []
+    const [estadoBackupRaw, ticketsOriginalesRaw, contadorRaw] = await pipeline.exec()
 
-      // Restaurar datos principales desde backup
+    // Parsear y validar datos de forma segura
+    const estadoBackupParsed = safeJsonParse(estadoBackupRaw, null)
+    const estadoBackup = validateEstadoSistema(estadoBackupParsed)
+
+    const ticketsOriginalesParsed = safeJsonParse(ticketsOriginalesRaw, [])
+    const ticketsOriginales = validateTickets(ticketsOriginalesParsed)
+
+    const contador = typeof contadorRaw === "number" ? contadorRaw : 0
+
+    console.log(
+      `🔍 Datos de recuperación: Estado backup: ${!!estadoBackup}, Tickets: ${ticketsOriginales.length}, Contador: ${contador}`,
+    )
+
+    if (estadoBackup) {
+      console.log("✅ Datos recuperados desde backup validado")
+
+      // Restaurar datos principales desde backup con validación
       await redis.set(estadoKey, estadoBackup, { ex: 48 * 60 * 60 })
 
-      return { ...estadoBackup, tickets }
+      return { ...estadoBackup, tickets: ticketsOriginales }
     }
 
-    // Si no hay backup, intentar reconstruir desde tickets individuales
-    const ticketKeys = await redis.keys(`${ticketsListKey}:backup:*`)
-    if (ticketKeys.length > 0) {
-      console.log("🔧 Reconstruyendo desde tickets individuales...")
+    // Si no hay backup válido, intentar reconstruir desde tickets individuales
+    console.log("🔧 Intentando reconstruir desde tickets individuales...")
 
-      const multi = redis.multi()
-      for (const key of ticketKeys) {
-        multi.get(key)
-      }
-      const ticketsIndividuales = await multi.exec()
+    try {
+      const ticketKeys = await redis.keys(`${ticketsListKey}:backup:*`)
 
-      const ticketsRecuperados: TicketInfo[] = ticketsIndividuales
-        .filter((ticket): ticket is TicketInfo => ticket && typeof ticket === "object")
-        .sort((a, b) => a.numero - b.numero)
+      if (ticketKeys.length > 0) {
+        console.log(`🔍 Encontradas ${ticketKeys.length} claves de tickets individuales`)
 
-      if (ticketsRecuperados.length > 0) {
-        const ultimoNumero = Math.max(...ticketsRecuperados.map((t) => t.numero))
-        const estadoReconstruido: EstadoSistema = {
-          numeroActual: ultimoNumero + 1,
-          ultimoNumero: ultimoNumero,
-          totalAtendidos: ticketsRecuperados.length,
-          numerosLlamados: 0,
-          fechaInicio: fecha,
-          ultimoReinicio: new Date().toISOString(),
-          lastSync: Date.now(),
+        const multi = redis.multi()
+        for (const key of ticketKeys) {
+          multi.get(key)
+        }
+        const ticketsIndividualesRaw = await multi.exec()
+
+        const ticketsRecuperados: TicketInfo[] = []
+
+        if (Array.isArray(ticketsIndividualesRaw)) {
+          ticketsIndividualesRaw.forEach((ticketRaw) => {
+            const ticketParsed = safeJsonParse(ticketRaw, null)
+            if (
+              ticketParsed &&
+              typeof ticketParsed === "object" &&
+              typeof ticketParsed.numero === "number" &&
+              typeof ticketParsed.nombre === "string"
+            ) {
+              ticketsRecuperados.push(ticketParsed)
+            }
+          })
         }
 
-        // Restaurar lista de tickets
-        await redis.del(ticketsListKey)
+        // Ordenar tickets por número
+        ticketsRecuperados.sort((a, b) => a.numero - b.numero)
+
         if (ticketsRecuperados.length > 0) {
-          await redis.rpush(ticketsListKey, ...ticketsRecuperados)
-          await redis.expire(ticketsListKey, 48 * 60 * 60)
+          const ultimoNumero = Math.max(...ticketsRecuperados.map((t) => t.numero))
+          const estadoReconstruido: EstadoSistema = {
+            numeroActual: ultimoNumero + 1,
+            ultimoNumero: ultimoNumero,
+            totalAtendidos: ticketsRecuperados.length,
+            numerosLlamados: 0,
+            fechaInicio: fecha,
+            ultimoReinicio: new Date().toISOString(),
+            lastSync: Date.now(),
+          }
+
+          // Restaurar lista de tickets
+          await redis.del(ticketsListKey)
+          if (ticketsRecuperados.length > 0) {
+            await redis.rpush(ticketsListKey, ...ticketsRecuperados)
+            await redis.expire(ticketsListKey, 48 * 60 * 60)
+          }
+
+          // Restaurar estado
+          await redis.set(estadoKey, estadoReconstruido, { ex: 48 * 60 * 60 })
+          await redis.set(counterKey, ultimoNumero, { ex: 48 * 60 * 60 })
+
+          console.log("✅ Datos reconstruidos exitosamente desde tickets individuales")
+          return { ...estadoReconstruido, tickets: ticketsRecuperados }
         }
-
-        // Restaurar estado
-        await redis.set(estadoKey, estadoReconstruido, { ex: 48 * 60 * 60 })
-        await redis.set(counterKey, ultimoNumero, { ex: 48 * 60 * 60 })
-
-        console.log("✅ Datos reconstruidos exitosamente")
-        return { ...estadoReconstruido, tickets: ticketsRecuperados }
       }
+    } catch (reconstructError) {
+      console.error("❌ Error en reconstrucción desde tickets individuales:", reconstructError)
     }
 
-    throw new Error("No se pudieron recuperar los datos")
+    // Si llegamos aquí, no se pudieron recuperar los datos
+    console.log("⚠️ No se pudieron recuperar datos, creando estado inicial limpio")
+
+    const estadoInicial: EstadoSistema = {
+      numeroActual: 1,
+      ultimoNumero: 0,
+      totalAtendidos: 0,
+      numerosLlamados: 0,
+      fechaInicio: fecha,
+      ultimoReinicio: new Date().toISOString(),
+      lastSync: Date.now(),
+    }
+
+    // Guardar estado inicial
+    await redis.set(estadoKey, estadoInicial, { ex: 48 * 60 * 60 })
+
+    console.log("✅ Estado inicial creado para recuperación")
+    return { ...estadoInicial, tickets: [] }
   } catch (error) {
-    console.error("❌ Error al recuperar datos perdidos:", error)
-    throw error
+    console.error("❌ Error crítico al recuperar datos perdidos:", error)
+
+    // Como último recurso, crear un estado completamente nuevo
+    const estadoEmergencia: EstadoSistema = {
+      numeroActual: 1,
+      ultimoNumero: 0,
+      totalAtendidos: 0,
+      numerosLlamados: 0,
+      fechaInicio: fecha,
+      ultimoReinicio: new Date().toISOString(),
+      lastSync: Date.now(),
+    }
+
+    console.log("🆘 Creando estado de emergencia")
+    return { ...estadoEmergencia, tickets: [] }
   }
 }
