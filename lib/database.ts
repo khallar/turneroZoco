@@ -594,92 +594,221 @@ export async function obtenerBackups(): Promise<any[]> {
   try {
     console.log("📋 Obteniendo lista de backups desde TURNOS_ZOCO (Upstash Redis)...")
 
-    // MEJORADO: Usar SCAN en lugar de KEYS para mejor rendimiento
-    const allKeys: string[] = []
-    let cursor = 0
+    // MÉTODO 1: Intentar usar SCAN (más eficiente)
+    let allKeys: string[] = []
 
-    do {
-      const result = await redis.scan(cursor, {
-        match: BACKUP_KEY_PREFIX + "*",
-        count: 100,
-      })
+    try {
+      console.log("🔍 Intentando método SCAN...")
+      let cursor = 0
+      let scanAttempts = 0
+      const maxScanAttempts = 10
 
-      if (Array.isArray(result) && result.length >= 2) {
-        cursor = result[0] as number
-        const keys = result[1] as string[]
-        allKeys.push(...keys)
-      } else {
-        break
-      }
-    } while (cursor !== 0)
+      do {
+        scanAttempts++
+        console.log(`📡 SCAN intento ${scanAttempts}/${maxScanAttempts}, cursor: ${cursor}`)
 
-    console.log(`🔍 Encontradas ${allKeys.length} claves de backup`)
+        const result = await redis.scan(cursor, {
+          match: BACKUP_KEY_PREFIX + "*",
+          count: 50, // Reducir count para evitar timeouts
+        })
 
-    if (allKeys.length === 0) {
-      console.log("⚠️ No se encontraron backups")
-      return []
-    }
+        console.log("📊 Resultado SCAN:", typeof result, Array.isArray(result) ? result.length : "no array")
 
-    const backups: any[] = []
+        if (Array.isArray(result) && result.length >= 2) {
+          const newCursor = result[0]
+          const keys = result[1]
 
-    // MEJORADO: Procesar en lotes para evitar timeouts
-    const batchSize = 10
-    for (let i = 0; i < allKeys.length; i += batchSize) {
-      const batch = allKeys.slice(i, i + batchSize)
-      console.log(`📦 Procesando lote ${Math.floor(i / batchSize) + 1}/${Math.ceil(allKeys.length / batchSize)}`)
+          console.log(
+            `🔍 Cursor: ${cursor} -> ${newCursor}, Keys encontradas: ${Array.isArray(keys) ? keys.length : 0}`,
+          )
 
-      try {
-        const multi = redis.multi()
-        for (const key of batch) {
-          multi.get(key)
+          cursor = typeof newCursor === "number" ? newCursor : Number.parseInt(String(newCursor)) || 0
+
+          if (Array.isArray(keys)) {
+            allKeys.push(...keys)
+            console.log(`✅ Agregadas ${keys.length} claves, total: ${allKeys.length}`)
+          }
+        } else {
+          console.log("⚠️ Resultado SCAN inesperado:", result)
+          break
         }
-        const results = await multi.exec()
 
-        if (Array.isArray(results)) {
-          results.forEach((backup: any, index) => {
-            if (backup && typeof backup === "object") {
-              // Extraer fecha de la clave
-              const fecha = batch[index].replace(BACKUP_KEY_PREFIX, "")
+        if (scanAttempts >= maxScanAttempts) {
+          console.log("⚠️ Máximo de intentos SCAN alcanzado")
+          break
+        }
+      } while (cursor !== 0)
 
-              // Validar que la fecha sea válida
-              if (fecha && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                const backupProcessed = {
-                  fecha: backup.fecha || fecha,
-                  resumen: backup.resumen || {
-                    totalTicketsEmitidos: 0,
-                    totalTicketsAtendidos: 0,
-                    ticketsPendientes: 0,
-                    eficienciaDiaria: 0,
-                    primerTicket: 0,
-                    ultimoTicket: 0,
-                    tiempoPromedioEsperaReal: 0,
-                    horaPico: { hora: 0, cantidad: 0, porcentaje: 0 },
-                  },
-                  createdAt:
-                    backup.resumen?.horaBackup || backup.estadoFinal?.ultimoReinicio || new Date().toISOString(),
-                  // Agregar información adicional para debugging
-                  _debug: {
-                    keyOriginal: batch[index],
-                    fechaExtraida: fecha,
-                    tieneResumen: !!backup.resumen,
-                    tieneTickets: !!(backup.tickets && backup.tickets.length > 0),
-                    cantidadTickets: backup.tickets ? backup.tickets.length : 0,
-                  },
-                }
+      console.log(`✅ SCAN completado: ${allKeys.length} claves encontradas`)
+    } catch (scanError) {
+      console.error("❌ Error en SCAN, intentando método KEYS:", scanError)
 
-                backups.push(backupProcessed)
-                console.log(`✅ Backup procesado: ${fecha} (${backupProcessed.resumen.totalTicketsEmitidos} tickets)`)
-              } else {
-                console.log(`⚠️ Fecha inválida en clave: ${batch[index]}`)
-              }
-            } else {
-              console.log(`⚠️ Backup inválido en posición ${index}`)
+      // MÉTODO 2: Fallback a KEYS si SCAN falla
+      try {
+        console.log("🔄 Usando método KEYS como fallback...")
+        const keysResult = await redis.keys(BACKUP_KEY_PREFIX + "*")
+        allKeys = Array.isArray(keysResult) ? keysResult : []
+        console.log(`✅ KEYS completado: ${allKeys.length} claves encontradas`)
+      } catch (keysError) {
+        console.error("❌ Error en KEYS también:", keysError)
+
+        // MÉTODO 3: Intentar fechas específicas si todo falla
+        console.log("🔄 Intentando método de fechas específicas...")
+        const today = new Date()
+        const possibleKeys: string[] = []
+
+        // Intentar los últimos 30 días
+        for (let i = 0; i < 30; i++) {
+          const date = new Date(today)
+          date.setDate(date.getDate() - i)
+          const dateString = date.toISOString().split("T")[0] // YYYY-MM-DD
+          possibleKeys.push(BACKUP_KEY_PREFIX + dateString)
+        }
+
+        console.log(`🔍 Verificando ${possibleKeys.length} fechas específicas...`)
+
+        // Verificar cuáles existen
+        const existsResults = await redis
+          .pipeline()
+          .exists(...possibleKeys)
+          .exec()
+
+        if (Array.isArray(existsResults)) {
+          possibleKeys.forEach((key, index) => {
+            if (existsResults[index] === 1) {
+              allKeys.push(key)
             }
           })
         }
+
+        console.log(`✅ Método fechas específicas: ${allKeys.length} claves encontradas`)
+      }
+    }
+
+    if (allKeys.length === 0) {
+      console.log("⚠️ No se encontraron backups con ningún método")
+      return []
+    }
+
+    console.log(`🔍 Total de claves encontradas: ${allKeys.length}`)
+    console.log("📋 Claves encontradas:", allKeys.slice(0, 5)) // Mostrar solo las primeras 5
+
+    const backups: any[] = []
+
+    // Procesar en lotes más pequeños para evitar timeouts
+    const batchSize = 5 // Reducir de 10 a 5
+    for (let i = 0; i < allKeys.length; i += batchSize) {
+      const batch = allKeys.slice(i, i + batchSize)
+      console.log(`📦 Procesando lote ${Math.floor(i / batchSize) + 1}/${Math.ceil(allKeys.length / batchSize)}`)
+      console.log(`📋 Claves del lote:`, batch)
+
+      try {
+        // Usar pipeline para obtener múltiples valores
+        const pipeline = redis.pipeline()
+        for (const key of batch) {
+          pipeline.get(key)
+        }
+        const results = await pipeline.exec()
+
+        console.log(`📊 Resultados del lote:`, Array.isArray(results) ? results.length : "no array")
+
+        if (Array.isArray(results)) {
+          results.forEach((backup: any, index) => {
+            try {
+              const key = batch[index]
+              const fecha = key.replace(BACKUP_KEY_PREFIX, "")
+
+              console.log(`🔍 Procesando backup ${index + 1}/${results.length}:`, fecha)
+              console.log(`📊 Tipo de backup:`, typeof backup, backup ? "existe" : "null")
+
+              if (backup && typeof backup === "object") {
+                // Validar que la fecha sea válida
+                if (fecha && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                  const backupProcessed = {
+                    fecha: backup.fecha || fecha,
+                    resumen: backup.resumen || {
+                      totalTicketsEmitidos: 0,
+                      totalTicketsAtendidos: 0,
+                      ticketsPendientes: 0,
+                      eficienciaDiaria: 0,
+                      primerTicket: 0,
+                      ultimoTicket: 0,
+                      tiempoPromedioEsperaReal: 0,
+                      horaPico: { hora: 0, cantidad: 0, porcentaje: 0 },
+                    },
+                    createdAt:
+                      backup.resumen?.horaBackup || backup.estadoFinal?.ultimoReinicio || new Date().toISOString(),
+                    // Información de debugging
+                    _debug: {
+                      keyOriginal: key,
+                      fechaExtraida: fecha,
+                      tieneResumen: !!backup.resumen,
+                      tieneTickets: !!(backup.tickets && backup.tickets.length > 0),
+                      cantidadTickets: backup.tickets ? backup.tickets.length : 0,
+                    },
+                  }
+
+                  backups.push(backupProcessed)
+                  console.log(`✅ Backup procesado: ${fecha} (${backupProcessed.resumen.totalTicketsEmitidos} tickets)`)
+                } else {
+                  console.log(`⚠️ Fecha inválida en clave: ${key}`)
+                }
+              } else {
+                console.log(`⚠️ Backup inválido en posición ${index}, clave: ${key}`)
+              }
+            } catch (itemError) {
+              console.error(`❌ Error procesando item ${index}:`, itemError)
+            }
+          })
+        } else {
+          console.error("❌ Resultados del pipeline no son un array:", results)
+        }
       } catch (batchError) {
-        console.error(`❌ Error procesando lote:`, batchError)
-        // Continuar con el siguiente lote
+        console.error(`❌ Error procesando lote ${Math.floor(i / batchSize) + 1}:`, batchError)
+
+        // Intentar procesar individualmente si el lote falla
+        console.log("🔄 Intentando procesamiento individual...")
+        for (const key of batch) {
+          try {
+            const backup = await redis.get(key)
+            const fecha = key.replace(BACKUP_KEY_PREFIX, "")
+
+            if (backup && typeof backup === "object" && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
+              const backupProcessed = {
+                fecha: backup.fecha || fecha,
+                resumen: backup.resumen || {
+                  totalTicketsEmitidos: 0,
+                  totalTicketsAtendidos: 0,
+                  ticketsPendientes: 0,
+                  eficienciaDiaria: 0,
+                  primerTicket: 0,
+                  ultimoTicket: 0,
+                  tiempoPromedioEsperaReal: 0,
+                  horaPico: { hora: 0, cantidad: 0, porcentaje: 0 },
+                },
+                createdAt: backup.resumen?.horaBackup || backup.estadoFinal?.ultimoReinicio || new Date().toISOString(),
+                _debug: {
+                  keyOriginal: key,
+                  fechaExtraida: fecha,
+                  tieneResumen: !!backup.resumen,
+                  tieneTickets: !!(backup.tickets && backup.tickets.length > 0),
+                  cantidadTickets: backup.tickets ? backup.tickets.length : 0,
+                  procesamientoIndividual: true,
+                },
+              }
+
+              backups.push(backupProcessed)
+              console.log(`✅ Backup individual procesado: ${fecha}`)
+            }
+          } catch (individualError) {
+            console.error(`❌ Error procesando backup individual ${key}:`, individualError)
+          }
+        }
+      }
+
+      // Pequeña pausa entre lotes para evitar saturar la conexión
+      if (i + batchSize < allKeys.length) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
       }
     }
 
@@ -690,20 +819,37 @@ export async function obtenerBackups(): Promise<any[]> {
       return fechaB - fechaA
     })
 
-    console.log(`✅ Total de backups procesados: ${backups.length}`)
+    console.log(`✅ Total de backups procesados exitosamente: ${backups.length}`)
 
     // Log de resumen para debugging
     if (backups.length > 0) {
-      console.log("📊 Resumen de backups:")
+      console.log("📊 Resumen de backups encontrados:")
       backups.slice(0, 5).forEach((backup) => {
         console.log(`  - ${backup.fecha}: ${backup.resumen.totalTicketsEmitidos} tickets emitidos`)
       })
+
+      if (backups.length > 5) {
+        console.log(`  ... y ${backups.length - 5} más`)
+      }
     }
 
     // Limitar a los últimos 60 días para evitar problemas de memoria
-    return backups.slice(0, 60)
+    const result = backups.slice(0, 60)
+    console.log(`📋 Devolviendo ${result.length} backups (limitado a 60 días)`)
+
+    return result
   } catch (error) {
-    console.error("❌ Error al obtener backups desde TURNOS_ZOCO (Upstash Redis):", error)
+    console.error("❌ Error crítico al obtener backups desde TURNOS_ZOCO (Upstash Redis):")
+    console.error("Error type:", typeof error)
+    console.error("Error message:", error instanceof Error ? error.message : String(error))
+    console.error("Error stack:", error instanceof Error ? error.stack : "No stack available")
+
+    // Intentar extraer más información del error
+    if (error && typeof error === "object") {
+      console.error("Error object keys:", Object.keys(error))
+      console.error("Error object:", JSON.stringify(error, null, 2))
+    }
+
     return []
   }
 }
