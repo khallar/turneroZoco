@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Shield,
   RotateCcw,
+  BarChart3,
   Calendar,
   Users,
   Clock,
@@ -14,17 +15,16 @@ import {
   Database,
   RefreshCw,
   ArrowLeft,
+  Activity,
+  Timer,
   CheckCircle,
   Eye,
-  FileText,
-  Plus,
-  Search,
   PieChart,
   Target,
   Zap,
-  Timer,
-  Activity,
-  BarChart3,
+  Download,
+  FileText,
+  Archive,
 } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 
@@ -51,9 +51,6 @@ export default function PaginaAdmin() {
   const [horaActual, setHoraActual] = useState(new Date())
   const [mostrarMetricasAvanzadas, setMostrarMetricasAvanzadas] = useState(false)
   const [descargandoTodos, setDescargandoTodos] = useState(false)
-  const [creandoBackup, setCreandoBackup] = useState(false)
-  const [verificandoRedis, setVerificandoRedis] = useState(false)
-  const [datosRedis, setDatosRedis] = useState<any>(null)
 
   useEffect(() => {
     if (isClient) {
@@ -84,72 +81,10 @@ export default function PaginaAdmin() {
 
   const cargarBackups = async () => {
     try {
-      console.log("🔄 Cargando backups...")
       const backupsData = await obtenerBackups()
-      console.log("📊 Backups obtenidos:", backupsData.length)
       setBackups(backupsData)
     } catch (error) {
       console.error("Error al cargar backups:", error)
-    }
-  }
-
-  // NUEVA FUNCIÓN: Crear backup manual del día actual
-  const crearBackupManual = async () => {
-    setCreandoBackup(true)
-    try {
-      console.log("📦 Creando backup manual del día actual...")
-
-      const response = await fetch("/api/sistema", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "CREAR_BACKUP_MANUAL",
-        }),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        alert(`✅ Backup creado exitosamente para ${data.fecha}\n📊 ${data.ticketsIncluidos} tickets incluidos`)
-        await cargarBackups() // Recargar la lista
-      } else {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Error al crear backup")
-      }
-    } catch (error) {
-      console.error("Error al crear backup manual:", error)
-      alert(`❌ Error al crear backup: ${error instanceof Error ? error.message : "Error desconocido"}`)
-    } finally {
-      setCreandoBackup(false)
-    }
-  }
-
-  // NUEVA FUNCIÓN: Verificar qué datos existen en Redis
-  const verificarDatosRedis = async () => {
-    setVerificandoRedis(true)
-    try {
-      console.log("🔍 Verificando datos en Redis...")
-
-      const response = await fetch("/api/debug-redis", {
-        method: "GET",
-        headers: {
-          "Cache-Control": "no-cache",
-        },
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setDatosRedis(data)
-        console.log("📊 Datos Redis obtenidos:", data)
-      } else {
-        throw new Error("Error al obtener datos de Redis")
-      }
-    } catch (error) {
-      console.error("Error al verificar Redis:", error)
-      alert(`❌ Error al verificar Redis: ${error instanceof Error ? error.message : "Error desconocido"}`)
-    } finally {
-      setVerificandoRedis(false)
     }
   }
 
@@ -242,14 +177,12 @@ export default function PaginaAdmin() {
   }
 
   // Calcular estadísticas administrativas
-  // Calcular estadísticas administrativas - FIXED to handle null estado
   const calcularEstadisticasAdmin = () => {
-    // Handle null or undefined estado
-    if (!estado || !estado.tickets) {
+    if (!estado.tickets || estado.tickets.length === 0) {
       return {
         totalTicketsHistorico: 0,
         promedioTicketsPorDia: 0,
-        diasOperativos: 1,
+        diasOperativos: 0,
         eficienciaGeneral: 0,
         horasPicoGlobal: "Sin datos",
         ticketsPorHora: 0,
@@ -258,21 +191,19 @@ export default function PaginaAdmin() {
     }
 
     const ahora = new Date()
-    const inicioOperaciones = new Date(estado.fechaInicio || ahora.toISOString())
+    const inicioOperaciones = new Date(estado.fechaInicio)
     const diasOperativos = Math.max(
       1,
       Math.ceil((ahora.getTime() - inicioOperaciones.getTime()) / (1000 * 60 * 60 * 24)),
     )
 
-    const totalTicketsHistorico = (estado.totalAtendidos || 0) + backups.length * 50
+    const totalTicketsHistorico = estado.totalAtendidos + backups.length * 50
     const promedioTicketsPorDia = totalTicketsHistorico / diasOperativos
-    const eficienciaGeneral =
-      (estado.totalAtendidos || 0) > 0 ? ((estado.numerosLlamados || 0) / (estado.totalAtendidos || 0)) * 100 : 0
+    const eficienciaGeneral = estado.totalAtendidos > 0 ? (estado.numerosLlamados / estado.totalAtendidos) * 100 : 0
 
     const tiempoOperacion = (ahora.getTime() - inicioOperaciones.getTime()) / (1000 * 60 * 60)
-    const ticketsPorHora = tiempoOperacion > 0 ? (estado.totalAtendidos || 0) / tiempoOperacion : 0
-    const tiempoPromedioGlobal =
-      (estado.numerosLlamados || 0) > 0 ? (tiempoOperacion * 60) / (estado.numerosLlamados || 0) : 0
+    const ticketsPorHora = tiempoOperacion > 0 ? estado.totalAtendidos / tiempoOperacion : 0
+    const tiempoPromedioGlobal = estado.numerosLlamados > 0 ? (tiempoOperacion * 60) / estado.numerosLlamados : 0
 
     return {
       totalTicketsHistorico,
@@ -286,40 +217,26 @@ export default function PaginaAdmin() {
   }
 
   // MÉTRICAS AVANZADAS MEJORADAS
-  // MÉTRICAS AVANZADAS MEJORADAS - FIXED to handle null estado
   const calcularMetricasAvanzadas = () => {
-    // Handle null or undefined estado
-    if (!estado || !estado.tickets || estado.tickets.length === 0) {
+    if (!estado.tickets || estado.tickets.length === 0) {
       return {
         distribucionPorHora: {},
-        nombresComunes: [],
+        nombresComunes: {},
         tiempoEntreTickets: 0,
         velocidadAtencion: 0,
         tiempoEsperaReal: 0,
         horaPico: { hora: 0, cantidad: 0 },
         proyeccionDiaria: 0,
         eficienciaPorHora: {},
-        patronesUso: {
-          horaPico: 0,
-          horaMinima: 0,
-          promedioTicketsPorHora: 0,
-        },
-        metricsRendimiento: {
-          cacheHitRate: 0,
-          tiempoRespuestaPromedio: 0,
-          disponibilidadSistema: 1.0,
-        },
-        analisisTendencias: {
-          crecimientoDiario: 0,
-          tendenciaEficiencia: 0,
-          proyeccionDiaria: 0,
-        },
+        patronesUso: {},
+        metricsRendimiento: {},
+        analisisTendencias: {},
       }
     }
 
     const tickets = estado.tickets
     const ahora = new Date()
-    const inicioOperaciones = new Date(estado.fechaInicio || ahora.toISOString())
+    const inicioOperaciones = new Date(estado.fechaInicio)
 
     // 1. Distribución de tickets por hora del día
     const distribucionPorHora = {}
@@ -356,12 +273,12 @@ export default function PaginaAdmin() {
 
     // 4. Velocidad de atención (tickets atendidos por minuto)
     const tiempoOperacionMinutos = (ahora.getTime() - inicioOperaciones.getTime()) / (1000 * 60)
-    const velocidadAtencion = tiempoOperacionMinutos > 0 ? (estado.numerosLlamados || 0) / tiempoOperacionMinutos : 0
+    const velocidadAtencion = tiempoOperacionMinutos > 0 ? estado.numerosLlamados / tiempoOperacionMinutos : 0
 
     // 5. NUEVO: Tiempo de espera real promedio
     let tiempoEsperaReal = 0
-    if ((estado.numerosLlamados || 0) > 0 && tickets.length > 0) {
-      const ticketsAtendidos = tickets.slice(0, estado.numerosLlamados || 0)
+    if (estado.numerosLlamados > 0 && tickets.length > 0) {
+      const ticketsAtendidos = tickets.slice(0, estado.numerosLlamados)
       const tiemposEspera = []
 
       ticketsAtendidos.forEach((ticket, index) => {
@@ -370,8 +287,7 @@ export default function PaginaAdmin() {
         // fue llamado cuando se procesaron 'index + 1' tickets
         const tiempoEmision = ticket.timestamp || new Date(ticket.fecha).getTime()
         const tiempoEstimadoLlamada =
-          inicioOperaciones.getTime() +
-          (index + 1) * (tiempoOperacionMinutos / (estado.numerosLlamados || 1)) * 60 * 1000
+          inicioOperaciones.getTime() + (index + 1) * (tiempoOperacionMinutos / estado.numerosLlamados) * 60 * 1000
         const espera = (tiempoEstimadoLlamada - tiempoEmision) / 1000 / 60 // en minutos
         if (espera > 0) tiemposEspera.push(espera)
       })
@@ -395,8 +311,8 @@ export default function PaginaAdmin() {
     const minutosEnDia = 24 * 60
     const proyeccionDiaria =
       minutosTranscurridos > 0
-        ? Math.round(((estado.totalAtendidos || 0) / minutosTranscurridos) * minutosEnDia)
-        : estado.totalAtendidos || 0
+        ? Math.round((estado.totalAtendidos / minutosTranscurridos) * minutosEnDia)
+        : estado.totalAtendidos
 
     // 8. Eficiencia por hora
     const eficienciaPorHora = {}
@@ -404,7 +320,7 @@ export default function PaginaAdmin() {
       const ticketsHora = distribucionPorHora[hora]
       eficienciaPorHora[hora] = {
         emitidos: ticketsHora,
-        eficiencia: Math.round((ticketsHora / (estado.totalAtendidos || 1)) * 100),
+        eficiencia: Math.round((ticketsHora / estado.totalAtendidos) * 100),
       }
     })
 
@@ -412,7 +328,7 @@ export default function PaginaAdmin() {
     const patronesUso = {
       horaPico: horaPico.hora,
       horaMinima: Object.keys(distribucionPorHora).reduce((a, b) =>
-        (distribucionPorHora[a] || 0) < (distribucionPorHora[b] || 0) ? a : b,
+        distribucionPorHora[a] < distribucionPorHora[b] ? a : b,
       ),
       promedioTicketsPorHora:
         Object.values(distribucionPorHora).reduce((a, b) => a + b, 0) /
@@ -421,17 +337,15 @@ export default function PaginaAdmin() {
 
     // 10. Métricas de rendimiento del sistema
     const metricsRendimiento = {
-      cacheHitRate: cacheStats?.entries
-        ? cacheStats.entries.filter((e) => e.fresh).length / Math.max(cacheStats.entries.length, 1)
-        : 0,
+      cacheHitRate: cacheStats.entries.filter((e) => e.fresh).length / Math.max(cacheStats.entries.length, 1),
       tiempoRespuestaPromedio: ultimaSincronizacion ? Date.now() - ultimaSincronizacion.getTime() : 0,
       disponibilidadSistema: error ? 0.95 : 1.0,
     }
 
     // 11. Análisis de tendencias
     const analisisTendencias = {
-      crecimientoDiario: (estado.totalAtendidos || 0) / Math.max(1, calcularEstadisticasAdmin().diasOperativos),
-      tendenciaEficiencia: (estado.numerosLlamados || 0) / Math.max(1, estado.totalAtendidos || 1),
+      crecimientoDiario: estado.totalAtendidos / Math.max(1, calcularEstadisticasAdmin().diasOperativos),
+      tendenciaEficiencia: estado.numerosLlamados / Math.max(1, estado.totalAtendidos),
       proyeccionDiaria: proyeccionDiaria,
     }
 
@@ -1191,124 +1105,32 @@ export default function PaginaAdmin() {
           </div>
         </div>
 
-        {/* NUEVA SECCIÓN: Herramientas de Diagnóstico */}
-        <Card className="mb-8 bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-200">
-          <CardHeader>
-            <CardTitle className="text-xl flex items-center justify-between text-yellow-800">
+        {/* Estadísticas de Cache - MINIMIZADO */}
+        {cacheStats.totalEntries > 0 && (
+          <div className="mb-6 flex justify-center">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2">
-                <Search className="h-6 w-6" />🔧 Herramientas de Diagnóstico
+                <Database className="h-4 w-4 text-blue-600" />
+                <span className="text-blue-800 font-medium">Cache:</span>
               </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Crear Backup Manual */}
-              <div className="bg-white p-4 rounded-lg border border-yellow-200">
-                <h4 className="font-semibold text-yellow-800 mb-3 flex items-center gap-2">
-                  <Plus className="h-5 w-5" />
-                  Crear Backup Manual
-                </h4>
-                <p className="text-sm text-yellow-700 mb-3">
-                  Crea un backup del estado actual del sistema para preservar los datos del día.
-                </p>
+              <div className="flex items-center gap-4">
+                <span className="text-blue-700">{cacheStats.totalEntries} entradas</span>
+                <span className="text-green-700">{cacheStats.entries.filter((e) => e.fresh).length} frescas</span>
+                <span className="text-purple-700">{cacheStats.subscribers} suscriptores</span>
                 <Button
-                  onClick={crearBackupManual}
-                  disabled={creandoBackup}
-                  className="w-full bg-yellow-600 hover:bg-yellow-700 text-white"
+                  onClick={invalidateCache}
+                  size="sm"
+                  variant="outline"
+                  className="text-xs px-2 py-1 h-6 bg-transparent"
                 >
-                  {creandoBackup ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Creando...
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Crear Backup Ahora
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {/* Verificar Redis */}
-              <div className="bg-white p-4 rounded-lg border border-yellow-200">
-                <h4 className="font-semibold text-yellow-800 mb-3 flex items-center gap-2">
-                  <Database className="h-5 w-5" />
-                  Verificar Redis
-                </h4>
-                <p className="text-sm text-yellow-700 mb-3">
-                  Inspecciona qué datos están almacenados en la base de datos Redis.
-                </p>
-                <Button
-                  onClick={verificarDatosRedis}
-                  disabled={verificandoRedis}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  {verificandoRedis ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Verificando...
-                    </>
-                  ) : (
-                    <>
-                      <Search className="mr-2 h-4 w-4" />
-                      Inspeccionar Redis
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {/* Recargar Backups */}
-              <div className="bg-white p-4 rounded-lg border border-yellow-200">
-                <h4 className="font-semibold text-yellow-800 mb-3 flex items-center gap-2">
-                  <RefreshCw className="h-5 w-5" />
-                  Recargar Historial
-                </h4>
-                <p className="text-sm text-yellow-700 mb-3">Actualiza la lista de backups desde la base de datos.</p>
-                <Button onClick={cargarBackups} className="w-full bg-green-600 hover:bg-green-700 text-white">
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Recargar Lista
+                  Limpiar
                 </Button>
               </div>
             </div>
-
-            {/* Mostrar datos de Redis si están disponibles */}
-            {datosRedis && (
-              <div className="mt-6 bg-white p-4 rounded-lg border border-yellow-200">
-                <h4 className="font-semibold text-yellow-800 mb-3">📊 Datos encontrados en Redis:</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <strong>Estados diarios:</strong> {datosRedis.estadosDiarios || 0}
-                  </div>
-                  <div>
-                    <strong>Listas de tickets:</strong> {datosRedis.listasTickets || 0}
-                  </div>
-                  <div>
-                    <strong>Backups:</strong> {datosRedis.backups || 0}
-                  </div>
-                  <div>
-                    <strong>Contadores:</strong> {datosRedis.contadores || 0}
-                  </div>
-                </div>
-                {datosRedis.fechasEncontradas && datosRedis.fechasEncontradas.length > 0 && (
-                  <div className="mt-3">
-                    <strong>Fechas con datos:</strong>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {datosRedis.fechasEncontradas.map((fecha: string) => (
-                        <span key={fecha} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">
-                          {fecha}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+        )}
 
         {/* Estadísticas Principales del Día */}
-        {/* Estadísticas Principales del Día - FIXED to handle null estado */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -1316,7 +1138,7 @@ export default function PaginaAdmin() {
               <Users className="h-4 w-4" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{estado?.totalAtendidos || 0}</div>
+              <div className="text-3xl font-bold">{estado?.totalAtendidos}</div>
               <p className="text-xs opacity-80">Emitidos en el día</p>
             </CardContent>
           </Card>
@@ -1327,7 +1149,7 @@ export default function PaginaAdmin() {
               <CheckCircle className="h-4 w-4" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{estado?.numerosLlamados || 0}</div>
+              <div className="text-3xl font-bold">{estado?.numerosLlamados}</div>
               <p className="text-xs opacity-80">Tickets procesados</p>
             </CardContent>
           </Card>
@@ -1338,7 +1160,7 @@ export default function PaginaAdmin() {
               <Clock className="h-4 w-4" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{(estado?.totalAtendidos || 0) - (estado?.numerosLlamados || 0)}</div>
+              <div className="text-3xl font-bold">{estado?.totalAtendidos - estado?.numerosLlamados}</div>
               <p className="text-xs opacity-80">Pendientes</p>
             </CardContent>
           </Card>
@@ -1643,21 +1465,189 @@ export default function PaginaAdmin() {
           </CardContent>
         </Card>
 
-        {/* Historial de Días Anteriores MEJORADO CON DIAGNÓSTICO */}
+        {/* NUEVA SECCIÓN: Totales Históricos Consolidados */}
+        {backups.length > 0 && (
+          <Card className="mb-8 bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200">
+            <CardHeader>
+              <CardTitle className="text-xl flex items-center justify-between text-emerald-800">
+                <div className="flex items-center gap-2">
+                  <Archive className="h-6 w-6" />📊 Totales Históricos Consolidados
+                </div>
+                <Button
+                  onClick={descargarTodosLosDatos}
+                  disabled={descargandoTodos}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {descargandoTodos ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Descargando...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-4 w-4" />
+                      Descargar Todo el Historial
+                    </>
+                  )}
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* Resumen de totales históricos */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-white p-4 rounded-lg border-l-4 border-blue-500 text-center">
+                  <div className="text-3xl font-bold text-blue-600 mb-2">{totalesHistoricos.totalDias}</div>
+                  <p className="text-sm font-semibold text-blue-800">Días Operativos</p>
+                  <p className="text-xs text-blue-600">Registrados en historial</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-lg border-l-4 border-green-500 text-center">
+                  <div className="text-3xl font-bold text-green-600 mb-2">
+                    {totalesHistoricos.totalTicketsEmitidos.toLocaleString()}
+                  </div>
+                  <p className="text-sm font-semibold text-green-800">Total Tickets Emitidos</p>
+                  <p className="text-xs text-green-600">En todo el historial</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-lg border-l-4 border-orange-500 text-center">
+                  <div className="text-3xl font-bold text-orange-600 mb-2">
+                    {totalesHistoricos.totalTicketsAtendidos.toLocaleString()}
+                  </div>
+                  <p className="text-sm font-semibold text-orange-800">Total Tickets Atendidos</p>
+                  <p className="text-xs text-orange-600">Procesados históricamente</p>
+                </div>
+
+                <div className="bg-white p-4 rounded-lg border-l-4 border-purple-500 text-center">
+                  <div className="text-3xl font-bold text-purple-600 mb-2">{totalesHistoricos.eficienciaPromedio}%</div>
+                  <p className="text-sm font-semibold text-purple-800">Eficiencia Promedio</p>
+                  <p className="text-xs text-purple-600">Histórica general</p>
+                </div>
+              </div>
+
+              {/* Promedios y tendencias */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-gradient-to-r from-cyan-50 to-blue-50 p-4 rounded-lg border border-cyan-200">
+                  <h4 className="font-semibold text-cyan-800 mb-3 flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5" />
+                    Promedios Diarios
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-cyan-700">Tickets emitidos:</span>
+                      <span className="font-bold text-cyan-800">{totalesHistoricos.promedioTicketsPorDia}/día</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-cyan-700">Tickets atendidos:</span>
+                      <span className="font-bold text-cyan-800">{totalesHistoricos.promedioAtendidosPorDia}/día</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-yellow-50 to-orange-50 p-4 rounded-lg border border-yellow-200">
+                  <h4 className="font-semibold text-yellow-800 mb-3 flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5" />
+                    Records Históricos
+                  </h4>
+                  <div className="space-y-2">
+                    <div>
+                      <span className="text-sm text-yellow-700">Mejor día:</span>
+                      <p className="font-bold text-yellow-800">
+                        {totalesHistoricos.mejorDia?.fecha || "N/A"} (
+                        {totalesHistoricos.mejorDia?.resumen?.totalTicketsEmitidos || 0} tickets)
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-sm text-yellow-700">Tendencia:</span>
+                      <p className="font-bold text-yellow-800 capitalize">
+                        {totalesHistoricos.tendenciaGeneral === "creciente" && "📈 Creciente"}
+                        {totalesHistoricos.tendenciaGeneral === "decreciente" && "📉 Decreciente"}
+                        {totalesHistoricos.tendenciaGeneral === "estable" && "📊 Estable"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-lg border border-indigo-200">
+                  <h4 className="font-semibold text-indigo-800 mb-3 flex items-center gap-2">
+                    <Target className="h-5 w-5" />
+                    Comparativa Hoy
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-indigo-700">vs Promedio:</span>
+                      <span
+                        className={`font-bold ${
+                          estado.totalAtendidos > totalesHistoricos.promedioTicketsPorDia
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {estado.totalAtendidos > totalesHistoricos.promedioTicketsPorDia ? "↗️ Mejor" : "↘️ Menor"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-indigo-700">Diferencia:</span>
+                      <span className="font-bold text-indigo-800">
+                        {Math.abs(estado.totalAtendidos - totalesHistoricos.promedioTicketsPorDia)} tickets
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Top 5 días más activos */}
+              <div className="bg-white p-4 rounded-lg border border-gray-200">
+                <h4 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />🏆 Top 5 Días Más Activos
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                  {totalesHistoricos.diasConMasActividad.map((dia, index) => (
+                    <div
+                      key={dia.fecha}
+                      className={`p-3 rounded-lg text-center border-2 ${
+                        index === 0
+                          ? "bg-yellow-50 border-yellow-300"
+                          : index === 1
+                            ? "bg-gray-50 border-gray-300"
+                            : index === 2
+                              ? "bg-orange-50 border-orange-300"
+                              : "bg-blue-50 border-blue-300"
+                      }`}
+                    >
+                      <div className="text-lg font-bold mb-1">
+                        {index === 0 && "🥇"}
+                        {index === 1 && "🥈"}
+                        {index === 2 && "🥉"}
+                        {index > 2 && `#${index + 1}`}
+                      </div>
+                      <div className="text-sm font-semibold text-gray-800">{dia.fecha}</div>
+                      <div className="text-2xl font-bold text-blue-600 my-1">
+                        {dia.resumen?.totalTicketsEmitidos || 0}
+                      </div>
+                      <div className="text-xs text-gray-600">tickets</div>
+                      <div className="text-xs text-green-600 mt-1">
+                        {dia.resumen?.eficienciaDiaria || 0}% eficiencia
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Historial de Días Anteriores MEJORADO */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Calendar className="h-5 w-5" />
                 Historial de Días Anteriores
-                {backups.length === 0 && (
-                  <span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-bold">⚠️ Sin Datos</span>
-                )}
               </div>
               <div className="flex gap-2">
                 <Button onClick={cargarBackups} variant="outline" size="sm">
                   <RefreshCw className="mr-2 h-4 w-4" />
-                  Actualizar ({backups.length})
+                  Actualizar
                 </Button>
                 {backups.length > 0 && (
                   <Button
@@ -1889,24 +1879,78 @@ export default function PaginaAdmin() {
                     )
                   })}
                 </div>
+
+                {/* Comparativa con día actual */}
+                <div className="bg-gradient-to-r from-green-50 to-teal-50 p-4 rounded-lg border border-green-200">
+                  <h4 className="font-semibold text-green-800 mb-3">📈 Comparativa con Hoy</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-green-600">{estado.totalAtendidos}</div>
+                      <p className="text-green-700">Tickets hoy</p>
+                      <p className="text-xs text-green-600">
+                        vs promedio:{" "}
+                        {estado.totalAtendidos >
+                        Math.round(
+                          backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) /
+                            backups.length,
+                        )
+                          ? "↗️"
+                          : "↘️"}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-blue-600">{estado.numerosLlamados}</div>
+                      <p className="text-blue-700">Atendidos hoy</p>
+                      <p className="text-xs text-blue-600">
+                        vs promedio:{" "}
+                        {estado.numerosLlamados >
+                        Math.round(
+                          backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0), 0) /
+                            backups.length,
+                        )
+                          ? "↗️"
+                          : "↘️"}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-orange-600">
+                        {Math.round((estado.numerosLlamados / Math.max(estado.totalAtendidos, 1)) * 100)}%
+                      </div>
+                      <p className="text-orange-700">Eficiencia hoy</p>
+                      <p className="text-xs text-orange-600">
+                        vs promedio:{" "}
+                        {Math.round((estado.numerosLlamados / Math.max(estado.totalAtendidos, 1)) * 100) >
+                        Math.round(
+                          backups.reduce(
+                            (sum, backup) =>
+                              sum +
+                              ((backup.resumen?.totalTicketsAtendidos || 0) /
+                                Math.max(backup.resumen?.totalTicketsEmitidos || 1, 1)) *
+                                100,
+                            0,
+                          ) / backups.length,
+                        )
+                          ? "↗️"
+                          : "↘️"}
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-purple-600">
+                        {new Date().getHours() > 0
+                          ? Math.round(estado.totalAtendidos / new Date().getHours())
+                          : estado.totalAtendidos}
+                      </div>
+                      <p className="text-purple-700">Tickets/hora hoy</p>
+                      <p className="text-xs text-purple-600">Ritmo actual</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="text-center py-12">
                 <div className="text-6xl mb-4">📊</div>
-                <p className="text-xl text-gray-500 mb-4">No hay historial disponible</p>
-                <p className="text-gray-400 mb-6">
-                  Los backups aparecerán aquí después de crear uno manualmente o al final del día
-                </p>
-
-                {/* Instrucciones para crear backups */}
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 max-w-md mx-auto">
-                  <h4 className="font-semibold text-yellow-800 mb-3">💡 ¿Cómo crear historial?</h4>
-                  <div className="text-sm text-yellow-700 space-y-2">
-                    <p>1. Usa el botón "Crear Backup Manual" arriba</p>
-                    <p>2. Los backups se crean automáticamente al reiniciar el sistema</p>
-                    <p>3. Verifica que hay datos en Redis con "Inspeccionar Redis"</p>
-                  </div>
-                </div>
+                <p className="text-xl text-gray-500 mb-2">No hay historial disponible</p>
+                <p className="text-gray-400">Los backups aparecerán aquí después del primer día de operación</p>
               </div>
             )}
           </CardContent>
@@ -2027,7 +2071,7 @@ export default function PaginaAdmin() {
         {/* Footer */}
         <footer className="text-center mt-8 pt-4 border-t border-gray-200">
           <div className="text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 5.3 | Diagnóstico de Backups + Herramientas</p>
+            <p>Develop by: Karim :) | Versión 5.2 | Historial Consolidado + Descarga Masiva</p>
             <p>Actualización inteligente cada 120s | Cache compartido entre páginas</p>
           </div>
         </footer>

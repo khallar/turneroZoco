@@ -1,209 +1,175 @@
-interface CacheEntry<T = any> {
+"use client"
+
+interface CacheEntry<T> {
   data: T
   timestamp: number
-  ttl: number
-  key: string
-  fresh: boolean
+  ttl: number // Time to live en milisegundos
 }
 
-interface CacheStats {
-  totalEntries: number
-  freshEntries: number
-  expiredEntries: number
-  entries: Array<{
-    key: string
-    age: number
-    fresh: boolean
-    size: number
-  }>
+interface EstadoSistemaCache {
+  numeroActual: number
+  ultimoNumero: number
+  totalAtendidos: number
+  numerosLlamados: number
+  fechaInicio: string
+  ultimoReinicio: string
+  tickets: any[]
+  lastSync?: number
 }
 
 class CacheManager {
-  private cache = new Map<string, CacheEntry>()
-  private defaultTTL = 2 * 60 * 1000 // 2 minutos por defecto
+  private cache = new Map<string, CacheEntry<any>>()
+  private subscribers = new Map<string, Set<(data: any) => void>>()
 
-  set<T>(key: string, data: T, ttl?: number): void {
-    const entry: CacheEntry<T> = {
+  // TTL por defecto: 45 segundos (menos que el intervalo más frecuente)
+  private defaultTTL = 45000
+
+  set<T>(key: string, data: T, ttl: number = this.defaultTTL): void {
+    this.cache.set(key, {
       data,
       timestamp: Date.now(),
-      ttl: ttl || this.defaultTTL,
-      key,
-      fresh: true,
+      ttl,
+    })
+
+    // Notificar a los suscriptores
+    const keySubscribers = this.subscribers.get(key)
+    if (keySubscribers) {
+      keySubscribers.forEach((callback) => callback(data))
     }
 
-    this.cache.set(key, entry)
-    console.log(`📦 Cache SET: ${key} (TTL: ${entry.ttl}ms)`)
+    console.log(`📦 Cache actualizado: ${key} (TTL: ${ttl}ms)`)
   }
 
   get<T>(key: string): T | null {
     const entry = this.cache.get(key)
+    if (!entry) return null
 
-    if (!entry) {
-      console.log(`📦 Cache MISS: ${key}`)
-      return null
-    }
-
-    const age = Date.now() - entry.timestamp
-    const isExpired = age > entry.ttl
+    const now = Date.now()
+    const isExpired = now - entry.timestamp > entry.ttl
 
     if (isExpired) {
       this.cache.delete(key)
-      console.log(`📦 Cache EXPIRED: ${key} (age: ${age}ms)`)
+      console.log(`🗑️ Cache expirado y eliminado: ${key}`)
       return null
     }
 
-    // Marcar como no fresh si está cerca de expirar (últimos 30 segundos)
-    entry.fresh = age < entry.ttl - 30000
-
-    console.log(`📦 Cache HIT: ${key} (age: ${age}ms, fresh: ${entry.fresh})`)
-    return entry.data as T
+    console.log(`✅ Cache hit: ${key} (edad: ${Math.round((now - entry.timestamp) / 1000)}s)`)
+    return entry.data
   }
 
-  has(key: string): boolean {
+  // Verificar si el cache está fresco (no necesita actualización)
+  isFresh(key: string, maxAge = 30000): boolean {
     const entry = this.cache.get(key)
     if (!entry) return false
 
     const age = Date.now() - entry.timestamp
-    const isExpired = age > entry.ttl
+    return age < maxAge
+  }
 
-    if (isExpired) {
-      this.cache.delete(key)
-      return false
+  // Suscribirse a cambios en una clave específica
+  subscribe(key: string, callback: (data: any) => void): () => void {
+    if (!this.subscribers.has(key)) {
+      this.subscribers.set(key, new Set())
     }
+    this.subscribers.get(key)!.add(callback)
 
-    return true
-  }
-
-  delete(key: string): boolean {
-    const deleted = this.cache.delete(key)
-    if (deleted) {
-      console.log(`📦 Cache DELETE: ${key}`)
-    }
-    return deleted
-  }
-
-  clear(): void {
-    const size = this.cache.size
-    this.cache.clear()
-    console.log(`📦 Cache CLEAR: ${size} entries removed`)
-  }
-
-  invalidate(pattern?: string): number {
-    let removed = 0
-
-    if (pattern) {
-      const regex = new RegExp(pattern)
-      for (const [key] of this.cache) {
-        if (regex.test(key)) {
-          this.cache.delete(key)
-          removed++
+    // Retornar función de desuscripción
+    return () => {
+      const keySubscribers = this.subscribers.get(key)
+      if (keySubscribers) {
+        keySubscribers.delete(callback)
+        if (keySubscribers.size === 0) {
+          this.subscribers.delete(key)
         }
       }
-      console.log(`📦 Cache INVALIDATE pattern "${pattern}": ${removed} entries removed`)
-    } else {
-      removed = this.cache.size
-      this.cache.clear()
-      console.log(`📦 Cache INVALIDATE all: ${removed} entries removed`)
     }
-
-    return removed
   }
 
-  getStats(): CacheStats {
+  // Limpiar cache expirado
+  cleanup(): void {
     const now = Date.now()
-    const entries = Array.from(this.cache.values())
+    let cleaned = 0
 
-    const stats: CacheStats = {
-      totalEntries: entries.length,
-      freshEntries: 0,
-      expiredEntries: 0,
-      entries: [],
-    }
-
-    entries.forEach((entry) => {
-      const age = now - entry.timestamp
-      const isExpired = age > entry.ttl
-      const isFresh = age < entry.ttl - 30000
-
-      if (isExpired) {
-        stats.expiredEntries++
-      } else if (isFresh) {
-        stats.freshEntries++
-      }
-
-      stats.entries.push({
-        key: entry.key,
-        age,
-        fresh: isFresh && !isExpired,
-        size: JSON.stringify(entry.data).length,
-      })
-    })
-
-    return stats
-  }
-
-  // Limpieza automática de entradas expiradas
-  cleanup(): number {
-    const now = Date.now()
-    let removed = 0
-
-    for (const [key, entry] of this.cache) {
-      const age = now - entry.timestamp
-      if (age > entry.ttl) {
+    for (const [key, entry] of this.cache.entries()) {
+      if (now - entry.timestamp > entry.ttl) {
         this.cache.delete(key)
-        removed++
+        cleaned++
       }
     }
 
-    if (removed > 0) {
-      console.log(`📦 Cache CLEANUP: ${removed} expired entries removed`)
+    if (cleaned > 0) {
+      console.log(`🧹 Cache limpiado: ${cleaned} entradas eliminadas`)
     }
+  }
 
-    return removed
+  // Obtener estadísticas del cache
+  getStats() {
+    const now = Date.now()
+    const entries = Array.from(this.cache.entries()).map(([key, entry]) => ({
+      key,
+      age: Math.round((now - entry.timestamp) / 1000),
+      ttl: Math.round(entry.ttl / 1000),
+      fresh: now - entry.timestamp < entry.ttl,
+    }))
+
+    return {
+      totalEntries: this.cache.size,
+      subscribers: this.subscribers.size,
+      entries,
+    }
+  }
+
+  // Invalidar cache específico
+  invalidate(key: string): void {
+    this.cache.delete(key)
+    console.log(`❌ Cache invalidado: ${key}`)
+  }
+
+  // Limpiar todo el cache
+  clear(): void {
+    this.cache.clear()
+    this.subscribers.clear()
+    console.log("🗑️ Todo el cache limpiado")
   }
 }
 
-// Instancia singleton del cache
-const cacheManager = new CacheManager()
+// Instancia singleton del cache manager
+export const cacheManager = new CacheManager()
 
-// Limpieza automática cada 5 minutos
-if (typeof window === "undefined") {
-  // Solo en el servidor
-  setInterval(
-    () => {
-      cacheManager.cleanup()
-    },
-    5 * 60 * 1000,
-  )
+// Limpiar cache expirado cada 2 minutos
+if (typeof window !== "undefined") {
+  setInterval(() => {
+    cacheManager.cleanup()
+  }, 120000) // 2 minutos
 }
 
-// Funciones de conveniencia
-export function setCache<T>(key: string, data: T, ttl?: number): void {
-  cacheManager.set(key, data, ttl)
-}
+// Claves de cache predefinidas
+export const CACHE_KEYS = {
+  ESTADO_SISTEMA: "estado_sistema",
+  ESTADISTICAS: "estadisticas",
+  BACKUPS: "backups",
+  DEBUG_INFO: "debug_info",
+} as const
 
-export function getCache<T>(key: string): T | null {
-  return cacheManager.get<T>(key)
-}
+// Utilidades para trabajar con el cache
+export const cacheUtils = {
+  // Obtener estado del sistema con cache
+  getEstadoSistema: (): EstadoSistemaCache | null => {
+    return cacheManager.get<EstadoSistemaCache>(CACHE_KEYS.ESTADO_SISTEMA)
+  },
 
-export function hasCache(key: string): boolean {
-  return cacheManager.has(key)
-}
+  // Establecer estado del sistema en cache
+  setEstadoSistema: (estado: EstadoSistemaCache, ttl?: number): void => {
+    cacheManager.set(CACHE_KEYS.ESTADO_SISTEMA, estado, ttl)
+  },
 
-export function deleteCache(key: string): boolean {
-  return cacheManager.delete(key)
-}
+  // Verificar si el estado está fresco
+  isEstadoFresh: (maxAge?: number): boolean => {
+    return cacheManager.isFresh(CACHE_KEYS.ESTADO_SISTEMA, maxAge)
+  },
 
-export function clearCache(): void {
-  cacheManager.clear()
+  // Suscribirse a cambios del estado
+  subscribeToEstado: (callback: (estado: EstadoSistemaCache) => void) => {
+    return cacheManager.subscribe(CACHE_KEYS.ESTADO_SISTEMA, callback)
+  },
 }
-
-export function invalidateCache(pattern?: string): number {
-  return cacheManager.invalidate(pattern)
-}
-
-export function getCacheStats(): CacheStats {
-  return cacheManager.getStats()
-}
-
-export default cacheManager

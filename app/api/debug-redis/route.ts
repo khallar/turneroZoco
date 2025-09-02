@@ -47,11 +47,34 @@ export async function GET() {
         retries: 3,
         backoff: (retryCount) => Math.exp(retryCount) * 50,
       },
+      automaticDeserialization: true,
     })
 
-    // Escanear todas las claves con prefijo TURNOS_ZOCO
-    const allKeys: string[] = []
+    // Buscar todas las claves relacionadas con TURNOS_ZOCO
+    const prefijos = [
+      "TURNOS_ZOCO:estado:",
+      "TURNOS_ZOCO:tickets:",
+      "TURNOS_ZOCO:backup:",
+      "TURNOS_ZOCO:counter:",
+      "TURNOS_ZOCO:logs",
+    ]
+
+    const resultados = {
+      configuracion: redisConfig.name,
+      timestamp: new Date().toISOString(),
+      estadosDiarios: 0,
+      listasTickets: 0,
+      backups: 0,
+      contadores: 0,
+      logs: 0,
+      fechasEncontradas: new Set<string>(),
+      detallesClaves: [],
+      totalClaves: 0,
+    }
+
+    // Usar SCAN para obtener todas las claves de forma eficiente
     let cursor = 0
+    const todasLasClaves: string[] = []
 
     do {
       const result = await redis.scan(cursor, {
@@ -62,100 +85,94 @@ export async function GET() {
       if (Array.isArray(result) && result.length >= 2) {
         cursor = result[0] as number
         const keys = result[1] as string[]
-        allKeys.push(...keys)
+        todasLasClaves.push(...keys)
       } else {
         break
       }
     } while (cursor !== 0)
 
-    console.log(`🔍 Encontradas ${allKeys.length} claves con prefijo TURNOS_ZOCO`)
+    console.log(`🔍 Encontradas ${todasLasClaves.length} claves con prefijo TURNOS_ZOCO`)
 
-    // Categorizar las claves
-    const estadosDiarios = allKeys.filter((key) => key.includes(":estado:")).length
-    const listasTickets = allKeys.filter((key) => key.includes(":tickets:")).length
-    const backups = allKeys.filter((key) => key.includes(":backup:")).length
-    const contadores = allKeys.filter((key) => key.includes(":counter:")).length
-    const logs = allKeys.filter((key) => key.includes(":logs")).length
-
-    // Extraer fechas únicas
-    const fechasEncontradas = new Set<string>()
-    allKeys.forEach((key) => {
-      const match = key.match(/(\d{4}-\d{2}-\d{2})/)
-      if (match) {
-        fechasEncontradas.add(match[1])
-      }
-    })
-
-    // Obtener información detallada de algunas claves
-    const detallesClaves = []
-    for (const key of allKeys.slice(0, 20)) {
-      // Limitar a 20 para evitar timeouts
+    // Analizar cada clave
+    for (const clave of todasLasClaves) {
       try {
-        const tipo = await redis.type(key)
+        // Obtener información de la clave
+        const tipo = await redis.type(clave)
         let tamaño = 0
 
         if (tipo === "string") {
-          const valor = await redis.get(key)
+          const valor = await redis.get(clave)
           tamaño = JSON.stringify(valor).length
         } else if (tipo === "list") {
-          tamaño = await redis.llen(key)
+          tamaño = await redis.llen(clave)
         }
 
-        detallesClaves.push({
-          clave: key,
+        // Clasificar por tipo
+        if (clave.includes(":estado:")) {
+          resultados.estadosDiarios++
+          const fecha = clave.split(":estado:")[1]
+          if (fecha && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            resultados.fechasEncontradas.add(fecha)
+          }
+        } else if (clave.includes(":tickets:")) {
+          resultados.listasTickets++
+          const fecha = clave.split(":tickets:")[1]
+          if (fecha && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            resultados.fechasEncontradas.add(fecha)
+          }
+        } else if (clave.includes(":backup:")) {
+          resultados.backups++
+          const fecha = clave.split(":backup:")[1]
+          if (fecha && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            resultados.fechasEncontradas.add(fecha)
+          }
+        } else if (clave.includes(":counter:")) {
+          resultados.contadores++
+          const fecha = clave.split(":counter:")[1]
+          if (fecha && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            resultados.fechasEncontradas.add(fecha)
+          }
+        } else if (clave.includes(":logs")) {
+          resultados.logs++
+        }
+
+        // Agregar detalles de la clave
+        resultados.detallesClaves.push({
+          clave,
           tipo,
           tamaño,
+          categoria: clave.includes(":estado:")
+            ? "Estado"
+            : clave.includes(":tickets:")
+              ? "Tickets"
+              : clave.includes(":backup:")
+                ? "Backup"
+                : clave.includes(":counter:")
+                  ? "Contador"
+                  : "Logs",
         })
       } catch (error) {
-        console.error(`Error al inspeccionar clave ${key}:`, error)
-        detallesClaves.push({
-          clave: key,
-          tipo: "error",
-          tamaño: 0,
-          error: error instanceof Error ? error.message : "Error desconocido",
-        })
+        console.error(`Error analizando clave ${clave}:`, error)
       }
     }
 
-    // Verificar conectividad básica
-    const pingResult = await redis.ping()
+    resultados.totalClaves = todasLasClaves.length
+    resultados.fechasEncontradas = Array.from(resultados.fechasEncontradas).sort()
 
-    const resultado = {
-      success: true,
-      conexion: {
-        configuracion: redisConfig.name,
-        ping: pingResult,
-        timestamp: new Date().toISOString(),
-      },
-      resumen: {
-        totalClaves: allKeys.length,
-        estadosDiarios,
-        listasTickets,
-        backups,
-        contadores,
-        logs,
-        fechasEncontradas: Array.from(fechasEncontradas).sort(),
-      },
-      detallesClaves: detallesClaves,
-      clavesCompletas: allKeys.slice(0, 50), // Mostrar solo las primeras 50
-      diagnostico: {
-        hayDatos: allKeys.length > 0,
-        hayBackups: backups > 0,
-        hayEstados: estadosDiarios > 0,
-        hayTickets: listasTickets > 0,
-        fechasConDatos: Array.from(fechasEncontradas).length,
-      },
-    }
+    console.log("📊 Resumen de inspección:")
+    console.log(`  - Estados diarios: ${resultados.estadosDiarios}`)
+    console.log(`  - Listas de tickets: ${resultados.listasTickets}`)
+    console.log(`  - Backups: ${resultados.backups}`)
+    console.log(`  - Contadores: ${resultados.contadores}`)
+    console.log(`  - Fechas encontradas: ${resultados.fechasEncontradas.length}`)
 
-    console.log("✅ Inspección de Redis completada")
-    return NextResponse.json(resultado)
+    return NextResponse.json(resultados)
   } catch (error) {
-    console.error("❌ Error al inspeccionar Redis:", error)
+    console.error("❌ Error en inspección de Redis:", error)
     return NextResponse.json(
       {
-        success: false,
         error: "Error al inspeccionar Redis",
-        message: error instanceof Error ? error.message : "Error desconocido",
+        details: error instanceof Error ? error.message : "Error desconocido",
         timestamp: new Date().toISOString(),
       },
       { status: 500 },
