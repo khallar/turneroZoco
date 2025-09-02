@@ -589,37 +589,119 @@ function calcularMetricasParaBackup(estado: EstadoSistema & { tickets: TicketInf
   }
 }
 
+// FUNCIÓN MEJORADA: obtenerBackups con mejor manejo de errores y más datos
 export async function obtenerBackups(): Promise<any[]> {
   try {
-    // NOTA: KEYS puede ser lento en bases de datos muy grandes.
-    // Para un número limitado de backups (ej. 30-60 días), es aceptable.
-    const allKeys = await redis.keys(BACKUP_KEY_PREFIX + "*")
+    console.log("📋 Obteniendo lista de backups desde TURNOS_ZOCO (Upstash Redis)...")
+
+    // MEJORADO: Usar SCAN en lugar de KEYS para mejor rendimiento
+    const allKeys: string[] = []
+    let cursor = 0
+
+    do {
+      const result = await redis.scan(cursor, {
+        match: BACKUP_KEY_PREFIX + "*",
+        count: 100,
+      })
+
+      if (Array.isArray(result) && result.length >= 2) {
+        cursor = result[0] as number
+        const keys = result[1] as string[]
+        allKeys.push(...keys)
+      } else {
+        break
+      }
+    } while (cursor !== 0)
+
+    console.log(`🔍 Encontradas ${allKeys.length} claves de backup`)
+
+    if (allKeys.length === 0) {
+      console.log("⚠️ No se encontraron backups")
+      return []
+    }
+
     const backups: any[] = []
 
-    // OPTIMIZACIÓN: Obtener todos los backups en una sola operación MULTI/EXEC si es posible
-    if (allKeys.length > 0) {
-      const multi = redis.multi()
-      for (const key of allKeys) {
-        multi.get(key)
-      }
-      const results = await multi.exec()
+    // MEJORADO: Procesar en lotes para evitar timeouts
+    const batchSize = 10
+    for (let i = 0; i < allKeys.length; i += batchSize) {
+      const batch = allKeys.slice(i, i + batchSize)
+      console.log(`📦 Procesando lote ${Math.floor(i / batchSize) + 1}/${Math.ceil(allKeys.length / batchSize)}`)
 
-      if (Array.isArray(results)) {
-        results.forEach((backup: any) => {
-          if (backup && typeof backup === "object" && "resumen" in backup) {
-            backups.push({
-              fecha: backup.fecha,
-              resumen: backup.resumen,
-              createdAt: backup.horaBackup, // Usar la hora de backup como created_at
-            })
-          }
-        })
+      try {
+        const multi = redis.multi()
+        for (const key of batch) {
+          multi.get(key)
+        }
+        const results = await multi.exec()
+
+        if (Array.isArray(results)) {
+          results.forEach((backup: any, index) => {
+            if (backup && typeof backup === "object") {
+              // Extraer fecha de la clave
+              const fecha = batch[index].replace(BACKUP_KEY_PREFIX, "")
+
+              // Validar que la fecha sea válida
+              if (fecha && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                const backupProcessed = {
+                  fecha: backup.fecha || fecha,
+                  resumen: backup.resumen || {
+                    totalTicketsEmitidos: 0,
+                    totalTicketsAtendidos: 0,
+                    ticketsPendientes: 0,
+                    eficienciaDiaria: 0,
+                    primerTicket: 0,
+                    ultimoTicket: 0,
+                    tiempoPromedioEsperaReal: 0,
+                    horaPico: { hora: 0, cantidad: 0, porcentaje: 0 },
+                  },
+                  createdAt:
+                    backup.resumen?.horaBackup || backup.estadoFinal?.ultimoReinicio || new Date().toISOString(),
+                  // Agregar información adicional para debugging
+                  _debug: {
+                    keyOriginal: batch[index],
+                    fechaExtraida: fecha,
+                    tieneResumen: !!backup.resumen,
+                    tieneTickets: !!(backup.tickets && backup.tickets.length > 0),
+                    cantidadTickets: backup.tickets ? backup.tickets.length : 0,
+                  },
+                }
+
+                backups.push(backupProcessed)
+                console.log(`✅ Backup procesado: ${fecha} (${backupProcessed.resumen.totalTicketsEmitidos} tickets)`)
+              } else {
+                console.log(`⚠️ Fecha inválida en clave: ${batch[index]}`)
+              }
+            } else {
+              console.log(`⚠️ Backup inválido en posición ${index}`)
+            }
+          })
+        }
+      } catch (batchError) {
+        console.error(`❌ Error procesando lote:`, batchError)
+        // Continuar con el siguiente lote
       }
     }
 
-    backups.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+    // Ordenar por fecha (más reciente primero)
+    backups.sort((a, b) => {
+      const fechaA = new Date(a.fecha).getTime()
+      const fechaB = new Date(b.fecha).getTime()
+      return fechaB - fechaA
+    })
 
-    return backups.slice(0, 30) // Limitar a los últimos 30
+    console.log(`✅ Total de backups procesados: ${backups.length}`)
+
+    // Log de resumen para debugging
+    if (backups.length > 0) {
+      console.log("📊 Resumen de backups:")
+      backups.slice(0, 5).forEach((backup) => {
+        console.log(`  - ${backup.fecha}: ${backup.resumen.totalTicketsEmitidos} tickets emitidos`)
+      })
+    }
+
+    // Limitar a los últimos 60 días para evitar problemas de memoria
+    return backups.slice(0, 60)
   } catch (error) {
     console.error("❌ Error al obtener backups desde TURNOS_ZOCO (Upstash Redis):", error)
     return []
@@ -628,10 +710,19 @@ export async function obtenerBackups(): Promise<any[]> {
 
 export async function obtenerBackup(fecha: string): Promise<any | null> {
   try {
+    console.log(`📋 Obteniendo backup específico para fecha: ${fecha}`)
     const backupKey = BACKUP_KEY_PREFIX + fecha
+
     // OPTIMIZACIÓN: GET es una operación de lectura directa y eficiente.
     const backup = await redis.get(backupKey)
-    return backup || null
+
+    if (backup) {
+      console.log(`✅ Backup encontrado para ${fecha}`)
+      return backup
+    } else {
+      console.log(`⚠️ No se encontró backup para ${fecha}`)
+      return null
+    }
   } catch (error) {
     console.error("❌ Error al obtener backup desde TURNOS_ZOCO (Upstash Redis):", error)
     return null
