@@ -196,6 +196,32 @@ export async function POST(request: NextRequest) {
       // No es necesario escribir el estado aquí, se hará si la acción lo requiere
     }
 
+    // NUEVA ACCIÓN: Crear backup manual
+    if (action === "CREAR_BACKUP_MANUAL") {
+      try {
+        console.log("📦 Creando backup manual del día actual...")
+
+        // Crear backup con el estado actual
+        await crearBackupDiario(estado)
+
+        return NextResponse.json({
+          mensaje: "Backup creado exitosamente",
+          fecha: estado.fechaInicio,
+          ticketsIncluidos: estado.totalAtendidos,
+          timestamp: new Date().toISOString(),
+        })
+      } catch (error) {
+        console.error("❌ Error al crear backup manual:", error)
+        return NextResponse.json(
+          {
+            error: "Error al crear backup manual",
+            details: error instanceof Error ? error.message : "Error desconocido",
+          },
+          { status: 500 },
+        )
+      }
+    }
+
     // Acción especial para generar ticket de forma atómica - OPTIMIZADA
     if (action === "GENERAR_TICKET") {
       const { nombre } = body
