@@ -403,9 +403,17 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
           estado.totalAtendidos > 0 ? Math.round((estado.numerosLlamados / estado.totalAtendidos) * 100) : 0,
         proyeccionCumplida: metricas.proyeccionCumplida,
         nombresComunes: metricas.nombresComunes,
+        // NUEVOS DATOS DE RESUMEN DETALLADO
+        inicioOperaciones: estado.tickets[0]?.fecha || estado.fechaInicio,
+        finOperaciones: estado.tickets[estado.tickets.length - 1]?.fecha || new Date().toISOString(),
+        duracionOperaciones: metricas.duracionOperaciones,
+        ticketsPorHora: Math.round((estado.totalAtendidos / Math.max(metricas.duracionOperaciones, 1)) * 10) / 10,
+        clientesUnicos: metricas.nombresUnicos,
+        clientesRecurrentes: metricas.clientesRecurrentes,
+        promedioCaracteresPorNombre: metricas.promedioCaracteresPorNombre,
       },
       tickets: estado.tickets, // Incluye el array completo de tickets en el backup
-      // DATOS DETALLADOS PARA DESCARGA
+      // DATOS DETALLADOS PARA DESCARGA Y ANÁLISIS
       datosDetallados: {
         ticketsPorHora: metricas.distribucionPorHora,
         analisisTemporal: {
@@ -414,17 +422,33 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
           duracionTotal: metricas.duracionOperaciones,
           horasPico: metricas.horasPico,
           horasMinimas: metricas.horasMinimas,
+          distribucionCompleta: metricas.distribucionPorHora,
         },
         estadisticasClientes: {
           nombresUnicos: metricas.nombresUnicos,
           clientesRecurrentes: metricas.clientesRecurrentes,
           promedioCaracteresPorNombre: metricas.promedioCaracteresPorNombre,
+          top10Nombres: metricas.nombresComunes.slice(0, 10),
         },
         rendimiento: {
           tiempoPromedioEsperaReal: metricas.tiempoEsperaReal,
           velocidadAtencion: metricas.velocidadAtencion,
           eficienciaOperativa: metricas.eficienciaOperativa,
           tiempoEntreTickets: metricas.tiempoEntreTickets,
+          proyeccionCumplida: metricas.proyeccionCumplida,
+        },
+        // NUEVOS ANÁLISIS AGREGADOS
+        analisisComparativo: {
+          vs_promedio_historico: 0, // Se calculará cuando tengamos más días
+          tendencia_semanal: "estable",
+          mejora_eficiencia: 0,
+        },
+        metadatos: {
+          version_backup: "6.0",
+          timestamp_creacion: Date.now(),
+          dia_semana: new Date(estado.fechaInicio).toLocaleDateString("es-AR", { weekday: "long" }),
+          mes: new Date(estado.fechaInicio).toLocaleDateString("es-AR", { month: "long", year: "numeric" }),
+          es_fin_de_semana: [0, 6].includes(new Date(estado.fechaInicio).getDay()),
         },
       },
     }
@@ -872,6 +896,263 @@ export async function obtenerBackup(fecha: string): Promise<any | null> {
   } catch (error) {
     console.error("❌ Error al obtener backup desde TURNOS_ZOCO (Upstash Redis):", error)
     return null
+  }
+}
+
+// NUEVA FUNCIÓN: Obtener resumen consolidado de días anteriores
+export async function obtenerResumenDiasAnteriores(): Promise<{
+  resumenGeneral: any
+  datosPorDia: any[]
+  tendencias: any
+  comparativas: any
+}> {
+  try {
+    console.log("📊 Generando resumen consolidado de días anteriores...")
+
+    const backups = await obtenerBackups()
+
+    if (backups.length === 0) {
+      return {
+        resumenGeneral: {
+          totalDias: 0,
+          totalTicketsHistoricos: 0,
+          promedioTicketsPorDia: 0,
+          mejorDia: null,
+          peorDia: null,
+        },
+        datosPorDia: [],
+        tendencias: {
+          tendenciaGeneral: "sin_datos",
+          crecimientoSemanal: 0,
+          eficienciaPromedio: 0,
+        },
+        comparativas: {
+          diasMasActivos: [],
+          horasPicoGlobales: {},
+          clientesMasFrecuentes: [],
+        },
+      }
+    }
+
+    // RESUMEN GENERAL
+    const totalDias = backups.length
+    const totalTicketsHistoricos = backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0)
+    const totalTicketsAtendidos = backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0), 0)
+    const promedioTicketsPorDia = Math.round(totalTicketsHistoricos / totalDias)
+    const promedioAtendidosPorDia = Math.round(totalTicketsAtendidos / totalDias)
+
+    // Encontrar mejor y peor día
+    const mejorDia = backups.reduce((mejor, backup) => {
+      const emitidos = backup.resumen?.totalTicketsEmitidos || 0
+      const mejorEmitidos = mejor?.resumen?.totalTicketsEmitidos || 0
+      return emitidos > mejorEmitidos ? backup : mejor
+    }, null)
+
+    const peorDia = backups.reduce((peor, backup) => {
+      const emitidos = backup.resumen?.totalTicketsEmitidos || 0
+      const peorEmitidos = peor?.resumen?.totalTicketsEmitidos || Number.POSITIVE_INFINITY
+      return emitidos < peorEmitidos ? backup : peor
+    }, null)
+
+    // ANÁLISIS DE TENDENCIAS
+    const mitad = Math.floor(backups.length / 2)
+    const diasRecientes = backups.slice(0, mitad) // Más recientes
+    const diasAntiguos = backups.slice(mitad) // Más antiguos
+
+    const promedioReciente =
+      diasRecientes.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) / diasRecientes.length
+    const promedioAntiguo =
+      diasAntiguos.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) / diasAntiguos.length
+
+    let tendenciaGeneral = "estable"
+    let crecimientoSemanal = 0
+    if (promedioReciente > promedioAntiguo * 1.1) {
+      tendenciaGeneral = "creciente"
+      crecimientoSemanal = Math.round(((promedioReciente - promedioAntiguo) / promedioAntiguo) * 100)
+    } else if (promedioReciente < promedioAntiguo * 0.9) {
+      tendenciaGeneral = "decreciente"
+      crecimientoSemanal = Math.round(((promedioReciente - promedioAntiguo) / promedioAntiguo) * 100)
+    }
+
+    const eficienciaPromedio =
+      totalTicketsHistoricos > 0 ? Math.round((totalTicketsAtendidos / totalTicketsHistoricos) * 100) : 0
+
+    // ANÁLISIS POR DÍA DE LA SEMANA
+    const datosPorDiaSemana = {}
+    const datosPorMes = {}
+    const horasPicoGlobales = {}
+    const clientesGlobales = {}
+
+    backups.forEach((backup) => {
+      const fecha = new Date(backup.fecha)
+      const diaSemana = fecha.toLocaleDateString("es-AR", { weekday: "long" })
+      const mes = fecha.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+
+      // Análisis por día de la semana
+      if (!datosPorDiaSemana[diaSemana]) {
+        datosPorDiaSemana[diaSemana] = {
+          totalTickets: 0,
+          totalDias: 0,
+          promedio: 0,
+          eficienciaPromedio: 0,
+        }
+      }
+      datosPorDiaSemana[diaSemana].totalTickets += backup.resumen?.totalTicketsEmitidos || 0
+      datosPorDiaSemana[diaSemana].totalDias += 1
+      datosPorDiaSemana[diaSemana].eficienciaPromedio += backup.resumen?.eficienciaDiaria || 0
+
+      // Análisis por mes
+      if (!datosPorMes[mes]) {
+        datosPorMes[mes] = {
+          totalTickets: 0,
+          totalDias: 0,
+          promedio: 0,
+        }
+      }
+      datosPorMes[mes].totalTickets += backup.resumen?.totalTicketsEmitidos || 0
+      datosPorMes[mes].totalDias += 1
+
+      // Horas pico globales
+      if (backup.resumen?.distribucionPorHora) {
+        Object.entries(backup.resumen.distribucionPorHora).forEach(([hora, cantidad]) => {
+          horasPicoGlobales[hora] = (horasPicoGlobales[hora] || 0) + cantidad
+        })
+      }
+
+      // Clientes más frecuentes globalmente
+      if (backup.resumen?.nombresComunes) {
+        backup.resumen.nombresComunes.forEach((item) => {
+          const nombre = typeof item === "object" ? item.nombre : item[0]
+          const cantidad = typeof item === "object" ? item.cantidad : item[1]
+          clientesGlobales[nombre] = (clientesGlobales[nombre] || 0) + cantidad
+        })
+      }
+    })
+
+    // Calcular promedios
+    Object.keys(datosPorDiaSemana).forEach((dia) => {
+      const data = datosPorDiaSemana[dia]
+      data.promedio = Math.round(data.totalTickets / data.totalDias)
+      data.eficienciaPromedio = Math.round(data.eficienciaPromedio / data.totalDias)
+    })
+
+    Object.keys(datosPorMes).forEach((mes) => {
+      const data = datosPorMes[mes]
+      data.promedio = Math.round(data.totalTickets / data.totalDias)
+    })
+
+    // Top clientes globales
+    const clientesMasFrecuentes = Object.entries(clientesGlobales)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 15)
+      .map(([nombre, cantidad]) => ({
+        nombre,
+        cantidad,
+        porcentaje: Math.round((cantidad / totalTicketsHistoricos) * 100),
+      }))
+
+    // Días más activos
+    const diasMasActivos = [...backups]
+      .sort((a, b) => (b.resumen?.totalTicketsEmitidos || 0) - (a.resumen?.totalTicketsEmitidos || 0))
+      .slice(0, 10)
+      .map((backup) => ({
+        fecha: backup.fecha,
+        diaSemana: new Date(backup.fecha).toLocaleDateString("es-AR", { weekday: "long" }),
+        ticketsEmitidos: backup.resumen?.totalTicketsEmitidos || 0,
+        ticketsAtendidos: backup.resumen?.totalTicketsAtendidos || 0,
+        eficiencia: backup.resumen?.eficienciaDiaria || 0,
+        horaPico: backup.resumen?.horaPico || { hora: 0, cantidad: 0 },
+      }))
+
+    const resumenGeneral = {
+      totalDias,
+      totalTicketsHistoricos,
+      totalTicketsAtendidos,
+      promedioTicketsPorDia,
+      promedioAtendidosPorDia,
+      eficienciaPromedioGeneral: eficienciaPromedio,
+      mejorDia: mejorDia
+        ? {
+            fecha: mejorDia.fecha,
+            ticketsEmitidos: mejorDia.resumen?.totalTicketsEmitidos || 0,
+            eficiencia: mejorDia.resumen?.eficienciaDiaria || 0,
+          }
+        : null,
+      peorDia: peorDia
+        ? {
+            fecha: peorDia.fecha,
+            ticketsEmitidos: peorDia.resumen?.totalTicketsEmitidos || 0,
+            eficiencia: peorDia.resumen?.eficienciaDiaria || 0,
+          }
+        : null,
+      rangoFechas: {
+        desde: backups[backups.length - 1]?.fecha || "N/A",
+        hasta: backups[0]?.fecha || "N/A",
+      },
+    }
+
+    const tendencias = {
+      tendenciaGeneral,
+      crecimientoSemanal,
+      eficienciaPromedio,
+      datosPorDiaSemana,
+      datosPorMes,
+      analisisTemporalGlobal: {
+        promedioReciente: Math.round(promedioReciente),
+        promedioAntiguo: Math.round(promedioAntiguo),
+        diferencia: Math.round(promedioReciente - promedioAntiguo),
+      },
+    }
+
+    const comparativas = {
+      diasMasActivos,
+      horasPicoGlobales: Object.entries(horasPicoGlobales)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 8)
+        .map(([hora, cantidad]) => ({
+          hora: `${hora}:00`,
+          cantidad,
+          porcentaje: Math.round((cantidad / totalTicketsHistoricos) * 100),
+        })),
+      clientesMasFrecuentes,
+    }
+
+    const datosPorDia = backups.map((backup) => ({
+      fecha: backup.fecha,
+      diaSemana: new Date(backup.fecha).toLocaleDateString("es-AR", { weekday: "long" }),
+      mes: new Date(backup.fecha).toLocaleDateString("es-AR", { month: "long" }),
+      ticketsEmitidos: backup.resumen?.totalTicketsEmitidos || 0,
+      ticketsAtendidos: backup.resumen?.totalTicketsAtendidos || 0,
+      ticketsPendientes: backup.resumen?.ticketsPendientes || 0,
+      eficiencia: backup.resumen?.eficienciaDiaria || 0,
+      horaPico: backup.resumen?.horaPico || { hora: 0, cantidad: 0 },
+      tiempoEsperaReal: backup.resumen?.tiempoPromedioEsperaReal || 0,
+      velocidadAtencion: backup.resumen?.velocidadAtencion || 0,
+      clientesUnicos: backup.resumen?.clientesUnicos || 0,
+      duracionOperaciones: backup.resumen?.duracionOperaciones || 0,
+      // Comparativa con promedio
+      vsPromedio: {
+        tickets: (backup.resumen?.totalTicketsEmitidos || 0) - promedioTicketsPorDia,
+        eficiencia: (backup.resumen?.eficienciaDiaria || 0) - eficienciaPromedio,
+      },
+    }))
+
+    console.log(`✅ Resumen consolidado generado: ${totalDias} días, ${totalTicketsHistoricos} tickets históricos`)
+
+    return {
+      resumenGeneral,
+      datosPorDia,
+      tendencias,
+      comparativas,
+    }
+  } catch (error) {
+    console.error("❌ Error al generar resumen de días anteriores:", error)
+    return {
+      resumenGeneral: { error: "Error al cargar datos" },
+      datosPorDia: [],
+      tendencias: { error: "Error al calcular tendencias" },
+      comparativas: { error: "Error al generar comparativas" },
+    }
   }
 }
 

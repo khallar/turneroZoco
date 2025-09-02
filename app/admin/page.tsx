@@ -1005,7 +1005,7 @@ export default function PaginaAdmin() {
       csvLink.href = csvUrl
       csvLink.download = `ZOCO-HistorialConsolidado-${new Date().toISOString().split("T")[0]}.csv`
       document.body.appendChild(csvLink)
-      csvLink.click()
+      jsonLink.click()
       document.body.removeChild(csvLink)
       URL.revokeObjectURL(csvUrl)
 
@@ -1101,6 +1101,13 @@ export default function PaginaAdmin() {
             >
               <Eye className="mr-2 h-4 w-4" />
               Ver Próximos
+            </a>
+            <a
+              href="/resumen"
+              className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <BarChart3 className="mr-2 h-4 w-4" />
+              Resumen Histórico
             </a>
           </div>
         </div>
