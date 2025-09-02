@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { Redis } from "@upstash/redis"
 
 // Función para obtener las variables de entorno correctas
@@ -35,168 +35,181 @@ function getRedisConfig() {
   throw new Error("No se encontraron variables de entorno válidas para Upstash Redis")
 }
 
-export async function GET() {
+// Inicializar cliente Redis
+let redis: Redis
+try {
+  const redisConfig = getRedisConfig()
+  redis = new Redis({
+    url: redisConfig.url,
+    token: redisConfig.token,
+    retry: {
+      retries: 3,
+      backoff: (retryCount) => Math.exp(retryCount) * 50,
+    },
+    automaticDeserialization: true,
+  })
+} catch (error) {
+  console.error("❌ Error al inicializar cliente Redis:", error)
+  redis = new Redis({
+    url: "https://mock-redis.upstash.io",
+    token: "mock-token",
+  })
+}
+
+// Prefijos para las claves de Redis
+const STATE_KEY_PREFIX = "TURNOS_ZOCO:estado:"
+const TICKETS_LIST_KEY_PREFIX = "TURNOS_ZOCO:tickets:"
+const BACKUP_KEY_PREFIX = "TURNOS_ZOCO:backup:"
+const COUNTER_KEY_PREFIX = "TURNOS_ZOCO:counter:"
+
+export async function GET(request: NextRequest) {
   try {
     console.log("🔍 Iniciando diagnóstico de Redis...")
 
-    const redisConfig = getRedisConfig()
-    const redis = new Redis({
-      url: redisConfig.url,
-      token: redisConfig.token,
-      retry: {
-        retries: 2,
-        backoff: (retryCount) => Math.exp(retryCount) * 100,
-      },
-    })
+    // Escanear todas las claves con los prefijos del sistema
+    const allKeys: string[] = []
+    const prefixes = [STATE_KEY_PREFIX, TICKETS_LIST_KEY_PREFIX, BACKUP_KEY_PREFIX, COUNTER_KEY_PREFIX]
 
-    // Prefijos de claves
-    const STATE_KEY_PREFIX = "TURNOS_ZOCO:estado:"
-    const TICKETS_LIST_KEY_PREFIX = "TURNOS_ZOCO:tickets:"
-    const BACKUP_KEY_PREFIX = "TURNOS_ZOCO:backup:"
-    const COUNTER_KEY_PREFIX = "TURNOS_ZOCO:counter:"
+    for (const prefix of prefixes) {
+      let cursor = 0
+      do {
+        const result = await redis.scan(cursor, {
+          match: prefix + "*",
+          count: 100,
+        })
 
-    // Buscar todas las claves con cada prefijo
-    const [estadosKeys, ticketsKeys, backupsKeys, contadoresKeys] = await Promise.all([
-      redis.keys(STATE_KEY_PREFIX + "*"),
-      redis.keys(TICKETS_LIST_KEY_PREFIX + "*"),
-      redis.keys(BACKUP_KEY_PREFIX + "*"),
-      redis.keys(COUNTER_KEY_PREFIX + "*"),
-    ])
+        if (Array.isArray(result) && result.length >= 2) {
+          cursor = result[0] as number
+          const keys = result[1] as string[]
+          allKeys.push(...keys)
+        } else {
+          break
+        }
+      } while (cursor !== 0)
+    }
 
-    console.log("📊 Claves encontradas:")
-    console.log("- Estados:", estadosKeys.length)
-    console.log("- Tickets:", ticketsKeys.length)
-    console.log("- Backups:", backupsKeys.length)
-    console.log("- Contadores:", contadoresKeys.length)
+    console.log(`🔍 Total de claves encontradas: ${allKeys.length}`)
 
-    // Extraer fechas de las claves
+    // Clasificar las claves por tipo
+    const estadosDiarios = allKeys.filter((key) => key.startsWith(STATE_KEY_PREFIX))
+    const listasTickets = allKeys.filter((key) => key.startsWith(TICKETS_LIST_KEY_PREFIX))
+    const backups = allKeys.filter((key) => key.startsWith(BACKUP_KEY_PREFIX))
+    const contadores = allKeys.filter((key) => key.startsWith(COUNTER_KEY_PREFIX))
+
+    // Extraer fechas únicas
     const fechasEncontradas = new Set<string>()
 
-    // Extraer fechas de estados
-    estadosKeys.forEach((key) => {
-      const fecha = key.replace(STATE_KEY_PREFIX, "")
-      if (fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        fechasEncontradas.add(fecha)
+    allKeys.forEach((key) => {
+      // Extraer la fecha de la clave (formato YYYY-MM-DD al final)
+      const parts = key.split(":")
+      const lastPart = parts[parts.length - 1]
+      if (lastPart && lastPart.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        fechasEncontradas.add(lastPart)
       }
     })
-
-    // Extraer fechas de tickets
-    ticketsKeys.forEach((key) => {
-      const fecha = key.replace(TICKETS_LIST_KEY_PREFIX, "")
-      if (fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        fechasEncontradas.add(fecha)
-      }
-    })
-
-    // Extraer fechas de backups
-    backupsKeys.forEach((key) => {
-      const fecha = key.replace(BACKUP_KEY_PREFIX, "")
-      if (fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        fechasEncontradas.add(fecha)
-      }
-    })
-
-    // Extraer fechas de contadores
-    contadoresKeys.forEach((key) => {
-      const fecha = key.replace(COUNTER_KEY_PREFIX, "")
-      if (fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        fechasEncontradas.add(fecha)
-      }
-    })
-
-    const fechasArray = Array.from(fechasEncontradas).sort().reverse()
 
     // Obtener información detallada de algunos backups
-    const backupsDetalle = []
-    for (const key of backupsKeys.slice(0, 5)) {
-      try {
-        const backup = await redis.get(key)
-        if (backup && typeof backup === "object") {
-          const fecha = key.replace(BACKUP_KEY_PREFIX, "")
-          backupsDetalle.push({
-            fecha,
-            ticketsEmitidos: backup.resumen?.totalTicketsEmitidos || 0,
-            ticketsAtendidos: backup.resumen?.totalTicketsAtendidos || 0,
-            tieneTickets: !!(backup.tickets && backup.tickets.length > 0),
-            cantidadTickets: backup.tickets ? backup.tickets.length : 0,
-          })
-        }
-      } catch (error) {
-        console.error(`Error al obtener backup ${key}:`, error)
+    const backupDetails: any[] = []
+    const backupKeys = backups.slice(0, 5) // Solo los primeros 5 para no sobrecargar
+
+    if (backupKeys.length > 0) {
+      const multi = redis.multi()
+      for (const key of backupKeys) {
+        multi.get(key)
+      }
+      const results = await multi.exec()
+
+      if (Array.isArray(results)) {
+        results.forEach((backup: any, index) => {
+          if (backup && typeof backup === "object") {
+            const fecha = backupKeys[index].replace(BACKUP_KEY_PREFIX, "")
+            backupDetails.push({
+              fecha,
+              ticketsEmitidos: backup.resumen?.totalTicketsEmitidos || 0,
+              ticketsAtendidos: backup.resumen?.totalTicketsAtendidos || 0,
+              tieneTickets: !!(backup.tickets && backup.tickets.length > 0),
+              cantidadTickets: backup.tickets ? backup.tickets.length : 0,
+            })
+          }
+        })
       }
     }
 
-    // Información del día actual
-    const fechaHoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+    // Obtener información del día actual
+    const fechaHoy = new Date().toISOString().split("T")[0]
     const estadoHoyKey = STATE_KEY_PREFIX + fechaHoy
     const ticketsHoyKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
     const contadorHoyKey = COUNTER_KEY_PREFIX + fechaHoy
 
-    let estadoHoy = null
-    let ticketsHoy = []
-    let contadorHoy = 0
-
-    try {
-      const [estado, tickets, contador] = await Promise.all([
-        redis.get(estadoHoyKey),
-        redis.lrange(ticketsHoyKey, 0, -1),
-        redis.get(contadorHoyKey),
-      ])
-
-      estadoHoy = estado
-      ticketsHoy = Array.isArray(tickets) ? tickets : []
-      contadorHoy = typeof contador === "number" ? contador : 0
-    } catch (error) {
-      console.error("Error al obtener datos del día actual:", error)
-    }
+    const [estadoHoy, ticketsHoy, contadorHoy] = await redis
+      .multi()
+      .get(estadoHoyKey)
+      .llen(ticketsHoyKey)
+      .get(contadorHoyKey)
+      .exec()
 
     const diagnostico = {
-      timestamp: new Date().toISOString(),
-      configuracion: {
-        nombre: redisConfig.name,
-        endpoint: redisConfig.url.substring(0, 50) + "...",
-        region: redisConfig.url.includes("us1") ? "US East" : redisConfig.url.includes("eu1") ? "EU West" : "Global",
-      },
+      // Resumen general
       resumen: {
-        estadosDiarios: estadosKeys.length,
-        listasTickets: ticketsKeys.length,
-        backups: backupsKeys.length,
-        contadores: contadoresKeys.length,
-        totalClaves: estadosKeys.length + ticketsKeys.length + backupsKeys.length + contadoresKeys.length,
+        totalClaves: allKeys.length,
+        estadosDiarios: estadosDiarios.length,
+        listasTickets: listasTickets.length,
+        backups: backups.length,
+        contadores: contadores.length,
+        fechasUnicas: fechasEncontradas.size,
       },
-      fechasEncontradas: fechasArray,
-      backupsDetalle,
-      diaActual: {
+
+      // Fechas encontradas
+      fechasEncontradas: Array.from(fechasEncontradas).sort().reverse(),
+
+      // Detalles de backups
+      backupDetails,
+
+      // Estado del día actual
+      estadoHoy: {
         fecha: fechaHoy,
         tieneEstado: !!estadoHoy,
-        tieneTickets: ticketsHoy.length > 0,
-        cantidadTickets: ticketsHoy.length,
-        contador: contadorHoy,
-        estadoDetalle: estadoHoy
-          ? {
-              numeroActual: estadoHoy.numeroActual,
-              ultimoNumero: estadoHoy.ultimoNumero,
-              totalAtendidos: estadoHoy.totalAtendidos,
-              numerosLlamados: estadoHoy.numerosLlamados,
-            }
-          : null,
+        cantidadTickets: typeof ticketsHoy === "number" ? ticketsHoy : 0,
+        contador: typeof contadorHoy === "number" ? contadorHoy : 0,
+        estadoDetalle:
+          estadoHoy && typeof estadoHoy === "object"
+            ? {
+                totalAtendidos: estadoHoy.totalAtendidos || 0,
+                numerosLlamados: estadoHoy.numerosLlamados || 0,
+                numeroActual: estadoHoy.numeroActual || 0,
+                ultimoNumero: estadoHoy.ultimoNumero || 0,
+              }
+            : null,
       },
-      clavesEjemplo: {
-        estados: estadosKeys.slice(0, 3),
-        tickets: ticketsKeys.slice(0, 3),
-        backups: backupsKeys.slice(0, 3),
-        contadores: contadoresKeys.slice(0, 3),
+
+      // Claves por tipo (para debugging)
+      clavesPorTipo: {
+        estados: estadosDiarios,
+        tickets: listasTickets,
+        backups: backups,
+        contadores: contadores,
+      },
+
+      // Información de conexión
+      conexion: {
+        timestamp: new Date().toISOString(),
+        configuracion: "Redis conectado exitosamente",
       },
     }
 
-    console.log("✅ Diagnóstico completado")
+    console.log("✅ Diagnóstico completado:", {
+      totalClaves: diagnostico.resumen.totalClaves,
+      backups: diagnostico.resumen.backups,
+      fechas: diagnostico.resumen.fechasUnicas,
+    })
+
     return NextResponse.json(diagnostico)
   } catch (error) {
     console.error("❌ Error en diagnóstico de Redis:", error)
     return NextResponse.json(
       {
         error: "Error al diagnosticar Redis",
-        details: error instanceof Error ? error.message : "Error desconocido",
+        message: error instanceof Error ? error.message : "Error desconocido",
         timestamp: new Date().toISOString(),
       },
       { status: 500 },
