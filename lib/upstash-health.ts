@@ -1,157 +1,130 @@
-import type { Redis } from "@upstash/redis"
+import { Redis } from "@upstash/redis"
 
 interface HealthCheckResult {
-  status: "healthy" | "degraded" | "unhealthy"
-  responseTime: number
-  details: {
-    ping: boolean
-    read: boolean
-    write: boolean
-    delete: boolean
-    pipeline: boolean
-    region?: string
-    timestamp: string
-  }
-  errors: string[]
+  connected: boolean
+  latency?: number
+  error?: string
+  timestamp: string
+  config?: string
 }
 
-export async function performHealthCheck(redis: Redis): Promise<HealthCheckResult> {
-  const startTime = Date.now()
-  const errors: string[] = []
-  const details = {
-    ping: false,
-    read: false,
-    write: false,
-    delete: false,
-    pipeline: false,
-    timestamp: new Date().toISOString(),
+// Función para obtener configuración de Redis
+function getRedisConfig() {
+  const configs = [
+    {
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      name: "UPSTASH_REDIS_REST",
+    },
+    {
+      url: process.env.KV_REST_API_URL,
+      token: process.env.KV_REST_API_TOKEN,
+      name: "KV_REST_API",
+    },
+  ]
+
+  for (const config of configs) {
+    if (config.url && config.token) {
+      return config
+    }
   }
+
+  throw new Error("No Redis configuration found")
+}
+
+export async function checkUpstashHealth(): Promise<HealthCheckResult> {
+  const timestamp = new Date().toISOString()
 
   try {
-    // Test 1: Ping
-    try {
-      await redis.ping()
-      details.ping = true
-      console.log("✅ Upstash Ping: OK")
-    } catch (error) {
-      errors.push(`Ping failed: ${error}`)
-      console.log("❌ Upstash Ping: FAILED")
-    }
+    const config = getRedisConfig()
+    const redis = new Redis({
+      url: config.url,
+      token: config.token,
+    })
 
-    // Test 2: Write operation
-    const testKey = `TURNOS_ZOCO:health:${Date.now()}`
-    const testValue = `health_${Math.random()}`
+    const startTime = Date.now()
 
-    try {
-      await redis.set(testKey, testValue, { ex: 60 })
-      details.write = true
-      console.log("✅ Upstash Write: OK")
-    } catch (error) {
-      errors.push(`Write failed: ${error}`)
-      console.log("❌ Upstash Write: FAILED")
-    }
+    // Test básico de conectividad
+    const pingResult = await redis.ping()
 
-    // Test 3: Read operation
-    try {
-      const result = await redis.get(testKey)
-      if (result === testValue) {
-        details.read = true
-        console.log("✅ Upstash Read: OK")
-      } else {
-        errors.push(`Read mismatch: expected ${testValue}, got ${result}`)
-        console.log("❌ Upstash Read: MISMATCH")
+    const latency = Date.now() - startTime
+
+    if (pingResult === "PONG") {
+      return {
+        connected: true,
+        latency,
+        timestamp,
+        config: config.name,
       }
-    } catch (error) {
-      errors.push(`Read failed: ${error}`)
-      console.log("❌ Upstash Read: FAILED")
-    }
-
-    // Test 4: Delete operation
-    try {
-      await redis.del(testKey)
-      details.delete = true
-      console.log("✅ Upstash Delete: OK")
-    } catch (error) {
-      errors.push(`Delete failed: ${error}`)
-      console.log("❌ Upstash Delete: FAILED")
-    }
-
-    // Test 5: Pipeline operation
-    try {
-      const pipeline = redis.pipeline()
-      pipeline.set(`${testKey}:pipeline`, "test")
-      pipeline.get(`${testKey}:pipeline`)
-      pipeline.del(`${testKey}:pipeline`)
-
-      const results = await pipeline.exec()
-      if (Array.isArray(results) && results.length === 3) {
-        details.pipeline = true
-        console.log("✅ Upstash Pipeline: OK")
-      } else {
-        errors.push("Pipeline returned unexpected results")
-        console.log("❌ Upstash Pipeline: UNEXPECTED RESULTS")
+    } else {
+      return {
+        connected: false,
+        error: `Unexpected ping response: ${pingResult}`,
+        timestamp,
+        config: config.name,
       }
-    } catch (error) {
-      errors.push(`Pipeline failed: ${error}`)
-      console.log("❌ Upstash Pipeline: FAILED")
     }
   } catch (error) {
-    errors.push(`Health check failed: ${error}`)
-  }
-
-  const responseTime = Date.now() - startTime
-  const healthyChecks = Object.values(details).filter((v) => v === true).length
-  const totalChecks = Object.keys(details).length - 1 // Exclude timestamp
-
-  let status: "healthy" | "degraded" | "unhealthy"
-  if (healthyChecks === totalChecks) {
-    status = "healthy"
-  } else if (healthyChecks >= totalChecks * 0.6) {
-    status = "degraded"
-  } else {
-    status = "unhealthy"
-  }
-
-  console.log(`🏥 Health Check Complete: ${status.toUpperCase()} (${healthyChecks}/${totalChecks} checks passed)`)
-  console.log(`⚡ Response time: ${responseTime}ms`)
-
-  return {
-    status,
-    responseTime,
-    details,
-    errors,
+    return {
+      connected: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+      timestamp,
+    }
   }
 }
 
-export async function getUpstashInfo(): Promise<{
-  region: string
-  endpoint: string
-  ssl: boolean
-  version: string
+export async function testRedisOperations(): Promise<{
+  success: boolean
+  operations: Record<string, boolean>
+  error?: string
 }> {
   try {
-    // Extraer información de la URL de conexión
-    const url = process.env.KV_REST_API_URL || process.env.KV_REST_API_URL || ""
+    const config = getRedisConfig()
+    const redis = new Redis({
+      url: config.url,
+      token: config.token,
+    })
 
-    let region = "unknown"
-    if (url.includes("us1-")) region = "US East (Virginia)"
-    else if (url.includes("us2-")) region = "US West (Oregon)"
-    else if (url.includes("eu1-")) region = "EU West (Ireland)"
-    else if (url.includes("eu2-")) region = "EU Central (Frankfurt)"
-    else if (url.includes("ap1-")) region = "Asia Pacific (Singapore)"
+    const testKey = `health_check_${Date.now()}`
+    const testValue = "test_value"
+
+    const operations = {
+      ping: false,
+      set: false,
+      get: false,
+      del: false,
+    }
+
+    // Test PING
+    const pingResult = await redis.ping()
+    operations.ping = pingResult === "PONG"
+
+    // Test SET
+    await redis.set(testKey, testValue, { ex: 60 })
+    operations.set = true
+
+    // Test GET
+    const getValue = await redis.get(testKey)
+    operations.get = getValue === testValue
+
+    // Test DEL
+    await redis.del(testKey)
+    operations.del = true
 
     return {
-      region,
-      endpoint: url.replace(/^https?:\/\//, "").split("/")[0],
-      ssl: url.startsWith("https://"),
-      version: "REST API v1",
+      success: Object.values(operations).every(Boolean),
+      operations,
     }
   } catch (error) {
     return {
-      region: "unknown",
-      endpoint: "unknown",
-      ssl: false,
-      version: "unknown",
+      success: false,
+      operations: {
+        ping: false,
+        set: false,
+        get: false,
+        del: false,
+      },
+      error: error instanceof Error ? error.message : "Unknown error",
     }
   }
 }
