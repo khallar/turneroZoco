@@ -242,12 +242,14 @@ export default function PaginaAdmin() {
   }
 
   // Calcular estadísticas administrativas
+  // Calcular estadísticas administrativas - FIXED to handle null estado
   const calcularEstadisticasAdmin = () => {
-    if (!estado.tickets || estado.tickets.length === 0) {
+    // Handle null or undefined estado
+    if (!estado || !estado.tickets) {
       return {
         totalTicketsHistorico: 0,
         promedioTicketsPorDia: 0,
-        diasOperativos: 0,
+        diasOperativos: 1,
         eficienciaGeneral: 0,
         horasPicoGlobal: "Sin datos",
         ticketsPorHora: 0,
@@ -256,19 +258,21 @@ export default function PaginaAdmin() {
     }
 
     const ahora = new Date()
-    const inicioOperaciones = new Date(estado.fechaInicio)
+    const inicioOperaciones = new Date(estado.fechaInicio || ahora.toISOString())
     const diasOperativos = Math.max(
       1,
       Math.ceil((ahora.getTime() - inicioOperaciones.getTime()) / (1000 * 60 * 60 * 24)),
     )
 
-    const totalTicketsHistorico = estado.totalAtendidos + backups.length * 50
+    const totalTicketsHistorico = (estado.totalAtendidos || 0) + backups.length * 50
     const promedioTicketsPorDia = totalTicketsHistorico / diasOperativos
-    const eficienciaGeneral = estado.totalAtendidos > 0 ? (estado.numerosLlamados / estado.totalAtendidos) * 100 : 0
+    const eficienciaGeneral =
+      (estado.totalAtendidos || 0) > 0 ? ((estado.numerosLlamados || 0) / (estado.totalAtendidos || 0)) * 100 : 0
 
     const tiempoOperacion = (ahora.getTime() - inicioOperaciones.getTime()) / (1000 * 60 * 60)
-    const ticketsPorHora = tiempoOperacion > 0 ? estado.totalAtendidos / tiempoOperacion : 0
-    const tiempoPromedioGlobal = estado.numerosLlamados > 0 ? (tiempoOperacion * 60) / estado.numerosLlamados : 0
+    const ticketsPorHora = tiempoOperacion > 0 ? (estado.totalAtendidos || 0) / tiempoOperacion : 0
+    const tiempoPromedioGlobal =
+      (estado.numerosLlamados || 0) > 0 ? (tiempoOperacion * 60) / (estado.numerosLlamados || 0) : 0
 
     return {
       totalTicketsHistorico,
@@ -282,26 +286,40 @@ export default function PaginaAdmin() {
   }
 
   // MÉTRICAS AVANZADAS MEJORADAS
+  // MÉTRICAS AVANZADAS MEJORADAS - FIXED to handle null estado
   const calcularMetricasAvanzadas = () => {
-    if (!estado.tickets || estado.tickets.length === 0) {
+    // Handle null or undefined estado
+    if (!estado || !estado.tickets || estado.tickets.length === 0) {
       return {
         distribucionPorHora: {},
-        nombresComunes: {},
+        nombresComunes: [],
         tiempoEntreTickets: 0,
         velocidadAtencion: 0,
         tiempoEsperaReal: 0,
         horaPico: { hora: 0, cantidad: 0 },
         proyeccionDiaria: 0,
         eficienciaPorHora: {},
-        patronesUso: {},
-        metricsRendimiento: {},
-        analisisTendencias: {},
+        patronesUso: {
+          horaPico: 0,
+          horaMinima: 0,
+          promedioTicketsPorHora: 0,
+        },
+        metricsRendimiento: {
+          cacheHitRate: 0,
+          tiempoRespuestaPromedio: 0,
+          disponibilidadSistema: 1.0,
+        },
+        analisisTendencias: {
+          crecimientoDiario: 0,
+          tendenciaEficiencia: 0,
+          proyeccionDiaria: 0,
+        },
       }
     }
 
     const tickets = estado.tickets
     const ahora = new Date()
-    const inicioOperaciones = new Date(estado.fechaInicio)
+    const inicioOperaciones = new Date(estado.fechaInicio || ahora.toISOString())
 
     // 1. Distribución de tickets por hora del día
     const distribucionPorHora = {}
@@ -338,12 +356,12 @@ export default function PaginaAdmin() {
 
     // 4. Velocidad de atención (tickets atendidos por minuto)
     const tiempoOperacionMinutos = (ahora.getTime() - inicioOperaciones.getTime()) / (1000 * 60)
-    const velocidadAtencion = tiempoOperacionMinutos > 0 ? estado.numerosLlamados / tiempoOperacionMinutos : 0
+    const velocidadAtencion = tiempoOperacionMinutos > 0 ? (estado.numerosLlamados || 0) / tiempoOperacionMinutos : 0
 
     // 5. NUEVO: Tiempo de espera real promedio
     let tiempoEsperaReal = 0
-    if (estado.numerosLlamados > 0 && tickets.length > 0) {
-      const ticketsAtendidos = tickets.slice(0, estado.numerosLlamados)
+    if ((estado.numerosLlamados || 0) > 0 && tickets.length > 0) {
+      const ticketsAtendidos = tickets.slice(0, estado.numerosLlamados || 0)
       const tiemposEspera = []
 
       ticketsAtendidos.forEach((ticket, index) => {
@@ -352,7 +370,8 @@ export default function PaginaAdmin() {
         // fue llamado cuando se procesaron 'index + 1' tickets
         const tiempoEmision = ticket.timestamp || new Date(ticket.fecha).getTime()
         const tiempoEstimadoLlamada =
-          inicioOperaciones.getTime() + (index + 1) * (tiempoOperacionMinutos / estado.numerosLlamados) * 60 * 1000
+          inicioOperaciones.getTime() +
+          (index + 1) * (tiempoOperacionMinutos / (estado.numerosLlamados || 1)) * 60 * 1000
         const espera = (tiempoEstimadoLlamada - tiempoEmision) / 1000 / 60 // en minutos
         if (espera > 0) tiemposEspera.push(espera)
       })
@@ -376,8 +395,8 @@ export default function PaginaAdmin() {
     const minutosEnDia = 24 * 60
     const proyeccionDiaria =
       minutosTranscurridos > 0
-        ? Math.round((estado.totalAtendidos / minutosTranscurridos) * minutosEnDia)
-        : estado.totalAtendidos
+        ? Math.round(((estado.totalAtendidos || 0) / minutosTranscurridos) * minutosEnDia)
+        : estado.totalAtendidos || 0
 
     // 8. Eficiencia por hora
     const eficienciaPorHora = {}
@@ -385,7 +404,7 @@ export default function PaginaAdmin() {
       const ticketsHora = distribucionPorHora[hora]
       eficienciaPorHora[hora] = {
         emitidos: ticketsHora,
-        eficiencia: Math.round((ticketsHora / estado.totalAtendidos) * 100),
+        eficiencia: Math.round((ticketsHora / (estado.totalAtendidos || 1)) * 100),
       }
     })
 
@@ -393,7 +412,7 @@ export default function PaginaAdmin() {
     const patronesUso = {
       horaPico: horaPico.hora,
       horaMinima: Object.keys(distribucionPorHora).reduce((a, b) =>
-        distribucionPorHora[a] < distribucionPorHora[b] ? a : b,
+        (distribucionPorHora[a] || 0) < (distribucionPorHora[b] || 0) ? a : b,
       ),
       promedioTicketsPorHora:
         Object.values(distribucionPorHora).reduce((a, b) => a + b, 0) /
@@ -402,15 +421,17 @@ export default function PaginaAdmin() {
 
     // 10. Métricas de rendimiento del sistema
     const metricsRendimiento = {
-      cacheHitRate: cacheStats.entries.filter((e) => e.fresh).length / Math.max(cacheStats.entries.length, 1),
+      cacheHitRate: cacheStats?.entries
+        ? cacheStats.entries.filter((e) => e.fresh).length / Math.max(cacheStats.entries.length, 1)
+        : 0,
       tiempoRespuestaPromedio: ultimaSincronizacion ? Date.now() - ultimaSincronizacion.getTime() : 0,
       disponibilidadSistema: error ? 0.95 : 1.0,
     }
 
     // 11. Análisis de tendencias
     const analisisTendencias = {
-      crecimientoDiario: estado.totalAtendidos / Math.max(1, calcularEstadisticasAdmin().diasOperativos),
-      tendenciaEficiencia: estado.numerosLlamados / Math.max(1, estado.totalAtendidos),
+      crecimientoDiario: (estado.totalAtendidos || 0) / Math.max(1, calcularEstadisticasAdmin().diasOperativos),
+      tendenciaEficiencia: (estado.numerosLlamados || 0) / Math.max(1, estado.totalAtendidos || 1),
       proyeccionDiaria: proyeccionDiaria,
     }
 
@@ -1287,6 +1308,7 @@ export default function PaginaAdmin() {
         </Card>
 
         {/* Estadísticas Principales del Día */}
+        {/* Estadísticas Principales del Día - FIXED to handle null estado */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -1294,7 +1316,7 @@ export default function PaginaAdmin() {
               <Users className="h-4 w-4" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{estado?.totalAtendidos}</div>
+              <div className="text-3xl font-bold">{estado?.totalAtendidos || 0}</div>
               <p className="text-xs opacity-80">Emitidos en el día</p>
             </CardContent>
           </Card>
@@ -1305,7 +1327,7 @@ export default function PaginaAdmin() {
               <CheckCircle className="h-4 w-4" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{estado?.numerosLlamados}</div>
+              <div className="text-3xl font-bold">{estado?.numerosLlamados || 0}</div>
               <p className="text-xs opacity-80">Tickets procesados</p>
             </CardContent>
           </Card>
@@ -1316,7 +1338,7 @@ export default function PaginaAdmin() {
               <Clock className="h-4 w-4" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{estado?.totalAtendidos - estado?.numerosLlamados}</div>
+              <div className="text-3xl font-bold">{(estado?.totalAtendidos || 0) - (estado?.numerosLlamados || 0)}</div>
               <p className="text-xs opacity-80">Pendientes</p>
             </CardContent>
           </Card>
