@@ -1,16 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server"
-import {
-  leerEstadoSistema,
-  escribirEstadoSistema,
-  generarTicketAtomico,
-  crearBackupDiario,
-  obtenerEstadisticas,
-  verificarConexionDB,
-  limpiarDatosAntiguos,
-  recuperarDatosPerdidos, // Nueva función
-} from "@/lib/database"
+import { Redis } from "@upstash/redis"
 
-interface TicketInfo {
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+})
+
+const REDIS_KEY = "TURNOS_ZOCO"
+
+interface Ticket {
   numero: number
   nombre: string
   fecha: string
@@ -19,447 +17,221 @@ interface TicketInfo {
 
 interface EstadoSistema {
   numeroActual: number
-  ultimoNumero: number
   totalAtendidos: number
   numerosLlamados: number
-  fechaInicio: string
-  ultimoReinicio: string
-  tickets: TicketInfo[] // Mantener aquí para la consistencia del tipo en la API
-  lastSync?: number
+  tickets: Ticket[]
+  fechaActual: string
 }
 
-// Función para verificar si debe reiniciarse
-function debeReiniciarse(estado: EstadoSistema): boolean {
-  try {
-    const ahora = new Date()
-    const fechaActualArgentina = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }))
-    const fechaHoyString = fechaActualArgentina.toISOString().split("T")[0]
-    const fechaInicioString = estado.fechaInicio
-
-    const esDiaDiferente = fechaHoyString !== fechaInicioString
-
-    if (esDiaDiferente) {
-      console.log(`🔄 Reinicio automático necesario (TURNOS_ZOCO): ${fechaHoyString} vs ${fechaInicioString}`)
-      return true
-    }
-
-    return false
-  } catch (error) {
-    console.error("❌ Error verificando reinicio (TURNOS_ZOCO):", error)
-    return false
-  }
+// Función para obtener la fecha actual en Argentina
+function obtenerFechaArgentina(): string {
+  return new Date()
+    .toLocaleDateString("es-AR", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+    .split("/")
+    .reverse()
+    .join("-")
 }
 
-export async function GET() {
+// Función para obtener el estado actual del sistema
+async function obtenerEstadoSistema(): Promise<EstadoSistema> {
   try {
-    console.log("\n=== 📥 GET /api/sistema - TURNOS_ZOCO (Upstash Redis) ===")
+    const fechaHoy = obtenerFechaArgentina()
+    const estadoRaw = await redis.get(REDIS_KEY)
 
-    // Verificar conexión a la base de datos (no bloquear si falla)
-    try {
-      const conexionOK = await verificarConexionDB()
-      if (!conexionOK) {
-        console.log("⚠️ Advertencia: Problema de conexión detectado, pero continuando...")
-      }
-    } catch (connectionError) {
-      console.error("❌ Error al verificar conexión, pero continuando:", connectionError)
-    }
+    console.log("📊 Estado raw desde Redis:", estadoRaw)
 
-    let estado
-    try {
-      estado = await leerEstadoSistema() // Esto ya devuelve el estado con los tickets
-    } catch (readError) {
-      console.error("❌ Error al leer estado, intentando recuperación:", readError)
-
-      // Intentar recuperar datos del día actual
-      const fechaHoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
-      try {
-        estado = await recuperarDatosPerdidos(fechaHoy)
-        console.log("✅ Datos recuperados exitosamente")
-      } catch (recoveryError) {
-        console.error("❌ No se pudieron recuperar los datos, creando estado inicial:", recoveryError)
-
-        // Crear estado completamente nuevo como último recurso
-        estado = {
-          numeroActual: 1,
-          ultimoNumero: 0,
-          totalAtendidos: 0,
-          numerosLlamados: 0,
-          fechaInicio: fechaHoy,
-          ultimoReinicio: new Date().toISOString(),
-          tickets: [],
-          lastSync: Date.now(),
-        }
-
-        await escribirEstadoSistema(estado)
-      }
-    }
-
-    // Log detallado del estado leído
-    console.log(
-      `📊 Estado leído: Total atendidos: ${estado.totalAtendidos}, Tickets en array: ${estado.tickets.length}, Último número: ${estado.ultimoNumero}`,
-    )
-
-    // Verificación adicional de integridad
-    if (estado.totalAtendidos !== estado.tickets.length) {
-      console.log(
-        `⚠️ ALERTA: Inconsistencia detectada en GET - Estado: ${estado.totalAtendidos}, Array: ${estado.tickets.length}`,
-      )
-    }
-
-    // Verificar si debe reiniciarse automáticamente
-    if (debeReiniciarse(estado)) {
-      console.log("🔄 Ejecutando reinicio automático (TURNOS_ZOCO)")
-
-      // Crear backup en background con el estado actual (incluyendo tickets)
-      crearBackupDiario(estado).catch((err) => console.error("Error en backup (TURNOS_ZOCO):", err))
-
-      const ahora = new Date()
-      const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
-
-      estado = {
-        numeroActual: 1,
-        ultimoNumero: 0,
+    if (!estadoRaw) {
+      console.log("🆕 Creando nuevo estado del sistema")
+      const nuevoEstado: EstadoSistema = {
+        numeroActual: 0,
         totalAtendidos: 0,
         numerosLlamados: 0,
-        fechaInicio: fechaHoy,
-        ultimoReinicio: ahora.toISOString(),
         tickets: [],
-        lastSync: Date.now(),
+        fechaActual: fechaHoy,
       }
-
-      // Escribir el estado inicial del nuevo día con persistencia mejorada
-      await escribirEstadoSistema(estado)
+      await redis.set(REDIS_KEY, JSON.stringify(nuevoEstado))
+      return nuevoEstado
     }
 
-    console.log("📤 Estado devuelto desde TURNOS_ZOCO (Upstash Redis):", {
+    const estado = JSON.parse(estadoRaw as string) as EstadoSistema
+
+    // Verificar si cambió el día y reiniciar si es necesario
+    if (estado.fechaActual !== fechaHoy) {
+      console.log("📅 Nuevo día detectado, reiniciando sistema")
+      const estadoReiniciado: EstadoSistema = {
+        numeroActual: 0,
+        totalAtendidos: 0,
+        numerosLlamados: 0,
+        tickets: [],
+        fechaActual: fechaHoy,
+      }
+      await redis.set(REDIS_KEY, JSON.stringify(estadoReiniciado))
+      return estadoReiniciado
+    }
+
+    // Asegurar que tickets sea siempre un array
+    if (!Array.isArray(estado.tickets)) {
+      console.warn("⚠️ tickets no es un array, corrigiendo...")
+      estado.tickets = []
+    }
+
+    console.log("✅ Estado cargado:", {
       numeroActual: estado.numeroActual,
       totalAtendidos: estado.totalAtendidos,
       numerosLlamados: estado.numerosLlamados,
-      totalTickets: estado.tickets?.length || 0,
-      ultimoNumero: estado.ultimoNumero,
+      ticketsCount: estado.tickets.length,
+      fechaActual: estado.fechaActual,
     })
 
-    // IMPORTANTE: Asegurar que siempre se devuelvan los tickets
-    const respuesta = {
-      ...estado,
-      tickets: estado.tickets || [], // Garantizar que tickets sea un array
+    return estado
+  } catch (error) {
+    console.error("❌ Error al obtener estado:", error)
+    throw new Error("Error al conectar con la base de datos")
+  }
+}
+
+// Función para guardar el estado del sistema
+async function guardarEstadoSistema(estado: EstadoSistema): Promise<void> {
+  try {
+    // Asegurar que tickets sea siempre un array antes de guardar
+    if (!Array.isArray(estado.tickets)) {
+      estado.tickets = []
     }
 
-    console.log(`🎫 Devolviendo ${respuesta.tickets.length} tickets en la respuesta`)
-
-    return NextResponse.json(respuesta)
+    await redis.set(REDIS_KEY, JSON.stringify(estado))
+    console.log("💾 Estado guardado exitosamente")
   } catch (error) {
-    console.error("❌ Error en GET /api/sistema (TURNOS_ZOCO):", error)
-    return NextResponse.json(
-      {
-        error: "Error interno del servidor - TURNOS_ZOCO (Upstash Redis)",
-        details: error instanceof Error ? error.message : "Error desconocido",
-      },
-      { status: 500 },
-    )
+    console.error("❌ Error al guardar estado:", error)
+    throw new Error("Error al guardar en la base de datos")
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    console.log("🔍 GET /api/sistema - Obteniendo estado")
+
+    const estado = await obtenerEstadoSistema()
+
+    // Validar consistencia de datos
+    const ticketsValidos = Array.isArray(estado.tickets) ? estado.tickets : []
+
+    const response = {
+      numeroActual: estado.numeroActual || 0,
+      totalAtendidos: estado.totalAtendidos || 0,
+      numerosLlamados: estado.numerosLlamados || 0,
+      tickets: ticketsValidos,
+      fechaActual: estado.fechaActual || obtenerFechaArgentina(),
+      timestamp: Date.now(),
+    }
+
+    console.log("📤 Enviando respuesta:", {
+      numeroActual: response.numeroActual,
+      totalAtendidos: response.totalAtendidos,
+      numerosLlamados: response.numerosLlamados,
+      ticketsCount: response.tickets.length,
+    })
+
+    return NextResponse.json(response)
+  } catch (error) {
+    console.error("❌ Error en GET /api/sistema:", error)
+    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("\n=== 📨 POST /api/sistema - TURNOS_ZOCO (Upstash Redis) ===")
-
     const body = await request.json()
-    const { action, ...nuevoEstado } = body
+    const { action, nombre } = body
 
-    console.log("🎯 Acción recibida (TURNOS_ZOCO):", action)
+    console.log("📝 POST /api/sistema - Acción:", action, "Nombre:", nombre)
 
-    // Verificar conexión a la base de datos (no bloquear si falla)
-    try {
-      const conexionOK = await verificarConexionDB()
-      if (!conexionOK) {
-        console.log("⚠️ Advertencia: Problema de conexión detectado, pero continuando...")
-      }
-    } catch (connectionError) {
-      console.error("❌ Error al verificar conexión, pero continuando:", connectionError)
-    }
-
-    let estado = await leerEstadoSistema() // Leer estado una vez al inicio del POST (incluye tickets)
-
-    // Verificar si debe reiniciarse antes de cualquier operación
-    if (debeReiniciarse(estado)) {
-      console.log("🔄 Reinicio automático durante POST (TURNOS_ZOCO)")
-
-      // Crear backup en background con el estado actual (incluyendo tickets)
-      crearBackupDiario(estado).catch((err) => console.error("Error en backup (TURNOS_ZOCO):", err))
-
-      const ahora = new Date()
-      const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
-
-      estado = {
-        numeroActual: 1,
-        ultimoNumero: 0,
-        totalAtendidos: 0,
-        numerosLlamados: 0,
-        fechaInicio: fechaHoy,
-        ultimoReinicio: ahora.toISOString(),
-        tickets: [],
-        lastSync: Date.now(),
-      }
-      // No es necesario escribir el estado aquí, se hará si la acción lo requiere
-    }
-
-    // Acción especial para generar ticket de forma atómica - OPTIMIZADA
     if (action === "GENERAR_TICKET") {
-      const { nombre } = body
-
+      // Validar nombre
       if (!nombre || typeof nombre !== "string" || nombre.trim().length === 0) {
-        return NextResponse.json(
-          {
-            error: "Nombre requerido y no puede estar vacío",
-            success: false,
-          },
-          { status: 400 },
-        )
+        return NextResponse.json({ error: "El nombre es requerido y debe ser válido" }, { status: 400 })
       }
 
-      console.log("🎫 Generando ticket para:", nombre, "(TURNOS_ZOCO)")
-
-      try {
-        // Generar ticket de forma atómica en la base de datos
-        const nuevoTicket = await generarTicketAtomico(nombre.trim())
-
-        if (!nuevoTicket) {
-          throw new Error("No se pudo generar el ticket - respuesta vacía")
-        }
-
-        // Después de generar el ticket, leer el estado actualizado
-        const estadoActualizado = await leerEstadoSistema()
-
-        console.log("✅ Ticket generado exitosamente en TURNOS_ZOCO (Upstash Redis)")
-        console.log("📊 Nuevo estado:", {
-          numeroActual: estadoActualizado.numeroActual,
-          totalAtendidos: estadoActualizado.totalAtendidos,
-          ultimoNumero: estadoActualizado.ultimoNumero,
-          ticketsLength: estadoActualizado.tickets?.length || 0,
-        })
-
-        // IMPORTANTE: Asegurar que se devuelvan los tickets
-        const respuesta = {
-          ...estadoActualizado,
-          tickets: estadoActualizado.tickets || [], // Garantizar que tickets sea un array
-          ticketGenerado: nuevoTicket,
-          success: true,
-          message: "Ticket generado exitosamente",
-        }
-
-        console.log(`🎫 Devolviendo ${respuesta.tickets.length} tickets en respuesta POST`)
-
-        return NextResponse.json(respuesta)
-      } catch (error) {
-        console.error("❌ Error al generar ticket (TURNOS_ZOCO):", error)
-
-        // Respuesta de error más específica
-        const errorMessage = error instanceof Error ? error.message : "Error desconocido"
-
-        if (errorMessage.includes("timeout") || errorMessage.includes("Timeout")) {
-          return NextResponse.json(
-            {
-              error: "Timeout al generar ticket - conexión lenta",
-              details: "La operación tardó demasiado. Por favor, intente nuevamente.",
-              success: false,
-            },
-            { status: 408 },
-          )
-        }
-
-        if (errorMessage.includes("MULTI/EXEC")) {
-          return NextResponse.json(
-            {
-              error: "Error de transacción en base de datos",
-              details: "Problema con la operación atómica. Intente nuevamente.",
-              success: false,
-            },
-            { status: 503 },
-          )
-        }
-
-        return NextResponse.json(
-          {
-            error: "Error al generar ticket en TURNOS_ZOCO (Upstash Redis)",
-            details: errorMessage,
-            success: false,
-          },
-          { status: 500 },
-        )
+      if (nombre.trim().length < 2) {
+        return NextResponse.json({ error: "El nombre debe tener al menos 2 caracteres" }, { status: 400 })
       }
-    }
 
-    // Acción para obtener estadísticas
-    if (action === "OBTENER_ESTADISTICAS") {
-      try {
-        const estadisticas = await obtenerEstadisticas(estado) // 'estado' ya incluye tickets
+      const estado = await obtenerEstadoSistema()
 
-        return NextResponse.json({
-          ...estado,
-          tickets: estado.tickets || [], // Garantizar que tickets sea un array
-          estadisticas,
-        })
-      } catch (error) {
-        console.error("❌ Error al obtener estadísticas (TURNOS_ZOCO):", error)
-        return NextResponse.json(
-          {
-            error: "Error al obtener estadísticas",
-            details: error instanceof Error ? error.message : "Error desconocido",
-          },
-          { status: 500 },
-        )
+      // Generar nuevo ticket
+      const nuevoNumero = estado.totalAtendidos + 1
+      const fechaHoy = obtenerFechaArgentina()
+
+      const nuevoTicket: Ticket = {
+        numero: nuevoNumero,
+        nombre: nombre.trim(),
+        fecha: fechaHoy,
+        timestamp: Date.now(),
       }
-    }
 
-    // Acción administrativa: Eliminar todos los registros
-    if (action === "ELIMINAR_TODOS_REGISTROS") {
-      console.log("🗑️ Eliminando todos los registros (TURNOS_ZOCO)...")
-
-      try {
-        // Crear backup antes de eliminar con el estado actual (incluyendo tickets)
-        await crearBackupDiario(estado)
-
-        const ahora = new Date()
-        const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
-        const estadoLimpio: EstadoSistema = {
-          numeroActual: 1,
-          ultimoNumero: 0,
-          totalAtendidos: 0,
-          numerosLlamados: 0,
-          fechaInicio: fechaHoy,
-          ultimoReinicio: ahora.toISOString(),
-          tickets: [], // Reiniciar tickets para el estado de retorno
-          lastSync: Date.now(),
-        }
-
-        // Escribir el estado limpio (solo metadata)
-        await escribirEstadoSistema(estadoLimpio)
-        console.log("✅ Todos los registros eliminados exitosamente (TURNOS_ZOCO)")
-
-        // Devolver el estado limpio directamente, sin una nueva lectura de DB
-        return NextResponse.json({
-          ...estadoLimpio,
-          mensaje: "Todos los registros han sido eliminados exitosamente",
-        })
-      } catch (error) {
-        console.error("❌ Error al eliminar registros (TURNOS_ZOCO):", error)
-        return NextResponse.json(
-          {
-            error: "Error al eliminar registros",
-            details: error instanceof Error ? error.message : "Error desconocido",
-          },
-          { status: 500 },
-        )
+      // Asegurar que tickets sea un array
+      if (!Array.isArray(estado.tickets)) {
+        estado.tickets = []
       }
+
+      // Actualizar estado
+      estado.numeroActual = nuevoNumero
+      estado.totalAtendidos = nuevoNumero
+      estado.tickets.push(nuevoTicket)
+      estado.fechaActual = fechaHoy
+
+      // Guardar estado actualizado
+      await guardarEstadoSistema(estado)
+
+      console.log("🎫 Ticket generado:", nuevoTicket)
+
+      return NextResponse.json({
+        success: true,
+        ticketGenerado: nuevoTicket,
+        numeroActual: estado.numeroActual,
+        totalAtendidos: estado.totalAtendidos,
+        numerosLlamados: estado.numerosLlamados,
+      })
     }
 
-    // Acción administrativa: Reiniciar contador diario
-    if (action === "REINICIAR_CONTADOR_DIARIO") {
-      console.log("🔄 Reiniciando contador diario (TURNOS_ZOCO)...")
+    if (action === "LLAMAR_SIGUIENTE") {
+      const estado = await obtenerEstadoSistema()
 
-      try {
-        // Crear backup antes de reiniciar con el estado actual (incluyendo tickets)
-        await crearBackupDiario(estado)
+      const siguienteNumero = estado.numerosLlamados + 1
 
-        const ahora = new Date()
-        const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
-        const estadoReiniciado: EstadoSistema = {
-          numeroActual: 1,
-          ultimoNumero: 0,
-          totalAtendidos: 0,
-          numerosLlamados: 0,
-          fechaInicio: fechaHoy,
-          ultimoReinicio: ahora.toISOString(),
-          tickets: [], // Reiniciar tickets para el estado de retorno
-          lastSync: Date.now(),
-        }
-
-        // Escribir el estado reiniciado (solo metadata)
-        await escribirEstadoSistema(estadoReiniciado)
-        console.log("✅ Contador diario reiniciado exitosamente (TURNOS_ZOCO)")
-
-        // Devolver el estado reiniciado directamente, sin una nueva lectura de DB
-        return NextResponse.json({
-          ...estadoReiniciado,
-          mensaje: "Contador diario reiniciado exitosamente",
-        })
-      } catch (error) {
-        console.error("❌ Error al reiniciar contador (TURNOS_ZOCO):", error)
-        return NextResponse.json(
-          {
-            error: "Error al reiniciar contador",
-            details: error instanceof Error ? error.message : "Error desconocido",
-          },
-          { status: 500 },
-        )
+      if (siguienteNumero > estado.totalAtendidos) {
+        return NextResponse.json({ error: "No hay más números para llamar" }, { status: 400 })
       }
+
+      // Buscar el ticket correspondiente
+      const ticketLlamado = Array.isArray(estado.tickets)
+        ? estado.tickets.find((t) => t.numero === siguienteNumero)
+        : null
+
+      // Actualizar números llamados
+      estado.numerosLlamados = siguienteNumero
+
+      // Guardar estado actualizado
+      await guardarEstadoSistema(estado)
+
+      console.log("📢 Número llamado:", siguienteNumero, "Ticket:", ticketLlamado)
+
+      return NextResponse.json({
+        success: true,
+        numeroLlamado: siguienteNumero,
+        ticket: ticketLlamado,
+        numerosLlamados: estado.numerosLlamados,
+        totalAtendidos: estado.totalAtendidos,
+      })
     }
 
-    // Acción de mantenimiento: Limpiar datos antiguos
-    if (action === "LIMPIAR_DATOS_ANTIGUOS") {
-      try {
-        await limpiarDatosAntiguos()
-        return NextResponse.json({
-          mensaje: "Datos antiguos limpiados exitosamente",
-        })
-      } catch (error) {
-        console.error("❌ Error al limpiar datos antiguos (TURNOS_ZOCO):", error)
-        return NextResponse.json(
-          {
-            error: "Error al limpiar datos antiguos",
-            details: error instanceof Error ? error.message : "Error desconocido",
-          },
-          { status: 500 },
-        )
-      }
-    }
-
-    // Validar datos para actualizaciones normales
-    if (
-      typeof nuevoEstado.numeroActual !== "number" ||
-      typeof nuevoEstado.totalAtendidos !== "number" ||
-      typeof nuevoEstado.numerosLlamados !== "number"
-    ) {
-      return NextResponse.json({ error: "Datos inválidos" }, { status: 400 })
-    }
-
-    console.log("📝 Actualizando estado normal en TURNOS_ZOCO (Upstash Redis)")
-
-    // Actualizar estado manteniendo fechas originales
-    const estadoActualizado = {
-      numeroActual: nuevoEstado.numeroActual,
-      ultimoNumero: nuevoEstado.ultimoNumero,
-      totalAtendidos: nuevoEstado.totalAtendidos,
-      numerosLlamados: nuevoEstado.numerosLlamados,
-      fechaInicio: estado.fechaInicio, // Mantener la fecha de inicio original
-      ultimoReinicio: estado.ultimoReinicio, // Mantener la fecha de último reinicio original
-      lastSync: Date.now(),
-    }
-
-    // Escribir solo la metadata del estado
-    await escribirEstadoSistema(estadoActualizado)
-
-    // Devolver el estado completo (metadata + tickets) después de la actualización
-    const estadoFinal = await leerEstadoSistema()
-
-    // IMPORTANTE: Asegurar que se devuelvan los tickets
-    const respuestaFinal = {
-      ...estadoFinal,
-      tickets: estadoFinal.tickets || [], // Garantizar que tickets sea un array
-    }
-
-    console.log(`🎫 Devolviendo ${respuestaFinal.tickets.length} tickets en respuesta final`)
-
-    return NextResponse.json(respuestaFinal)
+    return NextResponse.json({ error: "Acción no válida" }, { status: 400 })
   } catch (error) {
-    console.error("❌ Error en POST /api/sistema (TURNOS_ZOCO):", error)
-    return NextResponse.json(
-      {
-        error: "Error interno del servidor - TURNOS_ZOCO (Upstash Redis)",
-        details: error instanceof Error ? error.message : "Error desconocido",
-      },
-      { status: 500 },
-    )
+    console.error("❌ Error en POST /api/sistema:", error)
+    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })
   }
 }
