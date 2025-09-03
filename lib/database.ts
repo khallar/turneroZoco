@@ -84,7 +84,7 @@ try {
       retries: 3,
       backoff: (retryCount) => Math.exp(retryCount) * 50, // Exponential backoff
     },
-    automaticDeserialization: true,
+    automaticDeserialization: false, // CAMBIO CRÍTICO: Desactivar deserialización automática
   })
   console.log(`🔗 Cliente Upstash Redis inicializado exitosamente`)
   console.log(`📊 Configuración: ${redisConfig.name}`)
@@ -136,46 +136,80 @@ function getYesterdayDateString(): string {
   return formatter.format(yesterday)
 }
 
-// Función helper para validar y parsear JSON de forma segura - MEJORADA
+// Función helper para validar y parsear JSON de forma segura - COMPLETAMENTE REESCRITA
 function safeJsonParse(data: any, fallback: any = null): any {
+  console.log(`🔍 safeJsonParse - Tipo de entrada: ${typeof data}`)
+
   if (data === null || data === undefined) {
+    console.log("⚠️ safeJsonParse - Datos null/undefined")
     return fallback
   }
 
   // Si ya es un objeto, devolverlo directamente
   if (typeof data === "object" && data !== null) {
+    console.log("✅ safeJsonParse - Ya es objeto, devolviendo directamente")
     return data
   }
 
   // Si es una string, intentar parsear
   if (typeof data === "string") {
-    // Verificar que no sea un mensaje de error
-    if (
-      data.startsWith("Invalid") ||
-      data.startsWith("Error") ||
-      data.startsWith("ERR") ||
-      data.startsWith("WRONGTYPE")
-    ) {
-      console.error("❌ Mensaje de error detectado en lugar de JSON:", data.substring(0, 100))
-      return fallback
+    console.log(`🔍 safeJsonParse - String recibida (primeros 100 chars): ${data.substring(0, 100)}`)
+
+    // Verificar que no sea un mensaje de error común
+    const errorPatterns = [
+      /^Invalid/i,
+      /^Error/i,
+      /^ERR/i,
+      /^WRONGTYPE/i,
+      /^NOAUTH/i,
+      /^LOADING/i,
+      /^BUSY/i,
+      /^NOSCRIPT/i,
+      /^READONLY/i,
+      /^OOM/i,
+      /^EXECABORT/i,
+      /^NOREPLICAS/i,
+      /^BUSYKEY/i,
+      /^NOTBUSY/i,
+      /^CROSSSLOT/i,
+      /^TRYAGAIN/i,
+      /^CLUSTERDOWN/i,
+      /^MOVED/i,
+      /^ASK/i,
+    ]
+
+    for (const pattern of errorPatterns) {
+      if (pattern.test(data)) {
+        console.error(`❌ safeJsonParse - Mensaje de error detectado: ${data.substring(0, 100)}`)
+        return fallback
+      }
     }
 
     // Verificar que parezca JSON válido
-    if (!data.trim().startsWith("{") && !data.trim().startsWith("[")) {
-      console.error("❌ String no parece ser JSON válido:", data.substring(0, 100))
+    const trimmed = data.trim()
+    if (!trimmed.startsWith("{") && !trimmed.startsWith("[") && !trimmed.startsWith('"')) {
+      console.error(`❌ safeJsonParse - String no parece JSON válido: ${trimmed.substring(0, 100)}`)
       return fallback
     }
 
     try {
-      return JSON.parse(data)
+      const parsed = JSON.parse(data)
+      console.log("✅ safeJsonParse - JSON parseado exitosamente")
+      return parsed
     } catch (error) {
-      console.error("❌ Error al parsear JSON:", error)
-      console.error("   Contenido (primeros 200 chars):", data.substring(0, 200))
+      console.error("❌ safeJsonParse - Error al parsear JSON:", error)
+      console.error(`   Contenido problemático (primeros 200 chars): ${data.substring(0, 200)}`)
       return fallback
     }
   }
 
-  console.error("❌ Tipo de dato no soportado para parsing:", typeof data)
+  // Si es un número, string, boolean, etc., devolverlo tal como está
+  if (typeof data === "number" || typeof data === "boolean") {
+    console.log(`✅ safeJsonParse - Tipo primitivo (${typeof data}), devolviendo directamente`)
+    return data
+  }
+
+  console.error(`❌ safeJsonParse - Tipo de dato no soportado: ${typeof data}`)
   return fallback
 }
 
@@ -228,7 +262,7 @@ function validateTickets(data: any): TicketInfo[] {
 
 // --- Core State Management ---
 
-// Función helper para retry con backoff exponencial
+// Función helper para retry con backoff exponencial - MEJORADA
 async function retryOperation<T>(
   operation: () => Promise<T>,
   maxRetries = 3,
@@ -248,6 +282,12 @@ async function retryOperation<T>(
     } catch (error) {
       lastError = error as Error
       console.error(`❌ ${operationName} falló en intento ${attempt}:`, error)
+
+      // Si es un error de parsing JSON, no reintentar
+      if (error instanceof Error && error.message.includes("JSON")) {
+        console.error(`💥 Error de JSON detectado, no reintentando: ${error.message}`)
+        throw error
+      }
 
       if (attempt === maxRetries) {
         console.error(`💥 ${operationName} falló después de ${maxRetries} intentos`)
@@ -344,12 +384,12 @@ async function verificarYCrearBackupAutomatico(): Promise<void> {
     // Programar próximo backup
     await redis.set(
       DAILY_BACKUP_SCHEDULE_KEY,
-      {
+      JSON.stringify({
         ultimaVerificacion: new Date().toISOString(),
         proximaVerificacion: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         fechaActual: fechaHoy,
         horaVerificacion: horaActual,
-      },
+      }),
       { ex: 25 * 60 * 60 },
     ) // 25 horas de expiración
 
@@ -359,7 +399,7 @@ async function verificarYCrearBackupAutomatico(): Promise<void> {
   }
 }
 
-// leerEstadoSistema ahora devuelve el estado (metadata) Y los tickets
+// leerEstadoSistema ahora devuelve el estado (metadata) Y los tickets - COMPLETAMENTE REESCRITA
 export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: TicketInfo[] }> {
   return retryOperation(
     async () => {
@@ -374,36 +414,68 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
         console.error("⚠️ Error en verificación de backup automático (no crítico):", error)
       })
 
-      // Pipeline optimizado para reducir latencia
-      const pipeline = redis.pipeline()
-      pipeline.get(estadoKey)
-      pipeline.lrange(ticketsListKey, 0, -1)
-      pipeline.get(counterKey)
-      pipeline.exists(estadoKey)
-      pipeline.exists(ticketsListKey)
+      console.log(`🔍 Claves a consultar:`)
+      console.log(`   - Estado: ${estadoKey}`)
+      console.log(`   - Tickets: ${ticketsListKey}`)
+      console.log(`   - Contador: ${counterKey}`)
 
-      const results = await pipeline.exec()
+      // Usar operaciones individuales en lugar de pipeline para mejor debugging
+      let estadoRaw: any = null
+      let ticketsRaw: any = null
+      let contadorActual: any = null
+      let estadoExists = 0
+      let ticketsExists = 0
 
-      if (!Array.isArray(results) || results.length !== 5) {
-        throw new Error("Respuesta inesperada de Upstash Redis pipeline")
+      try {
+        console.log("🔍 Obteniendo estado...")
+        estadoRaw = await redis.get(estadoKey)
+        console.log(`📊 Estado raw obtenido: ${typeof estadoRaw}`)
+
+        console.log("🔍 Verificando existencia de estado...")
+        estadoExists = await redis.exists(estadoKey)
+        console.log(`📊 Estado existe: ${estadoExists}`)
+
+        console.log("🔍 Obteniendo tickets...")
+        ticketsRaw = await redis.lrange(ticketsListKey, 0, -1)
+        console.log(
+          `📊 Tickets raw obtenidos: ${typeof ticketsRaw}, length: ${Array.isArray(ticketsRaw) ? ticketsRaw.length : "N/A"}`,
+        )
+
+        console.log("🔍 Verificando existencia de tickets...")
+        ticketsExists = await redis.exists(ticketsListKey)
+        console.log(`📊 Tickets existe: ${ticketsExists}`)
+
+        console.log("🔍 Obteniendo contador...")
+        contadorActual = await redis.get(counterKey)
+        console.log(`📊 Contador obtenido: ${typeof contadorActual}, valor: ${contadorActual}`)
+      } catch (redisError) {
+        console.error("❌ Error en operaciones Redis:", redisError)
+        throw new Error(`Error de Redis: ${redisError instanceof Error ? redisError.message : String(redisError)}`)
       }
 
-      const [estadoRaw, ticketsRaw, contadorActual, estadoExists, ticketsExists] = results
       let estado: EstadoSistema
 
       // Validar y parsear tickets de forma segura
+      console.log("🔍 Parseando tickets...")
       const ticketsParsed = safeJsonParse(ticketsRaw, [])
       const tickets: TicketInfo[] = validateTickets(ticketsParsed)
-      const contador = typeof contadorActual === "number" ? contadorActual : 0
+      const contador =
+        typeof contadorActual === "number"
+          ? contadorActual
+          : typeof contadorActual === "string"
+            ? Number.parseInt(contadorActual) || 0
+            : 0
 
-      console.log(`🔍 Datos leídos: ${tickets.length} tickets, contador: ${contador}`)
+      console.log(`🔍 Datos procesados: ${tickets.length} tickets, contador: ${contador}`)
       console.log(`📊 Existencia: Estado: ${estadoExists ? "✓" : "✗"}, Tickets: ${ticketsExists ? "✓" : "✗"}`)
 
       // Validar y parsear estado de forma segura
+      console.log("🔍 Parseando estado...")
       const estadoParsed = safeJsonParse(estadoRaw, null)
       const estadoValidado = validateEstadoSistema(estadoParsed)
 
       if (estadoValidado) {
+        console.log("✅ Estado válido encontrado")
         estado = estadoValidado
 
         // Verificar y corregir inconsistencias entre el estado y los datos reales
@@ -423,7 +495,7 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
 
           // Actualizar el estado corregido en Redis con persistencia extendida
           estado.lastSync = Date.now()
-          await redis.set(estadoKey, estado, { ex: 48 * 60 * 60 }) // 48 horas de persistencia
+          await redis.set(estadoKey, JSON.stringify(estado), { ex: 48 * 60 * 60 }) // 48 horas de persistencia
           console.log("✅ Estado corregido y guardado con persistencia extendida")
         }
 
@@ -458,7 +530,7 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
         }
 
         // Guardar el estado inicial con persistencia extendida
-        await redis.set(estadoKey, estado, { ex: 48 * 60 * 60 }) // 48 horas
+        await redis.set(estadoKey, JSON.stringify(estado), { ex: 48 * 60 * 60 }) // 48 horas
         console.log("✅ Estado inicial creado con persistencia extendida")
       }
 
@@ -482,11 +554,11 @@ export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void
 
     // OPTIMIZACIÓN: SET con persistencia extendida y backup automático
     // Establecer una expiración más larga para mayor persistencia (48 horas)
-    await redis.set(estadoKey, estado, { ex: 48 * 60 * 60 }) // 48 horas
+    await redis.set(estadoKey, JSON.stringify(estado), { ex: 48 * 60 * 60 }) // 48 horas
 
     // Crear una copia de respaldo con clave diferente para mayor seguridad
     const backupKey = `${estadoKey}:backup`
-    await redis.set(backupKey, estado, { ex: 72 * 60 * 60 }) // 72 horas para backup
+    await redis.set(backupKey, JSON.stringify(estado), { ex: 72 * 60 * 60 }) // 72 horas para backup
 
     console.log("✅ Estado (metadata) guardado exitosamente en TURNOS_ZOCO (Upstash Redis) con persistencia mejorada")
   } catch (error) {
@@ -509,7 +581,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
       const results = await redis
         .multi()
         .incr(counterKey) // Incrementa el contador diario de tickets (atómico)
-        .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado actual
+        .get(estadoKey) // Obtiene la metadata del estado actual
         .exec()
 
       if (!Array.isArray(results) || results.length !== 2) {
@@ -562,8 +634,8 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
       // OPTIMIZACIÓN: Transacción más simple - solo lo esencial
       await redis
         .multi()
-        .set(estadoKey, estadoActual, { ex: 48 * 60 * 60 }) // Estado actualizado
-        .rpush(ticketsListKey, nuevoTicket) // Añadir ticket a la lista
+        .set(estadoKey, JSON.stringify(estadoActual), { ex: 48 * 60 * 60 }) // Estado actualizado
+        .rpush(ticketsListKey, JSON.stringify(nuevoTicket)) // Añadir ticket a la lista
         .expire(ticketsListKey, 48 * 60 * 60) // Asegurar persistencia
         .expire(counterKey, 48 * 60 * 60) // Asegurar persistencia del contador
         .exec()
@@ -681,7 +753,7 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
     }
 
     // OPTIMIZACIÓN: SET con expiración para el backup.
-    await redis.set(backupKey, backupData, { ex: 90 * 24 * 60 * 60 }) // 90 días de expiración para los backups
+    await redis.set(backupKey, JSON.stringify(backupData), { ex: 90 * 24 * 60 * 60 }) // 90 días de expiración para los backups
 
     // Registrar en logs
     await redis.lpush(
@@ -1229,6 +1301,8 @@ export async function obtenerResumenDiasAnteriores(
     )
     const promedioTicketsPorDia = totalDias > 0 ? Math.round(totalTicketsHistoricos / totalDias) : 0
     const promedioAtendidosPorDia = totalDias > 0 ? Math.round(totalTicketsAtendidos / totalDias) : 0
+    const eficienciaPromedio =
+      totalTicketsHistoricos > 0 ? Math.round((totalTicketsAtendidos / totalTicketsHistoricos) * 100) : 0
 
     // Encontrar mejor y peor día
     const mejorDia = backupsCompletos.reduce((mejor, backup) => {
@@ -1270,9 +1344,6 @@ export async function obtenerResumenDiasAnteriores(
         crecimientoSemanal = Math.round(((promedioReciente - promedioAntiguo) / promedioAntiguo) * 100)
       }
     }
-
-    const eficienciaPromedio =
-      totalTicketsHistoricos > 0 ? Math.round((totalTicketsAtendidos / totalTicketsHistoricos) * 100) : 0
 
     // ANÁLISIS POR DÍA DE LA SEMANA (basado en todos los backups)
     const datosPorDiaSemana = {}
@@ -1736,7 +1807,7 @@ export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSiste
       console.log("✅ Datos recuperados desde backup validado")
 
       // Restaurar datos principales desde backup con validación
-      await redis.set(estadoKey, estadoBackup, { ex: 48 * 60 * 60 })
+      await redis.set(estadoKey, JSON.stringify(estadoBackup), { ex: 48 * 60 * 60 })
 
       return { ...estadoBackup, tickets: ticketsOriginales }
     }
@@ -1790,13 +1861,14 @@ export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSiste
           // Restaurar lista de tickets
           await redis.del(ticketsListKey)
           if (ticketsRecuperados.length > 0) {
-            await redis.rpush(ticketsListKey, ...ticketsRecuperados)
+            const ticketsStringified = ticketsRecuperados.map((ticket) => JSON.stringify(ticket))
+            await redis.rpush(ticketsListKey, ...ticketsStringified)
             await redis.expire(ticketsListKey, 48 * 60 * 60)
           }
 
           // Restaurar estado
-          await redis.set(estadoKey, estadoReconstruido, { ex: 48 * 60 * 60 })
-          await redis.set(counterKey, ultimoNumero, { ex: 48 * 60 * 60 })
+          await redis.set(estadoKey, JSON.stringify(estadoReconstruido), { ex: 48 * 60 * 60 })
+          await redis.set(counterKey, ultimoNumero.toString(), { ex: 48 * 60 * 60 })
 
           console.log("✅ Datos reconstruidos exitosamente desde tickets individuales")
           return { ...estadoReconstruido, tickets: ticketsRecuperados }
@@ -1820,7 +1892,7 @@ export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSiste
     }
 
     // Guardar estado inicial
-    await redis.set(estadoKey, estadoInicial, { ex: 48 * 60 * 60 })
+    await redis.set(estadoKey, JSON.stringify(estadoInicial), { ex: 48 * 60 * 60 })
 
     console.log("✅ Estado inicial creado para recuperación")
     return { ...estadoInicial, tickets: [] }
