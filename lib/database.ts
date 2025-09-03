@@ -136,7 +136,7 @@ function getYesterdayDateString(): string {
   return formatter.format(yesterday)
 }
 
-// Función helper para validar y parsear JSON de forma segura
+// Función helper para validar y parsear JSON de forma segura - MEJORADA
 function safeJsonParse(data: any, fallback: any = null): any {
   if (data === null || data === undefined) {
     return fallback
@@ -149,14 +149,33 @@ function safeJsonParse(data: any, fallback: any = null): any {
 
   // Si es una string, intentar parsear
   if (typeof data === "string") {
+    // Verificar que no sea un mensaje de error
+    if (
+      data.startsWith("Invalid") ||
+      data.startsWith("Error") ||
+      data.startsWith("ERR") ||
+      data.startsWith("WRONGTYPE")
+    ) {
+      console.error("❌ Mensaje de error detectado en lugar de JSON:", data.substring(0, 100))
+      return fallback
+    }
+
+    // Verificar que parezca JSON válido
+    if (!data.trim().startsWith("{") && !data.trim().startsWith("[")) {
+      console.error("❌ String no parece ser JSON válido:", data.substring(0, 100))
+      return fallback
+    }
+
     try {
       return JSON.parse(data)
     } catch (error) {
-      console.error("❌ Error al parsear JSON:", error, "Data:", data.substring(0, 100))
+      console.error("❌ Error al parsear JSON:", error)
+      console.error("   Contenido (primeros 200 chars):", data.substring(0, 200))
       return fallback
     }
   }
 
+  console.error("❌ Tipo de dato no soportado para parsing:", typeof data)
   return fallback
 }
 
@@ -870,7 +889,7 @@ function calcularMetricasParaBackup(estado: EstadoSistema & { tickets: TicketInf
   }
 }
 
-// FUNCIÓN MEJORADA: obtenerBackups con paginación
+// FUNCIÓN MEJORADA: obtenerBackups con paginación y mejor manejo de errores
 export async function obtenerBackups(
   page = 1,
   limit = 10,
@@ -887,107 +906,60 @@ export async function obtenerBackups(
       `📋 Obteniendo backups paginados (página ${page}, límite ${limit}) desde TURNOS_ZOCO (Upstash Redis)...`,
     )
 
-    // MÉTODO 1: Intentar usar SCAN (más eficiente)
-    let allKeys: string[] = []
+    const allKeys: string[] = []
 
-    try {
-      console.log("🔍 Intentando método SCAN...")
-      let cursor = 0
-      let scanAttempts = 0
-      const maxScanAttempts = 10
+    // MÉTODO SIMPLIFICADO: Intentar fechas específicas directly
+    console.log("🔍 Usando método de fechas específicas...")
+    const today = new Date()
+    const possibleKeys: string[] = []
 
-      do {
-        scanAttempts++
-        console.log(`📡 SCAN intento ${scanAttempts}/${maxScanAttempts}, cursor: ${cursor}`)
+    // Intentar los últimos 90 días
+    for (let i = 0; i < 90; i++) {
+      const date = new Date(today)
+      date.setDate(date.getDate() - i)
+      const dateString = date.toISOString().split("T")[0] // YYYY-MM-DD
+      possibleKeys.push(BACKUP_KEY_PREFIX + dateString)
+    }
 
-        const result = await redis.scan(cursor, {
-          match: BACKUP_KEY_PREFIX + "*",
-          count: 50, // Reducir count para evitar timeouts
-        })
+    console.log(`🔍 Verificando ${possibleKeys.length} fechas específicas...`)
 
-        console.log("📊 Resultado SCAN:", typeof result, Array.isArray(result) ? result.length : "no array")
-
-        if (Array.isArray(result) && result.length >= 2) {
-          const newCursor = result[0]
-          const keys = result[1]
-
-          console.log(
-            `🔍 Cursor: ${cursor} -> ${newCursor}, Keys encontradas: ${Array.isArray(keys) ? keys.length : 0}`,
-          )
-
-          cursor = typeof newCursor === "number" ? newCursor : Number.parseInt(String(newCursor)) || 0
-
-          if (Array.isArray(keys)) {
-            allKeys.push(...keys)
-            console.log(`✅ Agregadas ${keys.length} claves, total: ${allKeys.length}`)
-          }
-        } else {
-          console.log("⚠️ Resultado SCAN inesperado:", result)
-          break
-        }
-
-        if (scanAttempts >= maxScanAttempts) {
-          console.log("⚠️ Máximo de intentos SCAN alcanzado")
-          break
-        }
-      } while (cursor !== 0)
-
-      console.log(`✅ SCAN completado: ${allKeys.length} claves encontradas`)
-    } catch (scanError) {
-      console.error("❌ Error en SCAN, intentando método KEYS:", scanError)
-
-      // MÉTODO 2: Fallback a KEYS si SCAN falla
+    // Verificar cuáles existen en lotes pequeños para evitar timeouts
+    const batchSize = 10 // Reducir el tamaño del lote
+    for (let i = 0; i < possibleKeys.length; i += batchSize) {
+      const batch = possibleKeys.slice(i, i + batchSize)
       try {
-        console.log("🔄 Usando método KEYS como fallback...")
-        const keysResult = await redis.keys(BACKUP_KEY_PREFIX + "*")
-        allKeys = Array.isArray(keysResult) ? keysResult : []
-        console.log(`✅ KEYS completado: ${allKeys.length} claves encontradas`)
-      } catch (keysError) {
-        console.error("❌ Error en KEYS también:", keysError)
+        console.log(
+          `📦 Verificando lote ${Math.floor(i / batchSize) + 1}/${Math.ceil(possibleKeys.length / batchSize)}`,
+        )
 
-        // MÉTODO 3: Intentar fechas específicas si todo falla
-        console.log("🔄 Intentando método de fechas específicas...")
-        const today = new Date()
-        const possibleKeys: string[] = []
-
-        // Intentar los últimos 90 días
-        for (let i = 0; i < 90; i++) {
-          const date = new Date(today)
-          date.setDate(date.getDate() - i)
-          const dateString = date.toISOString().split("T")[0] // YYYY-MM-DD
-          possibleKeys.push(BACKUP_KEY_PREFIX + dateString)
-        }
-
-        console.log(`🔍 Verificando ${possibleKeys.length} fechas específicas...`)
-
-        // Verificar cuáles existen en lotes
-        const batchSize = 20
-        for (let i = 0; i < possibleKeys.length; i += batchSize) {
-          const batch = possibleKeys.slice(i, i + batchSize)
+        // Usar EXISTS individual para cada clave para mayor confiabilidad
+        for (const key of batch) {
           try {
-            const existsResults = await redis
-              .pipeline()
-              .exists(...batch)
-              .exec()
-
-            if (Array.isArray(existsResults)) {
-              batch.forEach((key, index) => {
-                if (existsResults[index] === 1) {
-                  allKeys.push(key)
-                }
-              })
+            const exists = await redis.exists(key)
+            if (exists === 1) {
+              allKeys.push(key)
+              console.log(`✅ Encontrada clave: ${key}`)
             }
-          } catch (batchError) {
-            console.error(`❌ Error verificando lote ${Math.floor(i / batchSize) + 1}:`, batchError)
+          } catch (keyError) {
+            console.log(`⚠️ Error verificando clave ${key}:`, keyError)
+            // Continuar con la siguiente clave
           }
         }
 
-        console.log(`✅ Método fechas específicas: ${allKeys.length} claves encontradas`)
+        // Pausa entre lotes para evitar saturar la conexión
+        if (i + batchSize < possibleKeys.length) {
+          await new Promise((resolve) => setTimeout(resolve, 200))
+        }
+      } catch (batchError) {
+        console.error(`❌ Error verificando lote ${Math.floor(i / batchSize) + 1}:`, batchError)
+        // Continuar con el siguiente lote
       }
     }
 
+    console.log(`✅ Método fechas específicas: ${allKeys.length} claves encontradas`)
+
     if (allKeys.length === 0) {
-      console.log("⚠️ No se encontraron backups con ningún método")
+      console.log("⚠️ No se encontraron backups")
       return {
         backups: [],
         totalPages: 0,
@@ -1019,87 +991,102 @@ export async function obtenerBackups(
 
     const backups: any[] = []
 
-    // Procesar backups de la página actual en lotes más pequeños
-    const batchSize = 5
-    for (let i = 0; i < keysForPage.length; i += batchSize) {
-      const batch = keysForPage.slice(i, i + batchSize)
-      console.log(`📦 Procesando lote ${Math.floor(i / batchSize) + 1}/${Math.ceil(keysForPage.length / batchSize)}`)
+    // Procesar backups de la página actual uno por uno para mayor confiabilidad
+    for (let i = 0; i < keysForPage.length; i++) {
+      const key = keysForPage[i]
+      const fecha = key.replace(BACKUP_KEY_PREFIX, "")
+
+      console.log(`📦 Procesando backup ${i + 1}/${keysForPage.length}: ${fecha}`)
 
       try {
-        // Usar pipeline para obtener múltiples valores
-        const pipeline = redis.pipeline()
-        for (const key of batch) {
-          pipeline.get(key)
+        // Obtener backup individual con timeout
+        const backupRaw = await Promise.race([
+          redis.get(key),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout obteniendo backup")), 5000)),
+        ])
+
+        console.log(`📊 Backup obtenido para ${fecha}:`, typeof backupRaw)
+
+        // Parsear backup de forma muy segura
+        let backupParsed = null
+
+        if (backupRaw === null || backupRaw === undefined) {
+          console.log(`⚠️ Backup vacío para ${fecha}`)
+          continue
         }
-        const results = await pipeline.exec()
 
-        console.log(`📊 Resultados del lote:`, Array.isArray(results) ? results.length : "no array")
-
-        if (Array.isArray(results)) {
-          results.forEach((backup: any, index) => {
-            try {
-              const key = batch[index]
-              const fecha = key.replace(BACKUP_KEY_PREFIX, "")
-
-              console.log(`🔍 Procesando backup ${index + 1}/${results.length}:`, fecha)
-
-              // Parsear backup de forma segura
-              const backupParsed = safeJsonParse(backup, null)
-
-              if (backupParsed && typeof backupParsed === "object") {
-                // Validar que la fecha sea válida
-                if (fecha && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                  const backupProcessed = {
-                    fecha: backupParsed.fecha || fecha,
-                    fechaCreacion:
-                      backupParsed.fechaCreacion || backupParsed.resumen?.horaBackup || new Date().toISOString(),
-                    version: backupParsed.version || "6.2",
-                    resumen: backupParsed.resumen || {
-                      totalTicketsEmitidos: 0,
-                      totalTicketsAtendidos: 0,
-                      ticketsPendientes: 0,
-                      eficienciaDiaria: 0,
-                      primerTicket: 0,
-                      ultimoTicket: 0,
-                      tiempoPromedioEsperaReal: 0,
-                      horaPico: { hora: 0, cantidad: 0, porcentaje: 0 },
-                    },
-                    createdAt:
-                      backupParsed.resumen?.horaBackup ||
-                      backupParsed.estadoFinal?.ultimoReinicio ||
-                      new Date().toISOString(),
-                    // Información de debugging
-                    _debug: {
-                      keyOriginal: key,
-                      fechaExtraida: fecha,
-                      tieneResumen: !!backupParsed.resumen,
-                      tieneTickets: !!(backupParsed.tickets && backupParsed.tickets.length > 0),
-                      cantidadTickets: backupParsed.tickets ? backupParsed.tickets.length : 0,
-                      esAutomatico: backupParsed.datosDetallados?.metadatos?.backup_automatico || false,
-                    },
-                  }
-
-                  backups.push(backupProcessed)
-                  console.log(`✅ Backup procesado: ${fecha} (${backupProcessed.resumen.totalTicketsEmitidos} tickets)`)
-                } else {
-                  console.log(`⚠️ Fecha inválida en clave: ${key}`)
-                }
-              } else {
-                console.log(`⚠️ Backup inválido en posición ${index}, clave: ${key}`)
-              }
-            } catch (itemError) {
-              console.error(`❌ Error procesando item ${index}:`, itemError)
+        // Si ya es un objeto, usarlo directamente
+        if (typeof backupRaw === "object" && backupRaw !== null) {
+          backupParsed = backupRaw
+        }
+        // Si es string, intentar parsear
+        else if (typeof backupRaw === "string") {
+          try {
+            // Verificar que la string no sea un mensaje de error
+            if (backupRaw.startsWith("Invalid") || backupRaw.startsWith("Error") || backupRaw.startsWith("ERR")) {
+              console.log(`⚠️ Mensaje de error en lugar de backup para ${fecha}:`, backupRaw.substring(0, 100))
+              continue
             }
-          })
+
+            backupParsed = JSON.parse(backupRaw)
+          } catch (parseError) {
+            console.log(`⚠️ Error parseando backup ${fecha}:`, parseError)
+            console.log(`   Contenido (primeros 200 chars):`, backupRaw.substring(0, 200))
+            continue
+          }
         } else {
-          console.error("❌ Resultados del pipeline no son un array:", results)
+          console.log(`⚠️ Tipo de dato inesperado para backup ${fecha}:`, typeof backupRaw)
+          continue
         }
-      } catch (batchError) {
-        console.error(`❌ Error procesando lote ${Math.floor(i / batchSize) + 1}:`, batchError)
+
+        // Validar que el backup parseado sea válido
+        if (!backupParsed || typeof backupParsed !== "object") {
+          console.log(`⚠️ Backup parseado inválido para ${fecha}`)
+          continue
+        }
+
+        // Validar que la fecha sea válida
+        if (!fecha || !fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          console.log(`⚠️ Fecha inválida en clave: ${key}`)
+          continue
+        }
+
+        const backupProcessed = {
+          fecha: backupParsed.fecha || fecha,
+          fechaCreacion: backupParsed.fechaCreacion || backupParsed.resumen?.horaBackup || new Date().toISOString(),
+          version: backupParsed.version || "6.2",
+          resumen: backupParsed.resumen || {
+            totalTicketsEmitidos: 0,
+            totalTicketsAtendidos: 0,
+            ticketsPendientes: 0,
+            eficienciaDiaria: 0,
+            primerTicket: 0,
+            ultimoTicket: 0,
+            tiempoPromedioEsperaReal: 0,
+            horaPico: { hora: 0, cantidad: 0, porcentaje: 0 },
+          },
+          createdAt:
+            backupParsed.resumen?.horaBackup || backupParsed.estadoFinal?.ultimoReinicio || new Date().toISOString(),
+          // Información de debugging
+          _debug: {
+            keyOriginal: key,
+            fechaExtraida: fecha,
+            tieneResumen: !!backupParsed.resumen,
+            tieneTickets: !!(backupParsed.tickets && backupParsed.tickets.length > 0),
+            cantidadTickets: backupParsed.tickets ? backupParsed.tickets.length : 0,
+            esAutomatico: backupParsed.datosDetallados?.metadatos?.backup_automatico || false,
+          },
+        }
+
+        backups.push(backupProcessed)
+        console.log(`✅ Backup procesado: ${fecha} (${backupProcessed.resumen.totalTicketsEmitidos} tickets)`)
+      } catch (itemError) {
+        console.error(`❌ Error procesando backup ${fecha}:`, itemError)
+        // Continuar con el siguiente backup
       }
 
-      // Pequeña pausa entre lotes para evitar saturar la conexión
-      if (i + batchSize < keysForPage.length) {
+      // Pequeña pausa entre backups para evitar saturar la conexión
+      if (i < keysForPage.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 100))
       }
     }
