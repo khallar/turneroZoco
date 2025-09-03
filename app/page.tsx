@@ -172,24 +172,48 @@ export default function SistemaAtencion() {
       console.log("Nombre:", nombre)
 
       // Generar ticket de forma atómica en el servidor
-      const ticketCreado = await generarTicket(nombre)
+      const response = await fetch("/api/sistema", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "GENERAR_TICKET",
+          nombre: nombre.trim(),
+        }),
+      })
 
-      if (ticketCreado) {
-        console.log("Ticket creado exitosamente:", ticketCreado)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Error de conexión" }))
+        throw new Error(errorData.error || `Error HTTP: ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      if (data.ticketGenerado) {
+        console.log("Ticket creado exitosamente:", data.ticketGenerado)
 
         const fraseAleatoria = FRASES_ALEATORIAS[Math.floor(Math.random() * FRASES_ALEATORIAS.length)]
 
         // Cerrar modal y mostrar ticket inmediatamente
         setMostrarModalNombre(false)
         setTicketGenerado({
-          numero: ticketCreado.numero,
-          nombre: ticketCreado.nombre,
+          numero: data.ticketGenerado.numero,
+          nombre: data.ticketGenerado.nombre,
           frase: fraseAleatoria,
-          fecha: ticketCreado.fecha,
+          fecha: data.ticketGenerado.fecha,
         })
+
+        // Actualizar el estado local con los nuevos datos
+        if (data.numeroActual && data.totalAtendidos !== undefined) {
+          // Forzar recarga del estado después de generar ticket
+          setTimeout(() => {
+            cargarEstado()
+          }, 1000)
+        }
       } else {
-        console.error("No se pudo crear el ticket")
-        alert("Error: No se pudo generar el ticket. Por favor, intente nuevamente.")
+        console.error("No se recibió ticket en la respuesta:", data)
+        throw new Error("No se pudo crear el ticket - respuesta inválida del servidor")
       }
     } catch (error) {
       console.error("Error al generar ticket:", error)
@@ -201,6 +225,10 @@ export default function SistemaAtencion() {
         alert("El sistema está ocupado en este momento. Por favor, espere unos segundos e intente nuevamente.")
       } else if (errorMessage.includes("timeout") || errorMessage.includes("Timeout")) {
         alert("La conexión está lenta. Por favor, verifique su conexión a internet e intente nuevamente.")
+      } else if (errorMessage.includes("HTTP: 500")) {
+        alert("Error interno del servidor. Por favor, intente nuevamente en unos momentos.")
+      } else if (errorMessage.includes("HTTP: 400")) {
+        alert("Datos inválidos. Por favor, verifique el nombre ingresado.")
       } else {
         alert(`Error al generar el ticket: ${errorMessage}\n\nPor favor, intente nuevamente.`)
       }

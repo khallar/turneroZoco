@@ -1,85 +1,78 @@
-// Script para verificar y crear backups automáticos
+// Script para verificar y crear backups automáticamente
 // Se puede ejecutar manualmente o programar con cron
 
-import { getTodayDateString, obtenerBackups, forzarBackupDiario, leerEstadoSistema } from "@/lib/database"
+import { obtenerBackups, forzarBackupDiario, leerEstadoSistema, getTodayDateString } from "../lib/database"
 
-async function verificarBackupsAutomaticos() {
-  console.log("🔍 Iniciando verificación de backups automáticos...")
-
+async function verificarBackups() {
   try {
-    // 1. Verificar backup del día actual
-    console.log("📅 Verificando backup del día actual...")
+    console.log("🔍 Iniciando verificación de backups...")
+
     const fechaHoy = getTodayDateString()
-    const estado = await leerEstadoSistema()
+    const fechaAyer = getYesterdayDateString()
 
-    if (estado.totalAtendidos > 0) {
-      console.log(`✅ Día actual (${fechaHoy}) tiene ${estado.totalAtendidos} tickets`)
+    console.log(`📅 Fecha actual: ${fechaHoy}`)
+    console.log(`📅 Fecha ayer: ${fechaAyer}`)
 
-      // Si es tarde (después de las 22:00), crear backup automáticamente
-      const horaActual = new Date().getHours()
-      if (horaActual >= 22) {
-        console.log(`🌙 Es tarde (${horaActual}:00), creando backup automático...`)
-        const resultado = await forzarBackupDiario()
-        console.log(resultado.success ? `✅ ${resultado.message}` : `❌ ${resultado.message}`)
-      } else {
-        console.log(`☀️ Aún es temprano (${horaActual}:00), backup programado para más tarde`)
-      }
-    } else {
-      console.log(`⚠️ Día actual (${fechaHoy}) sin actividad aún`)
-    }
-
-    // 2. Verificar backups de días anteriores
-    console.log("📋 Verificando historial de backups...")
+    // Obtener backups existentes
     const backups = await obtenerBackups()
-    console.log(`📊 Encontrados ${backups.length} backups en el historial`)
+    console.log(`📦 Total de backups encontrados: ${backups.length}`)
 
-    // 3. Verificar continuidad (días faltantes)
-    const fechasConBackup = backups.map((b) => b.fecha).sort()
-    console.log("📅 Fechas con backup:", fechasConBackup.slice(0, 5), fechasConBackup.length > 5 ? "..." : "")
+    // Verificar backup de hoy
+    const backupHoy = backups.find((b) => b.fecha === fechaHoy)
+    const backupAyer = backups.find((b) => b.fecha === fechaAyer)
 
-    // 4. Verificar si faltan días recientes
-    const hoy = new Date()
-    const diasAVerificar = 7 // Verificar últimos 7 días
+    console.log(`📊 Backup de hoy (${fechaHoy}): ${backupHoy ? "✅ Existe" : "❌ No existe"}`)
+    console.log(`📊 Backup de ayer (${fechaAyer}): ${backupAyer ? "✅ Existe" : "❌ No existe"}`)
 
-    for (let i = 1; i <= diasAVerificar; i++) {
-      const fecha = new Date(hoy)
-      fecha.setDate(fecha.getDate() - i)
-      const fechaStr = fecha.toISOString().split("T")[0]
+    // Verificar si hay actividad hoy
+    const estado = await leerEstadoSistema()
+    console.log(`🎫 Tickets emitidos hoy: ${estado.totalAtendidos}`)
 
-      const tieneBackup = fechasConBackup.includes(fechaStr)
+    // Si hay actividad pero no hay backup, crearlo
+    if (estado.totalAtendidos > 0 && !backupHoy) {
+      console.log("🔧 Creando backup para el día actual...")
+      const resultado = await forzarBackupDiario()
 
-      if (!tieneBackup) {
-        console.log(`⚠️ Falta backup para ${fechaStr}`)
-        // Aquí podrías intentar recuperar datos si existen
+      if (resultado.success) {
+        console.log("✅ Backup creado exitosamente:", resultado.message)
       } else {
-        console.log(`✅ Backup existe para ${fechaStr}`)
+        console.error("❌ Error al crear backup:", resultado.message)
       }
+    } else if (estado.totalAtendidos === 0) {
+      console.log("ℹ️ No hay actividad hoy, no se requiere backup")
+    } else {
+      console.log("✅ Backup del día actual ya existe")
     }
 
-    // 5. Resumen final
-    console.log("📊 Resumen de verificación:")
-    console.log(`   - Backups totales: ${backups.length}`)
-    console.log(`   - Tickets hoy: ${estado.totalAtendidos}`)
-    console.log(`   - Hora actual: ${new Date().getHours()}:${new Date().getMinutes().toString().padStart(2, "0")}`)
-    console.log(`   - Estado: ${estado.totalAtendidos > 0 ? "Activo" : "Sin actividad"}`)
+    // Mostrar resumen de últimos backups
+    console.log("\n📋 Últimos 5 backups:")
+    backups.slice(0, 5).forEach((backup) => {
+      console.log(`  - ${backup.fecha}: ${backup.resumen?.totalTicketsEmitidos || 0} tickets`)
+    })
 
-    console.log("✅ Verificación de backups completada")
+    console.log("\n✅ Verificación de backups completada")
   } catch (error) {
     console.error("❌ Error en verificación de backups:", error)
+    process.exit(1)
   }
+}
+
+function getYesterdayDateString(): string {
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const options: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "America/Argentina/Buenos_Aires",
+  }
+  const formatter = new Intl.DateTimeFormat("en-CA", options)
+  return formatter.format(yesterday)
 }
 
 // Ejecutar si se llama directamente
 if (require.main === module) {
-  verificarBackupsAutomaticos()
-    .then(() => {
-      console.log("🎉 Script completado")
-      process.exit(0)
-    })
-    .catch((error) => {
-      console.error("💥 Error fatal:", error)
-      process.exit(1)
-    })
+  verificarBackups()
 }
 
-export { verificarBackupsAutomaticos }
+export { verificarBackups }
