@@ -82,9 +82,10 @@ export default function PaginaAdmin() {
   const cargarBackups = async () => {
     try {
       const backupsResult = await obtenerBackups(1, 10) // Cargar solo los primeros 10 para el admin
-      setBackups(backupsResult.backups)
+      setBackups(backupsResult?.backups || [])
     } catch (error) {
       console.error("Error al cargar backups:", error)
+      setBackups([])
     }
   }
 
@@ -102,7 +103,7 @@ export default function PaginaAdmin() {
     try {
       const response = await fetch("/api/sistema?action=forzar_backup")
       const result = await response.json()
-      
+
       if (result.success) {
         alert(`✅ ${result.message}`)
         // Recargar backups después de crear uno nuevo
@@ -200,7 +201,7 @@ export default function PaginaAdmin() {
 
   // Calcular estadísticas administrativas
   const calcularEstadisticasAdmin = () => {
-    if (!estado.tickets || estado.tickets.length === 0) {
+    if (!estado || !estado.tickets || estado.tickets.length === 0) {
       return {
         totalTicketsHistorico: 0,
         promedioTicketsPorDia: 0,
@@ -219,7 +220,7 @@ export default function PaginaAdmin() {
       Math.ceil((ahora.getTime() - inicioOperaciones.getTime()) / (1000 * 60 * 60 * 24)),
     )
 
-    const totalTicketsHistorico = estado.totalAtendidos + backups.length * 50
+    const totalTicketsHistorico = estado.totalAtendidos + (backups?.length || 0) * 50
     const promedioTicketsPorDia = totalTicketsHistorico / diasOperativos
     const eficienciaGeneral = estado.totalAtendidos > 0 ? (estado.numerosLlamados / estado.totalAtendidos) * 100 : 0
 
@@ -240,10 +241,10 @@ export default function PaginaAdmin() {
 
   // MÉTRICAS AVANZADAS MEJORADAS
   const calcularMetricasAvanzadas = () => {
-    if (!estado.tickets || estado.tickets.length === 0) {
+    if (!estado || !estado.tickets || estado.tickets.length === 0) {
       return {
         distribucionPorHora: {},
-        nombresComunes: {},
+        nombresComunes: [],
         tiempoEntreTickets: 0,
         velocidadAtencion: 0,
         tiempoEsperaReal: 0,
@@ -256,7 +257,7 @@ export default function PaginaAdmin() {
       }
     }
 
-    const tickets = estado.tickets
+    const tickets = estado.tickets || []
     const ahora = new Date()
     const inicioOperaciones = new Date(estado.fechaInicio)
 
@@ -359,7 +360,8 @@ export default function PaginaAdmin() {
 
     // 10. Métricas de rendimiento del sistema
     const metricsRendimiento = {
-      cacheHitRate: cacheStats.entries.filter((e) => e.fresh).length / Math.max(cacheStats.entries.length, 1),
+      cacheHitRate:
+        (cacheStats?.entries?.filter((e) => e.fresh)?.length || 0) / Math.max(cacheStats?.entries?.length || 1, 1),
       tiempoRespuestaPromedio: ultimaSincronizacion ? Date.now() - ultimaSincronizacion.getTime() : 0,
       disponibilidadSistema: error ? 0.95 : 1.0,
     }
@@ -439,7 +441,7 @@ export default function PaginaAdmin() {
                   : "Nunca"}
               </span>
             </div>
-            {cacheStats.totalEntries > 0 && (
+            {cacheStats && cacheStats.totalEntries > 0 && (
               <div className="flex items-center gap-1">
                 <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
                   📦 Cache: {cacheStats.totalEntries} entradas
@@ -448,7 +450,7 @@ export default function PaginaAdmin() {
             )}
           </div>
 
-          {/* Botones de navegación - AGREGADO BOTÓN PRÓXIMOS */}
+          {/* Botones de navegación */}
           <div className="flex justify-center gap-4 flex-wrap">
             <a
               href="/"
@@ -482,7 +484,7 @@ export default function PaginaAdmin() {
         </div>
 
         {/* Estadísticas de Cache - MINIMIZADO */}
-        {cacheStats.totalEntries > 0 && (
+        {cacheStats && cacheStats.totalEntries > 0 && (
           <div className="mb-6 flex justify-center">
             <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2">
@@ -491,8 +493,10 @@ export default function PaginaAdmin() {
               </div>
               <div className="flex items-center gap-4">
                 <span className="text-blue-700">{cacheStats.totalEntries} entradas</span>
-                <span className="text-green-700">{cacheStats.entries.filter((e) => e.fresh).length} frescas</span>
-                <span className="text-purple-700">{cacheStats.subscribers} suscriptores</span>
+                <span className="text-green-700">
+                  {(cacheStats.entries || []).filter((e) => e.fresh).length} frescas
+                </span>
+                <span className="text-purple-700">{cacheStats.subscribers || 0} suscriptores</span>
                 <Button
                   onClick={invalidateCache}
                   size="sm"
@@ -514,7 +518,7 @@ export default function PaginaAdmin() {
               <Users className="h-4 w-4" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{estado?.totalAtendidos}</div>
+              <div className="text-3xl font-bold">{estado?.totalAtendidos || 0}</div>
               <p className="text-xs opacity-80">Emitidos en el día</p>
             </CardContent>
           </Card>
@@ -525,7 +529,7 @@ export default function PaginaAdmin() {
               <CheckCircle className="h-4 w-4" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{estado?.numerosLlamados}</div>
+              <div className="text-3xl font-bold">{estado?.numerosLlamados || 0}</div>
               <p className="text-xs opacity-80">Tickets procesados</p>
             </CardContent>
           </Card>
@@ -536,7 +540,7 @@ export default function PaginaAdmin() {
               <Clock className="h-4 w-4" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{estado?.totalAtendidos - estado?.numerosLlamados}</div>
+              <div className="text-3xl font-bold">{(estado?.totalAtendidos || 0) - (estado?.numerosLlamados || 0)}</div>
               <p className="text-xs opacity-80">Pendientes</p>
             </CardContent>
           </Card>
@@ -557,8 +561,7 @@ export default function PaginaAdmin() {
         <Card className="mb-8 bg-gradient-to-r from-orange-50 to-red-50 border-orange-200">
           <CardHeader>
             <CardTitle className="text-xl text-orange-800 flex items-center gap-2">
-              <Shield className="h-6 w-6" />
-              🔧 Acciones Administrativas
+              <Shield className="h-6 w-6" />🔧 Acciones Administrativas
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -730,7 +733,7 @@ export default function PaginaAdmin() {
                       <div>
                         <span className="font-semibold text-gray-700">Promedio por hora:</span>
                         <p className="text-green-600 font-bold">
-                          {Math.round(metricasAvanzadas.patronesUso.promedioTicketsPorHora * 10) / 10}
+                          {Math.round((metricasAvanzadas.patronesUso.promedioTicketsPorHora || 0) * 10) / 10}
                         </p>
                       </div>
                       <div>
@@ -742,7 +745,10 @@ export default function PaginaAdmin() {
                       <div>
                         <span className="font-semibold text-gray-700">Concentración:</span>
                         <p className="text-orange-600 font-bold">
-                          {Math.round((metricasAvanzadas.horaPico.cantidad / estado.totalAtendidos) * 100)}% en pico
+                          {Math.round(
+                            (metricasAvanzadas.horaPico.cantidad / Math.max(estado?.totalAtendidos || 1, 1)) * 100,
+                          )}
+                          % en pico
                         </p>
                       </div>
                     </div>
@@ -756,7 +762,7 @@ export default function PaginaAdmin() {
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {metricasAvanzadas.nombresComunes.slice(0, 10).map(([nombre, cantidad], index) => {
-                      const porcentaje = Math.round((cantidad / estado.totalAtendidos) * 100)
+                      const porcentaje = Math.round((cantidad / Math.max(estado?.totalAtendidos || 1, 1)) * 100)
                       const isTop3 = index < 3
                       return (
                         <div
@@ -831,7 +837,7 @@ export default function PaginaAdmin() {
                       </div>
                       <p className="text-sm text-blue-700">Promedio desde emisión hasta llamada</p>
                       <div className="mt-2 text-xs text-blue-600">
-                        Basado en {estado.numerosLlamados} tickets atendidos
+                        Basado en {estado?.numerosLlamados || 0} tickets atendidos
                       </div>
                     </div>
 
@@ -878,19 +884,20 @@ export default function PaginaAdmin() {
                       </div>
                       <p className="text-sm font-semibold text-indigo-800">Proyección Total Día</p>
                       <p className="text-xs text-indigo-600 mt-1">
-                        Faltan: {Math.max(0, metricasAvanzadas.proyeccionDiaria - estado.totalAtendidos)} tickets
+                        Faltan: {Math.max(0, metricasAvanzadas.proyeccionDiaria - (estado?.totalAtendidos || 0))}{" "}
+                        tickets
                       </p>
                     </div>
                     <div className="bg-orange-50 p-4 rounded-lg text-center">
                       <div className="text-3xl font-bold text-orange-600 mb-2">
-                        {Math.round(metricasAvanzadas.analisisTendencias.tendenciaEficiencia * 100)}%
+                        {Math.round((metricasAvanzadas.analisisTendencias.tendenciaEficiencia || 0) * 100)}%
                       </div>
                       <p className="text-sm font-semibold text-orange-800">Eficiencia Actual</p>
                       <p className="text-xs text-orange-600 mt-1">Tickets atendidos vs emitidos</p>
                     </div>
                     <div className="bg-teal-50 p-4 rounded-lg text-center">
                       <div className="text-3xl font-bold text-teal-600 mb-2">
-                        {Math.round(metricasAvanzadas.analisisTendencias.crecimientoDiario)}
+                        {Math.round(metricasAvanzadas.analisisTendencias.crecimientoDiario || 0)}
                       </div>
                       <p className="text-sm font-semibold text-teal-800">Promedio Diario</p>
                       <p className="text-xs text-teal-600 mt-1">Tickets por día operativo</p>
@@ -926,7 +933,7 @@ export default function PaginaAdmin() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {backups.length > 0 ? (
+            {backups && backups.length > 0 ? (
               <div className="space-y-4">
                 {/* Lista de días con métricas MEJORADA - Solo primeros 10 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -952,11 +959,7 @@ export default function PaginaAdmin() {
                       >
                         <div className="flex justify-between items-start mb-3">
                           <div>
-                            <h4
-                              className={`font-bold text-lg ${
-                                esReciente ? "text-blue-800" : "text-gray-800"
-                              }`}
-                            >
+                            <h4 className={`font-bold text-lg ${esReciente ? "text-blue-800" : "text-gray-800"}`}>
                               📅 {backup.fecha}
                             </h4>
                             <p className="text-xs text-gray-500">
@@ -1081,7 +1084,11 @@ export default function PaginaAdmin() {
                 <div className="text-6xl mb-4">📊</div>
                 <p className="text-xl text-gray-500 mb-2">No hay historial disponible</p>
                 <p className="text-gray-400 mb-4">Los backups aparecerán aquí después del primer día de operación</p>
-                <Button onClick={forzarBackupDiario} disabled={creandoBackup} className="bg-green-600 hover:bg-green-700 text-white">
+                <Button
+                  onClick={forzarBackupDiario}
+                  disabled={creandoBackup}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
                   {creandoBackup ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
@@ -1099,7 +1106,7 @@ export default function PaginaAdmin() {
           </CardContent>
         </Card>
 
-        {/* Modales existentes... */}
+        {/* Modales de confirmación */}
         {mostrarConfirmacionEliminar && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <Card className="w-full max-w-md bg-white">
@@ -1189,4 +1196,31 @@ export default function PaginaAdmin() {
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <span className="font-semibold">Tickets emitidos:</span>
-                        <p>{backupSeleccionado.resumen.total
+                        <p>{backupSeleccionado.resumen.totalTicketsEmitidos || 0}</p>
+                      </div>
+                      <div>
+                        <span className="font-semibold">Tickets atendidos:</span>
+                        <p>{backupSeleccionado.resumen.totalTicketsAtendidos || 0}</p>
+                      </div>
+                      <div>
+                        <span className="font-semibold">Eficiencia:</span>
+                        <p>{backupSeleccionado.resumen.eficienciaDiaria || 0}%</p>
+                      </div>
+                      <div>
+                        <span className="font-semibold">Hora pico:</span>
+                        <p>{backupSeleccionado.resumen.horaPico?.hora || 0}:00</p>
+                      </div>
+                    </div>
+                  )}
+                  <div className="bg-gray-50 p-3 rounded">
+                    <pre className="text-xs overflow-auto max-h-40">{JSON.stringify(backupSeleccionado, null, 2)}</pre>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
