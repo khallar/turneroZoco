@@ -19,8 +19,6 @@ import {
   Eye,
   Star,
   AlertCircle,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react"
 
 interface ResumenData {
@@ -28,13 +26,6 @@ interface ResumenData {
   datosPorDia: any[]
   tendencias: any
   comparativas: any
-  paginacion: {
-    currentPage: number
-    totalPages: number
-    totalDias: number
-    hasNextPage: boolean
-    hasPrevPage: boolean
-  }
 }
 
 export default function PaginaResumen() {
@@ -42,18 +33,16 @@ export default function PaginaResumen() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [mostrarDetalles, setMostrarDetalles] = useState(false)
-  const [paginaActual, setPaginaActual] = useState(1)
-  const [limitePorPagina] = useState(15) // 15 días por página
 
   useEffect(() => {
-    cargarResumen(paginaActual)
-  }, [paginaActual])
+    cargarResumen()
+  }, [])
 
-  const cargarResumen = async (page = 1) => {
+  const cargarResumen = async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch(`/api/resumen-dias?page=${page}&limit=${limitePorPagina}`)
+      const response = await fetch("/api/resumen-dias")
       if (!response.ok) {
         throw new Error("Error al cargar el resumen")
       }
@@ -67,23 +56,16 @@ export default function PaginaResumen() {
     }
   }
 
-  const cambiarPagina = (nuevaPagina: number) => {
-    if (nuevaPagina >= 1 && resumenData && nuevaPagina <= resumenData.paginacion.totalPages) {
-      setPaginaActual(nuevaPagina)
-    }
-  }
-
   const exportarResumen = () => {
     if (!resumenData) return
 
     const datos = {
       fechaExportacion: new Date().toISOString(),
-      paginaActual: paginaActual,
       resumenCompleto: resumenData,
       metadatos: {
-        version: "6.1",
+        version: "6.0",
         sistema: "TURNOS_ZOCO",
-        tipoExportacion: "Resumen Histórico Paginado",
+        tipoExportacion: "Resumen Histórico Completo",
       },
     }
 
@@ -91,29 +73,11 @@ export default function PaginaResumen() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.href = url
-    link.download = `ZOCO-ResumenHistorico-Pagina${paginaActual}-${new Date().toISOString().split("T")[0]}.json`
+    link.download = `ZOCO-ResumenHistorico-${new Date().toISOString().split("T")[0]}.json`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
-  }
-
-  const forzarBackup = async () => {
-    try {
-      const response = await fetch("/api/sistema?action=forzar_backup")
-      const result = await response.json()
-
-      if (result.success) {
-        alert(`✅ ${result.message}`)
-        // Recargar datos después de crear backup
-        await cargarResumen(paginaActual)
-      } else {
-        alert(`❌ ${result.message}`)
-      }
-    } catch (error) {
-      console.error("Error al forzar backup:", error)
-      alert("❌ Error al crear backup")
-    }
   }
 
   if (loading) {
@@ -122,7 +86,6 @@ export default function PaginaResumen() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-lg text-gray-600">Generando resumen histórico...</p>
-          <p className="text-sm text-gray-500 mt-2">Página {paginaActual}</p>
         </div>
       </div>
     )
@@ -141,7 +104,7 @@ export default function PaginaResumen() {
           <CardContent>
             <p className="text-gray-700 mb-4">{error}</p>
             <div className="flex gap-2">
-              <Button onClick={() => cargarResumen(paginaActual)} className="flex-1">
+              <Button onClick={cargarResumen} className="flex-1">
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Reintentar
               </Button>
@@ -156,7 +119,7 @@ export default function PaginaResumen() {
     )
   }
 
-  const { resumenGeneral, datosPorDia, tendencias, comparativas, paginacion } = resumenData
+  const { resumenGeneral, datosPorDia, tendencias, comparativas } = resumenData
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -178,87 +141,26 @@ export default function PaginaResumen() {
             <BarChart3 className="h-8 w-8 md:h-10 md:w-10 text-blue-600" />
             Resumen Histórico Completo
           </h1>
-          <p className="text-lg text-gray-600 mb-2">
+          <p className="text-lg text-gray-600 mb-4">
             Análisis detallado de {resumenGeneral.totalDias} días de operación
-          </p>
-          <p className="text-sm text-gray-500 mb-4">
-            Página {paginacion.currentPage} de {paginacion.totalPages} • Mostrando {datosPorDia.length} días
           </p>
 
           {/* Botones de navegación */}
-          <div className="flex justify-center gap-4 mb-6 flex-wrap">
+          <div className="flex justify-center gap-4 mb-6">
             <Button variant="outline" onClick={() => (window.location.href = "/admin")}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Panel Admin
             </Button>
-            <Button onClick={() => cargarResumen(paginaActual)} variant="outline">
+            <Button onClick={cargarResumen} variant="outline">
               <RefreshCw className="mr-2 h-4 w-4" />
               Actualizar
             </Button>
-            <Button onClick={forzarBackup} className="bg-orange-600 hover:bg-orange-700 text-white">
-              <Calendar className="mr-2 h-4 w-4" />
-              Crear Backup Hoy
-            </Button>
             <Button onClick={exportarResumen} className="bg-green-600 hover:bg-green-700 text-white">
               <Download className="mr-2 h-4 w-4" />
-              Exportar Página
+              Exportar Resumen
             </Button>
           </div>
         </div>
-
-        {/* Controles de Paginación Superior */}
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <Button
-                  onClick={() => cambiarPagina(paginaActual - 1)}
-                  disabled={!paginacion.hasPrevPage}
-                  variant="outline"
-                  size="sm"
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Anterior
-                </Button>
-
-                <div className="flex items-center gap-2">
-                  {/* Páginas cercanas */}
-                  {Array.from({ length: Math.min(5, paginacion.totalPages) }, (_, i) => {
-                    const startPage = Math.max(1, paginaActual - 2)
-                    const pageNum = startPage + i
-                    if (pageNum > paginacion.totalPages) return null
-
-                    return (
-                      <Button
-                        key={pageNum}
-                        onClick={() => cambiarPagina(pageNum)}
-                        variant={pageNum === paginaActual ? "default" : "outline"}
-                        size="sm"
-                        className="w-10 h-10"
-                      >
-                        {pageNum}
-                      </Button>
-                    )
-                  })}
-                </div>
-
-                <Button
-                  onClick={() => cambiarPagina(paginaActual + 1)}
-                  disabled={!paginacion.hasNextPage}
-                  variant="outline"
-                  size="sm"
-                >
-                  Siguiente
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-
-              <div className="text-sm text-gray-600">
-                Página {paginacion.currentPage} de {paginacion.totalPages} • {paginacion.totalDias} días totales
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Resumen General */}
         <Card className="mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
@@ -542,7 +444,7 @@ export default function PaginaResumen() {
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <PieChart className="h-5 w-5" />📋 Datos Detallados por Día (Página {paginaActual})
+                <PieChart className="h-5 w-5" />📋 Datos Detallados por Día
               </div>
               <Button onClick={() => setMostrarDetalles(!mostrarDetalles)} variant="outline">
                 <Eye className="mr-2 h-4 w-4" />
@@ -634,81 +536,11 @@ export default function PaginaResumen() {
           )}
         </Card>
 
-        {/* Controles de Paginación Inferior */}
-        <Card className="mb-8">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <Button onClick={() => cambiarPagina(1)} disabled={paginaActual === 1} variant="outline" size="sm">
-                  Primera
-                </Button>
-
-                <Button
-                  onClick={() => cambiarPagina(paginaActual - 1)}
-                  disabled={!paginacion.hasPrevPage}
-                  variant="outline"
-                  size="sm"
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Anterior
-                </Button>
-
-                <div className="flex items-center gap-2">
-                  {/* Páginas cercanas */}
-                  {Array.from({ length: Math.min(5, paginacion.totalPages) }, (_, i) => {
-                    const startPage = Math.max(1, paginaActual - 2)
-                    const pageNum = startPage + i
-                    if (pageNum > paginacion.totalPages) return null
-
-                    return (
-                      <Button
-                        key={pageNum}
-                        onClick={() => cambiarPagina(pageNum)}
-                        variant={pageNum === paginaActual ? "default" : "outline"}
-                        size="sm"
-                        className="w-10 h-10"
-                      >
-                        {pageNum}
-                      </Button>
-                    )
-                  })}
-                </div>
-
-                <Button
-                  onClick={() => cambiarPagina(paginaActual + 1)}
-                  disabled={!paginacion.hasNextPage}
-                  variant="outline"
-                  size="sm"
-                >
-                  Siguiente
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-
-                <Button
-                  onClick={() => cambiarPagina(paginacion.totalPages)}
-                  disabled={paginaActual === paginacion.totalPages}
-                  variant="outline"
-                  size="sm"
-                >
-                  Última
-                </Button>
-              </div>
-
-              <div className="text-sm text-gray-600">
-                Mostrando {datosPorDia.length} de {paginacion.totalDias} días totales
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Footer */}
         <footer className="text-center mt-8 pt-4 border-t border-gray-200">
           <div className="text-xs text-gray-400">
-            <p>Sistema de Turnos ZOCO | Resumen Histórico v6.1 con Paginación</p>
+            <p>Sistema de Turnos ZOCO | Resumen Histórico v6.0</p>
             <p>Generado el {new Date().toLocaleString("es-AR")}</p>
-            <p>
-              Página {paginaActual} de {paginacion.totalPages} • {paginacion.totalDias} días registrados
-            </p>
           </div>
         </footer>
       </div>

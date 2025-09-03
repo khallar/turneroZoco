@@ -6,28 +6,17 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const fecha = searchParams.get("fecha") // YYYY-MM-DD
     const accion = searchParams.get("accion") // 'listar' o 'obtener'
-    const page = Number.parseInt(searchParams.get("page") || "1", 10)
-    const limit = Number.parseInt(searchParams.get("limit") || "10", 10)
 
     if (accion === "listar") {
-      // Listar todos los backups disponibles con paginación
+      // Listar todos los backups disponibles
       try {
-        const backupsResult = await obtenerBackups(page, limit)
+        const backups = await obtenerBackups()
 
-        console.log(
-          `📦 Backups encontrados en TURNOS_ZOCO (Upstash Redis): ${backupsResult.totalBackups} total, página ${page}`,
-        )
-        return NextResponse.json(backupsResult)
+        console.log("📦 Backups encontrados en TURNOS_ZOCO (Upstash Redis):", backups.length)
+        return NextResponse.json({ backups })
       } catch (error) {
         console.error("❌ Error al listar backups (TURNOS_ZOCO):", error)
-        return NextResponse.json({
-          backups: [],
-          totalPages: 0,
-          currentPage: page,
-          totalBackups: 0,
-          hasNextPage: false,
-          hasPrevPage: false,
-        })
+        return NextResponse.json({ backups: [] })
       }
     }
 
@@ -60,7 +49,7 @@ export async function POST(request: NextRequest) {
     const { accion } = body
 
     if (accion === "limpiar_antiguos") {
-      // Limpiar backups antiguos (más de 90 días)
+      // Limpiar backups antiguos (más de 30 días)
       try {
         await limpiarDatosAntiguos()
 

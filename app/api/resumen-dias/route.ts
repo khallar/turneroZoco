@@ -3,18 +3,12 @@ import { obtenerResumenDiasAnteriores } from "@/lib/database"
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const page = Number.parseInt(searchParams.get("page") || "1", 10)
-    const limit = Number.parseInt(searchParams.get("limit") || "30", 10)
+    console.log("🔍 API: Solicitando resumen de días anteriores...")
 
-    console.log(`🔍 API: Solicitando resumen de días anteriores (página ${page}, límite ${limit})...`)
-
-    const resumen = await obtenerResumenDiasAnteriores(page, limit)
+    const resumen = await obtenerResumenDiasAnteriores()
 
     console.log("✅ API: Resumen generado exitosamente")
-    console.log(
-      `📊 Datos: ${resumen.resumenGeneral.totalDias} días totales, ${resumen.datosPorDia.length} en página actual`,
-    )
+    console.log(`📊 Datos: ${resumen.resumenGeneral.totalDias} días, ${resumen.datosPorDia.length} registros`)
 
     return NextResponse.json(resumen, {
       status: 200,
@@ -39,13 +33,6 @@ export async function GET(request: NextRequest) {
         datosPorDia: [],
         tendencias: { error: "Error al calcular tendencias" },
         comparativas: { error: "Error al generar comparativas" },
-        paginacion: {
-          currentPage: 1,
-          totalPages: 0,
-          totalDias: 0,
-          hasNextPage: false,
-          hasPrevPage: false,
-        },
       },
       { status: 500 },
     )
