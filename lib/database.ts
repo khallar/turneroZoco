@@ -23,8 +23,8 @@ function getRedisConfig() {
   // Intentar diferentes combinaciones de variables de entorno disponibles
   const configs = [
     {
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      url: process.env.KV_REST_API_URL,
+      token: process.env.KV_REST_API_TOKEN,
       name: "UPSTASH_REDIS_REST (Principal)",
     },
     {
@@ -58,8 +58,8 @@ function getRedisConfig() {
   console.error("❌ No se encontraron variables de entorno válidas para Upstash Redis")
   console.log("🔍 Variables disponibles en el entorno:")
   console.log({
-    UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL ? "✓ Configurado" : "✗ No configurado",
-    UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN ? "✓ Configurado" : "✗ No configurado",
+    UPSTASH_REDIS_REST_URL: process.env.KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
+    UPSTASH_REDIS_REST_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
     KV_REST_API_URL: process.env.KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
     KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
     TURNOS_KV_REST_API_URL: process.env.TURNOS_KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
@@ -120,6 +120,20 @@ export function getTodayDateString(): string {
   }
   const formatter = new Intl.DateTimeFormat("en-CA", options) // en-CA para YYYY-MM-DD
   return formatter.format(now)
+}
+
+// Función auxiliar para obtener la fecha de ayer
+function getYesterdayDateString(): string {
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const options: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "America/Argentina/Buenos_Aires",
+  }
+  const formatter = new Intl.DateTimeFormat("en-CA", options)
+  return formatter.format(yesterday)
 }
 
 // Función helper para validar y parsear JSON de forma segura
@@ -231,26 +245,34 @@ async function retryOperation<T>(
   throw lastError!
 }
 
-// NUEVA FUNCIÓN: Verificar si necesita crear backup automático
+// FUNCIÓN MEJORADA: Verificar si necesita crear backup automático
 async function verificarYCrearBackupAutomatico(): Promise<void> {
   try {
     const fechaHoy = getTodayDateString()
-    const fechaAyer = new Date()
-    fechaAyer.setDate(fechaAyer.getDate() - 1)
-    const fechaAyerString = fechaAyer.toISOString().split("T")[0]
+    const fechaAyer = getYesterdayDateString()
+
+    console.log(`🔍 Verificando backup automático - Hoy: ${fechaHoy}, Ayer: ${fechaAyer}`)
 
     // Verificar si ya existe backup para ayer
-    const backupAyer = BACKUP_KEY_PREFIX + fechaAyerString
+    const backupAyer = BACKUP_KEY_PREFIX + fechaAyer
     const existeBackupAyer = await redis.exists(backupAyer)
 
+    console.log(`📦 Backup de ayer (${fechaAyer}): ${existeBackupAyer ? "✅ Existe" : "❌ No existe"}`)
+
     if (!existeBackupAyer) {
-      console.log(`📦 No existe backup para ${fechaAyerString}, intentando crear...`)
+      console.log(`🔧 Intentando crear backup retroactivo para ${fechaAyer}...`)
 
       // Intentar recuperar datos de ayer
-      const estadoAyerKey = STATE_KEY_PREFIX + fechaAyerString
-      const ticketsAyerKey = TICKETS_LIST_KEY_PREFIX + fechaAyerString
+      const estadoAyerKey = STATE_KEY_PREFIX + fechaAyer
+      const ticketsAyerKey = TICKETS_LIST_KEY_PREFIX + fechaAyer
+
+      console.log(`🔍 Buscando datos de ayer en claves: ${estadoAyerKey}, ${ticketsAyerKey}`)
 
       const [estadoAyer, ticketsAyer] = await redis.pipeline().get(estadoAyerKey).lrange(ticketsAyerKey, 0, -1).exec()
+
+      console.log(
+        `📊 Datos encontrados - Estado: ${!!estadoAyer}, Tickets: ${Array.isArray(ticketsAyer) ? ticketsAyer.length : 0}`,
+      )
 
       const estadoParsed = safeJsonParse(estadoAyer, null)
       const estadoValidado = validateEstadoSistema(estadoParsed)
@@ -259,11 +281,44 @@ async function verificarYCrearBackupAutomatico(): Promise<void> {
       const ticketsValidados = validateTickets(ticketsParsed)
 
       if (estadoValidado && ticketsValidados.length > 0) {
-        console.log(`🔧 Creando backup retroactivo para ${fechaAyerString}`)
+        console.log(`✅ Creando backup retroactivo para ${fechaAyer} con ${ticketsValidados.length} tickets`)
         await crearBackupDiario({ ...estadoValidado, tickets: ticketsValidados })
-        console.log(`✅ Backup retroactivo creado para ${fechaAyerString}`)
+        console.log(`🎉 Backup retroactivo creado exitosamente para ${fechaAyer}`)
       } else {
-        console.log(`⚠️ No hay datos suficientes para crear backup de ${fechaAyerString}`)
+        console.log(`⚠️ No hay datos suficientes para crear backup de ${fechaAyer}`)
+        console.log(`   - Estado válido: ${!!estadoValidado}`)
+        console.log(`   - Tickets válidos: ${ticketsValidados.length}`)
+      }
+    }
+
+    // Verificar si necesitamos crear backup para hoy (si ya terminó el día)
+    const ahora = new Date()
+    const horaActual = ahora.getHours()
+
+    // Si es después de las 23:00, considerar crear backup del día actual
+    if (horaActual >= 23) {
+      const backupHoy = BACKUP_KEY_PREFIX + fechaHoy
+      const existeBackupHoy = await redis.exists(backupHoy)
+
+      if (!existeBackupHoy) {
+        console.log(`🌙 Es tarde (${horaActual}:00), verificando si crear backup de hoy...`)
+
+        const estadoHoyKey = STATE_KEY_PREFIX + fechaHoy
+        const ticketsHoyKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
+
+        const [estadoHoy, ticketsHoy] = await redis.pipeline().get(estadoHoyKey).lrange(ticketsHoyKey, 0, -1).exec()
+
+        const estadoHoyParsed = safeJsonParse(estadoHoy, null)
+        const estadoHoyValidado = validateEstadoSistema(estadoHoyParsed)
+
+        const ticketsHoyParsed = safeJsonParse(ticketsHoy, [])
+        const ticketsHoyValidados = validateTickets(ticketsHoyParsed)
+
+        if (estadoHoyValidado && ticketsHoyValidados.length > 0) {
+          console.log(`🌙 Creando backup de fin de día para ${fechaHoy} con ${ticketsHoyValidados.length} tickets`)
+          await crearBackupDiario({ ...estadoHoyValidado, tickets: ticketsHoyValidados })
+          console.log(`🎉 Backup de fin de día creado para ${fechaHoy}`)
+        }
       }
     }
 
@@ -274,9 +329,12 @@ async function verificarYCrearBackupAutomatico(): Promise<void> {
         ultimaVerificacion: new Date().toISOString(),
         proximaVerificacion: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         fechaActual: fechaHoy,
+        horaVerificacion: horaActual,
       },
       { ex: 25 * 60 * 60 },
     ) // 25 horas de expiración
+
+    console.log(`✅ Verificación de backup automático completada`)
   } catch (error) {
     console.error("❌ Error en verificación de backup automático:", error)
   }
@@ -522,7 +580,7 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
     const backupData = {
       fecha,
       fechaCreacion: new Date().toISOString(),
-      version: "6.1",
+      version: "6.2",
       estadoFinal: {
         numeroActual: estado.numeroActual,
         ultimoNumero: estado.ultimoNumero,
@@ -592,12 +650,13 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
           mejora_eficiencia: 0,
         },
         metadatos: {
-          version_backup: "6.1",
+          version_backup: "6.2",
           timestamp_creacion: Date.now(),
           dia_semana: new Date(estado.fechaInicio).toLocaleDateString("es-AR", { weekday: "long" }),
           mes: new Date(estado.fechaInicio).toLocaleDateString("es-AR", { month: "long", year: "numeric" }),
           es_fin_de_semana: [0, 6].includes(new Date(estado.fechaInicio).getDay()),
           backup_automatico: true,
+          hora_creacion: new Date().getHours(),
         },
       },
     }
@@ -616,12 +675,14 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
           ticketsAtendidos: estado.numerosLlamados,
           eficiencia: Math.round((estado.numerosLlamados / Math.max(estado.totalAtendidos, 1)) * 100),
           automatico: true,
+          hora_creacion: new Date().getHours(),
         },
         timestamp_log: Date.now(),
       }),
     )
 
     console.log(`✅ Backup diario mejorado creado exitosamente para ${fecha} en TURNOS_ZOCO (Upstash Redis)`)
+    console.log(`📊 Backup contiene: ${estado.totalAtendidos} tickets, ${estado.numerosLlamados} atendidos`)
   } catch (error) {
     console.error("❌ Error al crear backup diario en TURNOS_ZOCO (Upstash Redis):", error)
     // No lanzar error para no bloquear otras operaciones
@@ -992,7 +1053,7 @@ export async function obtenerBackups(
                     fecha: backupParsed.fecha || fecha,
                     fechaCreacion:
                       backupParsed.fechaCreacion || backupParsed.resumen?.horaBackup || new Date().toISOString(),
-                    version: backupParsed.version || "6.0",
+                    version: backupParsed.version || "6.2",
                     resumen: backupParsed.resumen || {
                       totalTicketsEmitidos: 0,
                       totalTicketsAtendidos: 0,
