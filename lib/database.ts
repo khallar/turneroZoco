@@ -107,6 +107,7 @@ const TICKETS_LIST_KEY_PREFIX = "TURNOS_ZOCO:tickets:" // TURNOS_ZOCO:tickets:YY
 const BACKUP_KEY_PREFIX = "TURNOS_ZOCO:backup:" // TURNOS_ZOCO:backup:YYYY-MM-DD
 const LOGS_KEY = "TURNOS_ZOCO:logs"
 const COUNTER_KEY_PREFIX = "TURNOS_ZOCO:counter:" // Para el contador atómico de número de ticket
+const DAILY_BACKUP_SCHEDULE_KEY = "TURNOS_ZOCO:backup_schedule" // Para programar backups automáticos
 
 // Función auxiliar para obtener la fecha actual en formato YYYY-MM-DD (Argentina)
 export function getTodayDateString(): string {
@@ -230,6 +231,57 @@ async function retryOperation<T>(
   throw lastError!
 }
 
+// NUEVA FUNCIÓN: Verificar si necesita crear backup automático
+async function verificarYCrearBackupAutomatico(): Promise<void> {
+  try {
+    const fechaHoy = getTodayDateString()
+    const fechaAyer = new Date()
+    fechaAyer.setDate(fechaAyer.getDate() - 1)
+    const fechaAyerString = fechaAyer.toISOString().split("T")[0]
+
+    // Verificar si ya existe backup para ayer
+    const backupAyer = BACKUP_KEY_PREFIX + fechaAyerString
+    const existeBackupAyer = await redis.exists(backupAyer)
+
+    if (!existeBackupAyer) {
+      console.log(`📦 No existe backup para ${fechaAyerString}, intentando crear...`)
+
+      // Intentar recuperar datos de ayer
+      const estadoAyerKey = STATE_KEY_PREFIX + fechaAyerString
+      const ticketsAyerKey = TICKETS_LIST_KEY_PREFIX + fechaAyerString
+
+      const [estadoAyer, ticketsAyer] = await redis.pipeline().get(estadoAyerKey).lrange(ticketsAyerKey, 0, -1).exec()
+
+      const estadoParsed = safeJsonParse(estadoAyer, null)
+      const estadoValidado = validateEstadoSistema(estadoParsed)
+
+      const ticketsParsed = safeJsonParse(ticketsAyer, [])
+      const ticketsValidados = validateTickets(ticketsParsed)
+
+      if (estadoValidado && ticketsValidados.length > 0) {
+        console.log(`🔧 Creando backup retroactivo para ${fechaAyerString}`)
+        await crearBackupDiario({ ...estadoValidado, tickets: ticketsValidados })
+        console.log(`✅ Backup retroactivo creado para ${fechaAyerString}`)
+      } else {
+        console.log(`⚠️ No hay datos suficientes para crear backup de ${fechaAyerString}`)
+      }
+    }
+
+    // Programar próximo backup
+    await redis.set(
+      DAILY_BACKUP_SCHEDULE_KEY,
+      {
+        ultimaVerificacion: new Date().toISOString(),
+        proximaVerificacion: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        fechaActual: fechaHoy,
+      },
+      { ex: 25 * 60 * 60 },
+    ) // 25 horas de expiración
+  } catch (error) {
+    console.error("❌ Error en verificación de backup automático:", error)
+  }
+}
+
 // leerEstadoSistema ahora devuelve el estado (metadata) Y los tickets
 export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: TicketInfo[] }> {
   return retryOperation(
@@ -239,6 +291,11 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
       const estadoKey = STATE_KEY_PREFIX + fechaHoy
       const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
       const counterKey = COUNTER_KEY_PREFIX + fechaHoy
+
+      // Verificar backup automático en paralelo (no bloquear lectura)
+      verificarYCrearBackupAutomatico().catch((error) => {
+        console.error("⚠️ Error en verificación de backup automático (no crítico):", error)
+      })
 
       // Pipeline optimizado para reducir latencia
       const pipeline = redis.pipeline()
@@ -453,11 +510,19 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
     const fecha = estado.fechaInicio
     const backupKey = BACKUP_KEY_PREFIX + fecha
 
+    // Verificar si ya existe backup para evitar duplicados
+    const existeBackup = await redis.exists(backupKey)
+    if (existeBackup) {
+      console.log(`⚠️ Ya existe backup para ${fecha}, actualizando...`)
+    }
+
     // Calcular métricas avanzadas para el backup
     const metricas = calcularMetricasParaBackup(estado)
 
     const backupData = {
       fecha,
+      fechaCreacion: new Date().toISOString(),
+      version: "6.1",
       estadoFinal: {
         numeroActual: estado.numeroActual,
         ultimoNumero: estado.ultimoNumero,
@@ -473,7 +538,8 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
         ticketsPendientes: estado.totalAtendidos - estado.numerosLlamados,
         primerTicket: estado.tickets[0]?.numero || 0,
         ultimoTicket: estado.ultimoNumero,
-        horaInicio: estado.fechaInicio,
+        horaInicio: estado.tickets[0]?.fecha || estado.fechaInicio,
+        horaFin: estado.tickets[estado.tickets.length - 1]?.fecha || new Date().toISOString(),
         horaBackup: new Date().toISOString(),
         // NUEVAS MÉTRICAS SOLICITADAS
         tiempoPromedioEsperaReal: metricas.tiempoEsperaReal,
@@ -526,21 +592,69 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
           mejora_eficiencia: 0,
         },
         metadatos: {
-          version_backup: "6.0",
+          version_backup: "6.1",
           timestamp_creacion: Date.now(),
           dia_semana: new Date(estado.fechaInicio).toLocaleDateString("es-AR", { weekday: "long" }),
           mes: new Date(estado.fechaInicio).toLocaleDateString("es-AR", { month: "long", year: "numeric" }),
           es_fin_de_semana: [0, 6].includes(new Date(estado.fechaInicio).getDay()),
+          backup_automatico: true,
         },
       },
     }
 
     // OPTIMIZACIÓN: SET con expiración para el backup.
-    await redis.set(backupKey, backupData, { ex: 60 * 24 * 60 * 60 }) // 60 días de expiración para los backups
-    console.log("✅ Backup diario mejorado creado exitosamente en TURNOS_ZOCO (Upstash Redis)")
+    await redis.set(backupKey, backupData, { ex: 90 * 24 * 60 * 60 }) // 90 días de expiración para los backups
+
+    // Registrar en logs
+    await redis.lpush(
+      LOGS_KEY,
+      JSON.stringify({
+        accion: "BACKUP_DIARIO_CREADO",
+        fecha: fecha,
+        detalles: {
+          ticketsEmitidos: estado.totalAtendidos,
+          ticketsAtendidos: estado.numerosLlamados,
+          eficiencia: Math.round((estado.numerosLlamados / Math.max(estado.totalAtendidos, 1)) * 100),
+          automatico: true,
+        },
+        timestamp_log: Date.now(),
+      }),
+    )
+
+    console.log(`✅ Backup diario mejorado creado exitosamente para ${fecha} en TURNOS_ZOCO (Upstash Redis)`)
   } catch (error) {
     console.error("❌ Error al crear backup diario en TURNOS_ZOCO (Upstash Redis):", error)
     // No lanzar error para no bloquear otras operaciones
+  }
+}
+
+// NUEVA FUNCIÓN: Forzar creación de backup para el día actual
+export async function forzarBackupDiario(): Promise<{ success: boolean; message: string }> {
+  try {
+    console.log("🔧 Forzando creación de backup diario...")
+
+    const fechaHoy = getTodayDateString()
+    const estado = await leerEstadoSistema()
+
+    if (estado.totalAtendidos === 0) {
+      return {
+        success: false,
+        message: "No hay tickets para respaldar hoy",
+      }
+    }
+
+    await crearBackupDiario(estado)
+
+    return {
+      success: true,
+      message: `Backup creado exitosamente para ${fechaHoy} con ${estado.totalAtendidos} tickets`,
+    }
+  } catch (error) {
+    console.error("❌ Error al forzar backup diario:", error)
+    return {
+      success: false,
+      message: `Error al crear backup: ${error instanceof Error ? error.message : "Error desconocido"}`,
+    }
   }
 }
 
@@ -695,10 +809,22 @@ function calcularMetricasParaBackup(estado: EstadoSistema & { tickets: TicketInf
   }
 }
 
-// FUNCIÓN MEJORADA: obtenerBackups con mejor manejo de errores y más datos
-export async function obtenerBackups(): Promise<any[]> {
+// FUNCIÓN MEJORADA: obtenerBackups con paginación
+export async function obtenerBackups(
+  page = 1,
+  limit = 10,
+): Promise<{
+  backups: any[]
+  totalPages: number
+  currentPage: number
+  totalBackups: number
+  hasNextPage: boolean
+  hasPrevPage: boolean
+}> {
   try {
-    console.log("📋 Obteniendo lista de backups desde TURNOS_ZOCO (Upstash Redis)...")
+    console.log(
+      `📋 Obteniendo backups paginados (página ${page}, límite ${limit}) desde TURNOS_ZOCO (Upstash Redis)...`,
+    )
 
     // MÉTODO 1: Intentar usar SCAN (más eficiente)
     let allKeys: string[] = []
@@ -763,8 +889,8 @@ export async function obtenerBackups(): Promise<any[]> {
         const today = new Date()
         const possibleKeys: string[] = []
 
-        // Intentar los últimos 30 días
-        for (let i = 0; i < 30; i++) {
+        // Intentar los últimos 90 días
+        for (let i = 0; i < 90; i++) {
           const date = new Date(today)
           date.setDate(date.getDate() - i)
           const dateString = date.toISOString().split("T")[0] // YYYY-MM-DD
@@ -773,18 +899,26 @@ export async function obtenerBackups(): Promise<any[]> {
 
         console.log(`🔍 Verificando ${possibleKeys.length} fechas específicas...`)
 
-        // Verificar cuáles existen
-        const existsResults = await redis
-          .pipeline()
-          .exists(...possibleKeys)
-          .exec()
+        // Verificar cuáles existen en lotes
+        const batchSize = 20
+        for (let i = 0; i < possibleKeys.length; i += batchSize) {
+          const batch = possibleKeys.slice(i, i + batchSize)
+          try {
+            const existsResults = await redis
+              .pipeline()
+              .exists(...batch)
+              .exec()
 
-        if (Array.isArray(existsResults)) {
-          possibleKeys.forEach((key, index) => {
-            if (existsResults[index] === 1) {
-              allKeys.push(key)
+            if (Array.isArray(existsResults)) {
+              batch.forEach((key, index) => {
+                if (existsResults[index] === 1) {
+                  allKeys.push(key)
+                }
+              })
             }
-          })
+          } catch (batchError) {
+            console.error(`❌ Error verificando lote ${Math.floor(i / batchSize) + 1}:`, batchError)
+          }
         }
 
         console.log(`✅ Método fechas específicas: ${allKeys.length} claves encontradas`)
@@ -793,20 +927,42 @@ export async function obtenerBackups(): Promise<any[]> {
 
     if (allKeys.length === 0) {
       console.log("⚠️ No se encontraron backups con ningún método")
-      return []
+      return {
+        backups: [],
+        totalPages: 0,
+        currentPage: page,
+        totalBackups: 0,
+        hasNextPage: false,
+        hasPrevPage: false,
+      }
     }
 
+    // Ordenar claves por fecha (más reciente primero)
+    allKeys.sort((a, b) => {
+      const fechaA = a.replace(BACKUP_KEY_PREFIX, "")
+      const fechaB = b.replace(BACKUP_KEY_PREFIX, "")
+      return fechaB.localeCompare(fechaA)
+    })
+
     console.log(`🔍 Total de claves encontradas: ${allKeys.length}`)
-    console.log("📋 Claves encontradas:", allKeys.slice(0, 5)) // Mostrar solo las primeras 5
+    console.log("📋 Primeras 5 claves:", allKeys.slice(0, 5))
+
+    // Calcular paginación
+    const totalBackups = allKeys.length
+    const totalPages = Math.ceil(totalBackups / limit)
+    const startIndex = (page - 1) * limit
+    const endIndex = startIndex + limit
+    const keysForPage = allKeys.slice(startIndex, endIndex)
+
+    console.log(`📄 Página ${page}/${totalPages}: procesando ${keysForPage.length} backups`)
 
     const backups: any[] = []
 
-    // Procesar en lotes más pequeños para evitar timeouts
-    const batchSize = 5 // Reducir de 10 a 5
-    for (let i = 0; i < allKeys.length; i += batchSize) {
-      const batch = allKeys.slice(i, i + batchSize)
-      console.log(`📦 Procesando lote ${Math.floor(i / batchSize) + 1}/${Math.ceil(allKeys.length / batchSize)}`)
-      console.log(`📋 Claves del lote:`, batch)
+    // Procesar backups de la página actual en lotes más pequeños
+    const batchSize = 5
+    for (let i = 0; i < keysForPage.length; i += batchSize) {
+      const batch = keysForPage.slice(i, i + batchSize)
+      console.log(`📦 Procesando lote ${Math.floor(i / batchSize) + 1}/${Math.ceil(keysForPage.length / batchSize)}`)
 
       try {
         // Usar pipeline para obtener múltiples valores
@@ -825,7 +981,6 @@ export async function obtenerBackups(): Promise<any[]> {
               const fecha = key.replace(BACKUP_KEY_PREFIX, "")
 
               console.log(`🔍 Procesando backup ${index + 1}/${results.length}:`, fecha)
-              console.log(`📊 Tipo de backup:`, typeof backup, backup ? "existe" : "null")
 
               // Parsear backup de forma segura
               const backupParsed = safeJsonParse(backup, null)
@@ -835,6 +990,9 @@ export async function obtenerBackups(): Promise<any[]> {
                 if (fecha && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
                   const backupProcessed = {
                     fecha: backupParsed.fecha || fecha,
+                    fechaCreacion:
+                      backupParsed.fechaCreacion || backupParsed.resumen?.horaBackup || new Date().toISOString(),
+                    version: backupParsed.version || "6.0",
                     resumen: backupParsed.resumen || {
                       totalTicketsEmitidos: 0,
                       totalTicketsAtendidos: 0,
@@ -856,6 +1014,7 @@ export async function obtenerBackups(): Promise<any[]> {
                       tieneResumen: !!backupParsed.resumen,
                       tieneTickets: !!(backupParsed.tickets && backupParsed.tickets.length > 0),
                       cantidadTickets: backupParsed.tickets ? backupParsed.tickets.length : 0,
+                      esAutomatico: backupParsed.datosDetallados?.metadatos?.backup_automatico || false,
                     },
                   }
 
@@ -876,59 +1035,15 @@ export async function obtenerBackups(): Promise<any[]> {
         }
       } catch (batchError) {
         console.error(`❌ Error procesando lote ${Math.floor(i / batchSize) + 1}:`, batchError)
-
-        // Intentar procesar individualmente si el lote falla
-        console.log("🔄 Intentando procesamiento individual...")
-        for (const key of batch) {
-          try {
-            const backup = await redis.get(key)
-            const fecha = key.replace(BACKUP_KEY_PREFIX, "")
-
-            const backupParsed = safeJsonParse(backup, null)
-
-            if (backupParsed && typeof backupParsed === "object" && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
-              const backupProcessed = {
-                fecha: backupParsed.fecha || fecha,
-                resumen: backupParsed.resumen || {
-                  totalTicketsEmitidos: 0,
-                  totalTicketsAtendidos: 0,
-                  ticketsPendientes: 0,
-                  eficienciaDiaria: 0,
-                  primerTicket: 0,
-                  ultimoTicket: 0,
-                  tiempoPromedioEsperaReal: 0,
-                  horaPico: { hora: 0, cantidad: 0, porcentaje: 0 },
-                },
-                createdAt:
-                  backupParsed.resumen?.horaBackup ||
-                  backupParsed.estadoFinal?.ultimoReinicio ||
-                  new Date().toISOString(),
-                _debug: {
-                  keyOriginal: key,
-                  fechaExtraida: fecha,
-                  tieneResumen: !!backupParsed.resumen,
-                  tieneTickets: !!(backupParsed.tickets && backupParsed.tickets.length > 0),
-                  cantidadTickets: backupParsed.tickets ? backupParsed.tickets.length : 0,
-                  procesamientoIndividual: true,
-                },
-              }
-
-              backups.push(backupProcessed)
-              console.log(`✅ Backup individual procesado: ${fecha}`)
-            }
-          } catch (individualError) {
-            console.error(`❌ Error procesando backup individual ${key}:`, individualError)
-          }
-        }
       }
 
       // Pequeña pausa entre lotes para evitar saturar la conexión
-      if (i + batchSize < allKeys.length) {
+      if (i + batchSize < keysForPage.length) {
         await new Promise((resolve) => setTimeout(resolve, 100))
       }
     }
 
-    // Ordenar por fecha (más reciente primero)
+    // Ordenar backups por fecha (más reciente primero)
     backups.sort((a, b) => {
       const fechaA = new Date(a.fecha).getTime()
       const fechaB = new Date(b.fecha).getTime()
@@ -940,37 +1055,37 @@ export async function obtenerBackups(): Promise<any[]> {
     // Log de resumen para debugging
     if (backups.length > 0) {
       console.log("📊 Resumen de backups encontrados:")
-      backups.slice(0, 5).forEach((backup) => {
+      backups.slice(0, 3).forEach((backup) => {
         console.log(`  - ${backup.fecha}: ${backup.resumen.totalTicketsEmitidos} tickets emitidos`)
       })
-
-      if (backups.length > 5) {
-        console.log(`  ... y ${backups.length - 5} más`)
-      }
     }
 
-    // Limitar a los últimos 60 días para evitar problemas de memoria
-    const result = backups.slice(0, 60)
-    console.log(`📋 Devolviendo ${result.length} backups (limitado a 60 días)`)
+    const result = {
+      backups,
+      totalPages,
+      currentPage: page,
+      totalBackups,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    }
+
+    console.log(`📋 Devolviendo página ${page}/${totalPages} con ${backups.length} backups`)
 
     return result
   } catch (error) {
-    console.error("❌ Error crítico al obtener backups desde TURNOS_ZOCO (Upstash Redis):")
+    console.error("❌ Error crítico al obtener backups paginados desde TURNOS_ZOCO (Upstash Redis):")
     console.error("Error type:", typeof error)
     console.error("Error message:", error instanceof Error ? error.message : String(error))
     console.error("Error stack:", error instanceof Error ? error.stack : "No stack available")
 
-    // Intentar extraer más información del error
-    if (error && typeof error === "object") {
-      console.error("Error object keys:", Object.keys(error))
-      try {
-        console.error("Error object:", JSON.stringify(error, null, 2))
-      } catch (jsonError) {
-        console.error("No se pudo serializar el error object")
-      }
+    return {
+      backups: [],
+      totalPages: 0,
+      currentPage: page,
+      totalBackups: 0,
+      hasNextPage: false,
+      hasPrevPage: false,
     }
-
-    return []
   }
 }
 
@@ -997,17 +1112,28 @@ export async function obtenerBackup(fecha: string): Promise<any | null> {
   }
 }
 
-// NUEVA FUNCIÓN: Obtener resumen consolidado de días anteriores
-export async function obtenerResumenDiasAnteriores(): Promise<{
+// NUEVA FUNCIÓN: Obtener resumen consolidado de días anteriores con paginación
+export async function obtenerResumenDiasAnteriores(
+  page = 1,
+  limit = 30,
+): Promise<{
   resumenGeneral: any
   datosPorDia: any[]
   tendencias: any
   comparativas: any
+  paginacion: {
+    currentPage: number
+    totalPages: number
+    totalDias: number
+    hasNextPage: boolean
+    hasPrevPage: boolean
+  }
 }> {
   try {
-    console.log("📊 Generando resumen consolidado de días anteriores...")
+    console.log(`📊 Generando resumen consolidado de días anteriores (página ${page}, límite ${limit})...`)
 
-    const backups = await obtenerBackups()
+    const backupsResult = await obtenerBackups(page, limit)
+    const backups = backupsResult.backups
 
     if (backups.length === 0) {
       return {
@@ -1029,59 +1155,84 @@ export async function obtenerResumenDiasAnteriores(): Promise<{
           horasPicoGlobales: {},
           clientesMasFrecuentes: [],
         },
+        paginacion: {
+          currentPage: page,
+          totalPages: backupsResult.totalPages,
+          totalDias: backupsResult.totalBackups,
+          hasNextPage: backupsResult.hasNextPage,
+          hasPrevPage: backupsResult.hasPrevPage,
+        },
       }
     }
 
-    // RESUMEN GENERAL
-    const totalDias = backups.length
-    const totalTicketsHistoricos = backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0)
-    const totalTicketsAtendidos = backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0), 0)
-    const promedioTicketsPorDia = Math.round(totalTicketsHistoricos / totalDias)
-    const promedioAtendidosPorDia = Math.round(totalTicketsAtendidos / totalDias)
+    // Para el resumen general, necesitamos datos de TODOS los backups, no solo la página actual
+    const todosLosBackups = await obtenerBackups(1, 1000) // Obtener hasta 1000 backups para el resumen general
+    const backupsCompletos = todosLosBackups.backups
+
+    // RESUMEN GENERAL (basado en todos los backups)
+    const totalDias = backupsCompletos.length
+    const totalTicketsHistoricos = backupsCompletos.reduce(
+      (sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0),
+      0,
+    )
+    const totalTicketsAtendidos = backupsCompletos.reduce(
+      (sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0),
+      0,
+    )
+    const promedioTicketsPorDia = totalDias > 0 ? Math.round(totalTicketsHistoricos / totalDias) : 0
+    const promedioAtendidosPorDia = totalDias > 0 ? Math.round(totalTicketsAtendidos / totalDias) : 0
 
     // Encontrar mejor y peor día
-    const mejorDia = backups.reduce((mejor, backup) => {
+    const mejorDia = backupsCompletos.reduce((mejor, backup) => {
       const emitidos = backup.resumen?.totalTicketsEmitidos || 0
       const mejorEmitidos = mejor?.resumen?.totalTicketsEmitidos || 0
       return emitidos > mejorEmitidos ? backup : mejor
     }, null)
 
-    const peorDia = backups.reduce((peor, backup) => {
+    const peorDia = backupsCompletos.reduce((peor, backup) => {
       const emitidos = backup.resumen?.totalTicketsEmitidos || 0
       const peorEmitidos = peor?.resumen?.totalTicketsEmitidos || Number.POSITIVE_INFINITY
       return emitidos < peorEmitidos ? backup : peor
     }, null)
 
-    // ANÁLISIS DE TENDENCIAS
-    const mitad = Math.floor(backups.length / 2)
-    const diasRecientes = backups.slice(0, mitad) // Más recientes
-    const diasAntiguos = backups.slice(mitad) // Más antiguos
+    // ANÁLISIS DE TENDENCIAS (basado en todos los backups)
+    const mitad = Math.floor(backupsCompletos.length / 2)
+    const diasRecientes = backupsCompletos.slice(0, mitad) // Más recientes
+    const diasAntiguos = backupsCompletos.slice(mitad) // Más antiguos
 
     const promedioReciente =
-      diasRecientes.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) / diasRecientes.length
+      diasRecientes.length > 0
+        ? diasRecientes.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) /
+          diasRecientes.length
+        : 0
     const promedioAntiguo =
-      diasAntiguos.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) / diasAntiguos.length
+      diasAntiguos.length > 0
+        ? diasAntiguos.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) /
+          diasAntiguos.length
+        : 0
 
     let tendenciaGeneral = "estable"
     let crecimientoSemanal = 0
-    if (promedioReciente > promedioAntiguo * 1.1) {
-      tendenciaGeneral = "creciente"
-      crecimientoSemanal = Math.round(((promedioReciente - promedioAntiguo) / promedioAntiguo) * 100)
-    } else if (promedioReciente < promedioAntiguo * 0.9) {
-      tendenciaGeneral = "decreciente"
-      crecimientoSemanal = Math.round(((promedioReciente - promedioAntiguo) / promedioAntiguo) * 100)
+    if (promedioAntiguo > 0) {
+      if (promedioReciente > promedioAntiguo * 1.1) {
+        tendenciaGeneral = "creciente"
+        crecimientoSemanal = Math.round(((promedioReciente - promedioAntiguo) / promedioAntiguo) * 100)
+      } else if (promedioReciente < promedioAntiguo * 0.9) {
+        tendenciaGeneral = "decreciente"
+        crecimientoSemanal = Math.round(((promedioReciente - promedioAntiguo) / promedioAntiguo) * 100)
+      }
     }
 
     const eficienciaPromedio =
       totalTicketsHistoricos > 0 ? Math.round((totalTicketsAtendidos / totalTicketsHistoricos) * 100) : 0
 
-    // ANÁLISIS POR DÍA DE LA SEMANA
+    // ANÁLISIS POR DÍA DE LA SEMANA (basado en todos los backups)
     const datosPorDiaSemana = {}
     const datosPorMes = {}
     const horasPicoGlobales = {}
     const clientesGlobales = {}
 
-    backups.forEach((backup) => {
+    backupsCompletos.forEach((backup) => {
       const fecha = new Date(backup.fecha)
       const diaSemana = fecha.toLocaleDateString("es-AR", { weekday: "long" })
       const mes = fecha.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
@@ -1122,7 +1273,9 @@ export async function obtenerResumenDiasAnteriores(): Promise<{
         backup.resumen.nombresComunes.forEach((item) => {
           const nombre = typeof item === "object" ? item.nombre : item[0]
           const cantidad = typeof item === "object" ? item.cantidad : item[1]
-          clientesGlobales[nombre] = (clientesGlobales[nombre] || 0) + cantidad
+          if (nombre && cantidad) {
+            clientesGlobales[nombre] = (clientesGlobales[nombre] || 0) + cantidad
+          }
         })
       }
     })
@@ -1146,11 +1299,11 @@ export async function obtenerResumenDiasAnteriores(): Promise<{
       .map(([nombre, cantidad]) => ({
         nombre,
         cantidad,
-        porcentaje: Math.round((cantidad / totalTicketsHistoricos) * 100),
+        porcentaje: totalTicketsHistoricos > 0 ? Math.round((cantidad / totalTicketsHistoricos) * 100) : 0,
       }))
 
-    // Días más activos
-    const diasMasActivos = [...backups]
+    // Días más activos (de todos los backups)
+    const diasMasActivos = [...backupsCompletos]
       .sort((a, b) => (b.resumen?.totalTicketsEmitidos || 0) - (a.resumen?.totalTicketsEmitidos || 0))
       .slice(0, 10)
       .map((backup) => ({
@@ -1184,8 +1337,8 @@ export async function obtenerResumenDiasAnteriores(): Promise<{
           }
         : null,
       rangoFechas: {
-        desde: backups[backups.length - 1]?.fecha || "N/A",
-        hasta: backups[0]?.fecha || "N/A",
+        desde: backupsCompletos[backupsCompletos.length - 1]?.fecha || "N/A",
+        hasta: backupsCompletos[0]?.fecha || "N/A",
       },
     }
 
@@ -1210,11 +1363,12 @@ export async function obtenerResumenDiasAnteriores(): Promise<{
         .map(([hora, cantidad]) => ({
           hora: `${hora}:00`,
           cantidad,
-          porcentaje: Math.round((cantidad / totalTicketsHistoricos) * 100),
+          porcentaje: totalTicketsHistoricos > 0 ? Math.round((cantidad / totalTicketsHistoricos) * 100) : 0,
         })),
       clientesMasFrecuentes,
     }
 
+    // Datos por día (solo de la página actual)
     const datosPorDia = backups.map((backup) => ({
       fecha: backup.fecha,
       diaSemana: new Date(backup.fecha).toLocaleDateString("es-AR", { weekday: "long" }),
@@ -1235,13 +1389,20 @@ export async function obtenerResumenDiasAnteriores(): Promise<{
       },
     }))
 
-    console.log(`✅ Resumen consolidado generado: ${totalDias} días, ${totalTicketsHistoricos} tickets históricos`)
+    console.log(`✅ Resumen consolidado generado: ${totalDias} días totales, ${backups.length} en página actual`)
 
     return {
       resumenGeneral,
       datosPorDia,
       tendencias,
       comparativas,
+      paginacion: {
+        currentPage: page,
+        totalPages: backupsResult.totalPages,
+        totalDias: backupsResult.totalBackups,
+        hasNextPage: backupsResult.hasNextPage,
+        hasPrevPage: backupsResult.hasPrevPage,
+      },
     }
   } catch (error) {
     console.error("❌ Error al generar resumen de días anteriores:", error)
@@ -1250,6 +1411,13 @@ export async function obtenerResumenDiasAnteriores(): Promise<{
       datosPorDia: [],
       tendencias: { error: "Error al calcular tendencias" },
       comparativas: { error: "Error al generar comparativas" },
+      paginacion: {
+        currentPage: page,
+        totalPages: 0,
+        totalDias: 0,
+        hasNextPage: false,
+        hasPrevPage: false,
+      },
     }
   }
 }
@@ -1284,19 +1452,20 @@ export async function limpiarDatosAntiguos(): Promise<void> {
       console.log(`🗑️ Eliminados ${keysToDelete.length} datos diarios antiguos.`)
     }
 
-    // Limpiar backups antiguos
+    // Limpiar backups antiguos (más de 90 días)
+    const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000
     const allBackupKeys = await redis.keys(BACKUP_KEY_PREFIX + "*")
     const backupKeysToDelete = []
     for (const key of allBackupKeys) {
       const datePart = key.replace(BACKUP_KEY_PREFIX, "")
       const backupDate = new Date(datePart).getTime()
-      if (backupDate < thirtyDaysAgo) {
+      if (backupDate < ninetyDaysAgo) {
         backupKeysToDelete.push(key)
       }
     }
     if (backupKeysToDelete.length > 0) {
       await redis.del(...backupKeysToDelete)
-      console.log(`🗑️ Eliminados ${backupKeysToDelete.length} backups antiguos.`)
+      console.log(`🗑️ Eliminados ${backupKeysToDelete.length} backups antiguos (>90 días).`)
     }
 
     // OPTIMIZACIÓN: LTRIM para recortar la lista de logs de forma eficiente.

@@ -23,8 +23,7 @@ import {
   Target,
   Zap,
   Download,
-  FileText,
-  Archive,
+  Plus,
 } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 
@@ -51,6 +50,7 @@ export default function PaginaAdmin() {
   const [horaActual, setHoraActual] = useState(new Date())
   const [mostrarMetricasAvanzadas, setMostrarMetricasAvanzadas] = useState(false)
   const [descargandoTodos, setDescargandoTodos] = useState(false)
+  const [creandoBackup, setCreandoBackup] = useState(false)
 
   useEffect(() => {
     if (isClient) {
@@ -81,8 +81,8 @@ export default function PaginaAdmin() {
 
   const cargarBackups = async () => {
     try {
-      const backupsData = await obtenerBackups()
-      setBackups(backupsData)
+      const backupsResult = await obtenerBackups(1, 10) // Cargar solo los primeros 10 para el admin
+      setBackups(backupsResult.backups)
     } catch (error) {
       console.error("Error al cargar backups:", error)
     }
@@ -94,6 +94,28 @@ export default function PaginaAdmin() {
       setBackupSeleccionado(backup)
     } catch (error) {
       console.error("Error al obtener backup:", error)
+    }
+  }
+
+  const forzarBackupDiario = async () => {
+    setCreandoBackup(true)
+    try {
+      const response = await fetch("/api/sistema?action=forzar_backup")
+      const result = await response.json()
+      
+      if (result.success) {
+        alert(`✅ ${result.message}`)
+        // Recargar backups después de crear uno nuevo
+        await cargarBackups()
+        await cargarDatosAdmin()
+      } else {
+        alert(`❌ ${result.message}`)
+      }
+    } catch (error) {
+      console.error("Error al forzar backup:", error)
+      alert("❌ Error al crear backup")
+    } finally {
+      setCreandoBackup(false)
     }
   }
 
@@ -369,659 +391,6 @@ export default function PaginaAdmin() {
   const estadisticasAdminCalculadas = calcularEstadisticasAdmin()
   const metricasAvanzadas = calcularMetricasAvanzadas()
 
-  // Agregar función para descargar datos de un día específico
-  const descargarDatosDia = async (backup: any) => {
-    try {
-      // Obtener datos completos del backup
-      const backupCompleto = await obtenerBackup(backup.fecha)
-
-      if (!backupCompleto) {
-        alert("No se pudieron obtener los datos completos del día")
-        return
-      }
-
-      // Preparar datos para descarga
-      const datosDescarga = {
-        // INFORMACIÓN BÁSICA
-        fecha: backup.fecha,
-        fechaFormateada: new Date(backup.fecha).toLocaleDateString("es-AR", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        }),
-
-        // MÉTRICAS PRINCIPALES SOLICITADAS
-        cantidadTicketsEmitidos: backupCompleto.resumen?.totalTicketsEmitidos || 0,
-        tiempoPromedioEsperaReal: backupCompleto.resumen?.tiempoPromedioEsperaReal || 0,
-        horaPico: backupCompleto.resumen?.horaPico || { hora: 0, cantidad: 0, porcentaje: 0 },
-
-        // RESUMEN OPERATIVO
-        resumenOperativo: {
-          ticketsEmitidos: backupCompleto.resumen?.totalTicketsEmitidos || 0,
-          ticketsAtendidos: backupCompleto.resumen?.totalTicketsAtendidos || 0,
-          ticketsPendientes: backupCompleto.resumen?.ticketsPendientes || 0,
-          eficienciaDiaria: backupCompleto.resumen?.eficienciaDiaria || 0,
-          primerTicket: backupCompleto.resumen?.primerTicket || 0,
-          ultimoTicket: backupCompleto.resumen?.ultimoTicket || 0,
-        },
-
-        // ANÁLISIS TEMPORAL DETALLADO
-        analisisTemporal: {
-          tiempoPromedioEsperaReal: `${backupCompleto.resumen?.tiempoPromedioEsperaReal || 0} minutos`,
-          velocidadAtencion: `${backupCompleto.resumen?.velocidadAtencion || 0} tickets/minuto`,
-          tiempoEntreTickets: `${backupCompleto.resumen?.tiempoEntreTickets || 0} minutos`,
-          duracionOperaciones: backupCompleto.datosDetallados?.analisisTemporal?.duracionTotal || 0,
-          inicioOperaciones: backupCompleto.datosDetallados?.analisisTemporal?.inicioOperaciones || backup.fecha,
-          finOperaciones: backupCompleto.datosDetallados?.analisisTemporal?.finOperaciones || backup.fecha,
-        },
-
-        // DISTRIBUCIÓN POR HORA (SOLICITADO)
-        distribucionPorHora: backupCompleto.resumen?.distribucionPorHora || {},
-        distribucionPorHoraDetallada: Object.entries(backupCompleto.resumen?.distribucionPorHora || {})
-          .map(([hora, cantidad]) => ({
-            hora: `${hora}:00 - ${Number.parseInt(hora) + 1}:00`,
-            horaNumero: Number.parseInt(hora),
-            cantidadTickets: cantidad,
-            porcentajeDelTotal: Math.round((cantidad / (backupCompleto.resumen?.totalTicketsEmitidos || 1)) * 100),
-          }))
-          .sort((a, b) => a.horaNumero - b.horaNumero),
-
-        // HORAS PICO Y MÍNIMAS
-        horasPico: backupCompleto.datosDetallados?.analisisTemporal?.horasPico || [],
-        horasMinimas: backupCompleto.datosDetallados?.analisisTemporal?.horasMinimas || [],
-
-        // ANÁLISIS DE CLIENTES
-        analisisClientes: {
-          nombresComunes: backupCompleto.resumen?.nombresComunes || [],
-          nombresUnicos: backupCompleto.datosDetallados?.estadisticasClientes?.nombresUnicos || 0,
-          clientesRecurrentes: backupCompleto.datosDetallados?.estadisticasClientes?.clientesRecurrentes || 0,
-          promedioCaracteresPorNombre:
-            backupCompleto.datosDetallados?.estadisticasClientes?.promedioCaracteresPorNombre || 0,
-        },
-
-        // MÉTRICAS DE RENDIMIENTO
-        rendimiento: backupCompleto.datosDetallados?.rendimiento || {},
-
-        // TICKETS COMPLETOS (si están disponibles)
-        tickets: backupCompleto.tickets || [],
-
-        // METADATOS DE DESCARGA
-        metadatos: {
-          fechaDescarga: new Date().toISOString(),
-          version: "5.1",
-          sistema: "TURNOS_ZOCO",
-          generadoPor: "Panel de Administración",
-        },
-      }
-
-      // Crear y descargar archivo JSON
-      const blob = new Blob([JSON.stringify(datosDescarga, null, 2)], {
-        type: "application/json",
-      })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `ZOCO-Datos-${backup.fecha}-Completo.json`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-
-      // También crear un archivo CSV con los datos principales
-      const csvData = [
-        // Encabezados
-        [
-          "Fecha",
-          "Tickets Emitidos",
-          "Tickets Atendidos",
-          "Tickets Pendientes",
-          "Eficiencia (%)",
-          "Tiempo Promedio Espera (min)",
-          "Hora Pico",
-          "Tickets en Hora Pico",
-          "Velocidad Atención (tickets/min)",
-          "Tiempo Entre Tickets (min)",
-        ],
-        // Datos
-        [
-          datosDescarga.fechaFormateada,
-          datosDescarga.cantidadTicketsEmitidos,
-          datosDescarga.resumenOperativo.ticketsAtendidos,
-          datosDescarga.resumenOperativo.ticketsPendientes,
-          datosDescarga.resumenOperativo.eficienciaDiaria,
-          datosDescarga.tiempoPromedioEsperaReal,
-          `${datosDescarga.horaPico.hora}:00`,
-          datosDescarga.horaPico.cantidad,
-          datosDescarga.analisisTemporal.velocidadAtencion.replace(" tickets/minuto", ""),
-          datosDescarga.analisisTemporal.tiempoEntreTickets.replace(" minutos", ""),
-        ],
-      ]
-
-      const csvContent = csvData.map((row) => row.join(",")).join("\n")
-      const csvBlob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const csvUrl = URL.createObjectURL(csvBlob)
-      const csvLink = document.createElement("a")
-      csvLink.href = csvUrl
-      csvLink.download = `ZOCO-Resumen-${backup.fecha}.csv`
-      document.body.appendChild(csvLink)
-      csvLink.click()
-      document.body.removeChild(csvLink)
-      URL.revokeObjectURL(csvUrl)
-
-      alert(`Datos del ${backup.fecha} descargados exitosamente:\n- Archivo JSON completo\n- Archivo CSV resumen`)
-    } catch (error) {
-      console.error("Error al descargar datos del día:", error)
-      alert("Error al descargar los datos del día")
-    }
-  }
-
-  // NUEVA FUNCIÓN: Descargar backup completo JSON
-  const descargarBackupCompleto = async (backup: any) => {
-    try {
-      const backupCompleto = await obtenerBackup(backup.fecha)
-
-      if (!backupCompleto) {
-        alert("No se pudieron obtener los datos completos del día")
-        return
-      }
-
-      const datosCompletos = {
-        // INFORMACIÓN DEL DÍA
-        fecha: backup.fecha,
-        fechaFormateada: new Date(backup.fecha).toLocaleDateString("es-AR", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        }),
-
-        // RESUMEN EJECUTIVO
-        resumenEjecutivo: {
-          ticketsEmitidos: backupCompleto.resumen?.totalTicketsEmitidos || 0,
-          ticketsAtendidos: backupCompleto.resumen?.totalTicketsAtendidos || 0,
-          ticketsPendientes: backupCompleto.resumen?.ticketsPendientes || 0,
-          eficienciaDiaria: backupCompleto.resumen?.eficienciaDiaria || 0,
-          tiempoPromedioEspera: backupCompleto.resumen?.tiempoPromedioEsperaReal || 0,
-          horaPico: backupCompleto.resumen?.horaPico || { hora: 0, cantidad: 0 },
-          rangoTickets: {
-            primero: backupCompleto.resumen?.primerTicket || 0,
-            ultimo: backupCompleto.resumen?.ultimoTicket || 0,
-          },
-        },
-
-        // ANÁLISIS TEMPORAL DETALLADO
-        analisisTemporal: {
-          distribucionPorHora: backupCompleto.resumen?.distribucionPorHora || {},
-          velocidadAtencion: backupCompleto.resumen?.velocidadAtencion || 0,
-          tiempoEntreTickets: backupCompleto.resumen?.tiempoEntreTickets || 0,
-          horasPico: backupCompleto.datosDetallados?.analisisTemporal?.horasPico || [],
-          horasMinimas: backupCompleto.datosDetallados?.analisisTemporal?.horasMinimas || [],
-        },
-
-        // ESTADÍSTICAS DE CLIENTES
-        estadisticasClientes: {
-          nombresComunes: backupCompleto.resumen?.nombresComunes || [],
-          nombresUnicos: backupCompleto.datosDetallados?.estadisticasClientes?.nombresUnicos || 0,
-          clientesRecurrentes: backupCompleto.datosDetallados?.estadisticasClientes?.clientesRecurrentes || 0,
-          promedioCaracteresPorNombre:
-            backupCompleto.datosDetallados?.estadisticasClientes?.promedioCaracteresPorNombre || 0,
-        },
-
-        // TICKETS COMPLETOS
-        ticketsCompletos: backupCompleto.tickets || [],
-
-        // MÉTRICAS DE RENDIMIENTO
-        rendimiento: backupCompleto.datosDetallados?.rendimiento || {},
-
-        // METADATOS
-        metadatos: {
-          fechaDescarga: new Date().toISOString(),
-          version: "5.2",
-          sistema: "TURNOS_ZOCO",
-          tipoDescarga: "Backup Completo JSON",
-          generadoPor: "Panel de Administración",
-        },
-      }
-
-      const blob = new Blob([JSON.stringify(datosCompletos, null, 2)], {
-        type: "application/json",
-      })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `ZOCO-BackupCompleto-${backup.fecha}.json`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-
-      alert(`✅ Backup completo descargado: ${backup.fecha}`)
-    } catch (error) {
-      console.error("Error al descargar backup completo:", error)
-      alert("❌ Error al descargar el backup completo")
-    }
-  }
-
-  // NUEVA FUNCIÓN: Descargar backup CSV
-  const descargarBackupCSV = async (backup: any) => {
-    try {
-      const backupCompleto = await obtenerBackup(backup.fecha)
-
-      if (!backupCompleto) {
-        alert("No se pudieron obtener los datos completos del día")
-        return
-      }
-
-      // Datos principales del día
-      const csvData = [
-        // ENCABEZADOS PRINCIPALES
-        ["=== RESUMEN DEL DÍA ==="],
-        ["Fecha", backup.fecha],
-        ["Día de la Semana", new Date(backup.fecha).toLocaleDateString("es-AR", { weekday: "long" })],
-        ["Tickets Emitidos", backupCompleto.resumen?.totalTicketsEmitidos || 0],
-        ["Tickets Atendidos", backupCompleto.resumen?.totalTicketsAtendidos || 0],
-        ["Tickets Pendientes", backupCompleto.resumen?.ticketsPendientes || 0],
-        ["Eficiencia (%)", backupCompleto.resumen?.eficienciaDiaria || 0],
-        ["Tiempo Promedio Espera (min)", backupCompleto.resumen?.tiempoPromedioEsperaReal || 0],
-        ["Hora Pico", `${backupCompleto.resumen?.horaPico?.hora || 0}:00`],
-        ["Tickets en Hora Pico", backupCompleto.resumen?.horaPico?.cantidad || 0],
-        ["Primer Ticket", backupCompleto.resumen?.primerTicket || 0],
-        ["Último Ticket", backupCompleto.resumen?.ultimoTicket || 0],
-        [""],
-
-        // DISTRIBUCIÓN POR HORA
-        ["=== DISTRIBUCIÓN POR HORA ==="],
-        ["Hora", "Cantidad de Tickets", "Porcentaje del Total"],
-        ...Object.entries(backupCompleto.resumen?.distribucionPorHora || {}).map(([hora, cantidad]) => [
-          `${hora}:00 - ${Number.parseInt(hora) + 1}:00`,
-          cantidad,
-          `${Math.round((cantidad / (backupCompleto.resumen?.totalTicketsEmitidos || 1)) * 100)}%`,
-        ]),
-        [""],
-
-        // NOMBRES MÁS COMUNES
-        ["=== TOP 10 NOMBRES MÁS COMUNES ==="],
-        ["Posición", "Nombre", "Cantidad", "Porcentaje"],
-        ...(backupCompleto.resumen?.nombresComunes || [])
-          .slice(0, 10)
-          .map(([nombre, cantidad], index) => [
-            index + 1,
-            nombre,
-            cantidad,
-            `${Math.round((cantidad / (backupCompleto.resumen?.totalTicketsEmitidos || 1)) * 100)}%`,
-          ]),
-        [""],
-
-        // TICKETS INDIVIDUALES (si hay pocos)
-        ...(backupCompleto.tickets && backupCompleto.tickets.length <= 100
-          ? [
-              ["=== TICKETS INDIVIDUALES ==="],
-              ["Número", "Nombre", "Fecha/Hora", "Estado"],
-              ...backupCompleto.tickets.map((ticket) => [
-                ticket.numero,
-                ticket.nombre,
-                new Date(ticket.timestamp || ticket.fecha).toLocaleString("es-AR"),
-                ticket.atendido ? "Atendido" : "Pendiente",
-              ]),
-            ]
-          : [
-              ["=== TICKETS INDIVIDUALES ==="],
-              ["Demasiados tickets para mostrar individualmente"],
-              [`Total de tickets: ${backupCompleto.tickets.length}`],
-            ]),
-      ]
-
-      const csvContent = csvData.map((row) => (Array.isArray(row) ? row.join(",") : row)).join("\n")
-
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `ZOCO-Resumen-${backup.fecha}.csv`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-
-      alert(`✅ Resumen CSV descargado: ${backup.fecha}`)
-    } catch (error) {
-      console.error("Error al descargar CSV:", error)
-      alert("❌ Error al descargar el resumen CSV")
-    }
-  }
-
-  // NUEVA FUNCIÓN: Descargar backup raw (original)
-  const descargarBackupRaw = async (backup: any) => {
-    try {
-      const backupCompleto = await obtenerBackup(backup.fecha)
-
-      if (!backupCompleto) {
-        alert("No se pudieron obtener los datos del backup original")
-        return
-      }
-
-      // Descargar el backup exactamente como está almacenado
-      const blob = new Blob([JSON.stringify(backupCompleto, null, 2)], {
-        type: "application/json",
-      })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `ZOCO-BackupRaw-${backup.fecha}.json`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-
-      alert(`✅ Backup original descargado: ${backup.fecha}`)
-    } catch (error) {
-      console.error("Error al descargar backup raw:", error)
-      alert("❌ Error al descargar el backup original")
-    }
-  }
-
-  // NUEVA FUNCIÓN: Calcular totales históricos de todos los backups
-  const calcularTotalesHistoricos = () => {
-    if (backups.length === 0) {
-      return {
-        totalDias: 0,
-        totalTicketsEmitidos: 0,
-        totalTicketsAtendidos: 0,
-        totalTicketsPendientes: 0,
-        promedioTicketsPorDia: 0,
-        promedioAtendidosPorDia: 0,
-        eficienciaPromedio: 0,
-        mejorDia: null,
-        peorDia: null,
-        diasConMasActividad: [],
-        tendenciaGeneral: "estable",
-      }
-    }
-
-    const totalDias = backups.length
-    const totalTicketsEmitidos = backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0)
-    const totalTicketsAtendidos = backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0), 0)
-    const totalTicketsPendientes = backups.reduce((sum, backup) => sum + (backup.resumen?.ticketsPendientes || 0), 0)
-
-    const promedioTicketsPorDia = Math.round(totalTicketsEmitidos / totalDias)
-    const promedioAtendidosPorDia = Math.round(totalTicketsAtendidos / totalDias)
-    const eficienciaPromedio =
-      totalTicketsEmitidos > 0 ? Math.round((totalTicketsAtendidos / totalTicketsEmitidos) * 100) : 0
-
-    // Encontrar mejor y peor día
-    const mejorDia = backups.reduce((mejor, backup) => {
-      const emitidos = backup.resumen?.totalTicketsEmitidos || 0
-      const mejorEmitidos = mejor?.resumen?.totalTicketsEmitidos || 0
-      return emitidos > mejorEmitidos ? backup : mejor
-    }, null)
-
-    const peorDia = backups.reduce((peor, backup) => {
-      const emitidos = backup.resumen?.totalTicketsEmitidos || 0
-      const peorEmitidos = peor?.resumen?.totalTicketsEmitidos || Number.POSITIVE_INFINITY
-      return emitidos < peorEmitidos ? backup : peor
-    }, null)
-
-    // Días con más actividad (top 5)
-    const diasConMasActividad = [...backups]
-      .sort((a, b) => (b.resumen?.totalTicketsEmitidos || 0) - (a.resumen?.totalTicketsEmitidos || 0))
-      .slice(0, 5)
-
-    // Calcular tendencia general (comparar primera mitad vs segunda mitad)
-    const mitad = Math.floor(backups.length / 2)
-    const primeraMetad = backups.slice(-mitad) // Más recientes
-    const segundaMetad = backups.slice(0, mitad) // Más antiguos
-
-    const promedioReciente =
-      primeraMetad.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) / primeraMetad.length
-    const promedioAntiguo =
-      segundaMetad.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) / segundaMetad.length
-
-    let tendenciaGeneral = "estable"
-    if (promedioReciente > promedioAntiguo * 1.1) tendenciaGeneral = "creciente"
-    else if (promedioReciente < promedioAntiguo * 0.9) tendenciaGeneral = "decreciente"
-
-    return {
-      totalDias,
-      totalTicketsEmitidos,
-      totalTicketsAtendidos,
-      totalTicketsPendientes,
-      promedioTicketsPorDia,
-      promedioAtendidosPorDia,
-      eficienciaPromedio,
-      mejorDia,
-      peorDia,
-      diasConMasActividad,
-      tendenciaGeneral,
-    }
-  }
-
-  // NUEVA FUNCIÓN: Descargar todos los datos históricos
-  const descargarTodosLosDatos = async () => {
-    setDescargandoTodos(true)
-    try {
-      console.log("🔄 Iniciando descarga de todos los datos históricos...")
-
-      // Obtener todos los backups completos
-      const backupsCompletos = []
-      for (const backup of backups) {
-        try {
-          const backupCompleto = await obtenerBackup(backup.fecha)
-          if (backupCompleto) {
-            backupsCompletos.push(backupCompleto)
-          }
-        } catch (error) {
-          console.error(`Error al obtener backup de ${backup.fecha}:`, error)
-        }
-      }
-
-      const totalesHistoricos = calcularTotalesHistoricos()
-
-      // Preparar datos consolidados
-      const datosConsolidados = {
-        // METADATOS
-        metadatos: {
-          fechaDescarga: new Date().toISOString(),
-          version: "5.1",
-          sistema: "TURNOS_ZOCO",
-          generadoPor: "Panel de Administración - Descarga Completa",
-          totalDiasIncluidos: backupsCompletos.length,
-          rangoFechas: {
-            desde: backups[backups.length - 1]?.fecha || "N/A",
-            hasta: backups[0]?.fecha || "N/A",
-          },
-        },
-
-        // TOTALES HISTÓRICOS CONSOLIDADOS
-        totalesHistoricos: {
-          resumenGeneral: {
-            totalDiasOperativos: totalesHistoricos.totalDias,
-            totalTicketsEmitidos: totalesHistoricos.totalTicketsEmitidos,
-            totalTicketsAtendidos: totalesHistoricos.totalTicketsAtendidos,
-            totalTicketsPendientes: totalesHistoricos.totalTicketsPendientes,
-            promedioTicketsPorDia: totalesHistoricos.promedioTicketsPorDia,
-            promedioAtendidosPorDia: totalesHistoricos.promedioAtendidosPorDia,
-            eficienciaPromedioGeneral: totalesHistoricos.eficienciaPromedio,
-            tendenciaGeneral: totalesHistoricos.tendenciaGeneral,
-          },
-          recordsYExtremos: {
-            mejorDia: {
-              fecha: totalesHistoricos.mejorDia?.fecha || "N/A",
-              ticketsEmitidos: totalesHistoricos.mejorDia?.resumen?.totalTicketsEmitidos || 0,
-              eficiencia: totalesHistoricos.mejorDia?.resumen?.eficienciaDiaria || 0,
-            },
-            peorDia: {
-              fecha: totalesHistoricos.peorDia?.fecha || "N/A",
-              ticketsEmitidos: totalesHistoricos.peorDia?.resumen?.totalTicketsEmitidos || 0,
-              eficiencia: totalesHistoricos.peorDia?.resumen?.eficienciaDiaria || 0,
-            },
-            top5DiasActividad: totalesHistoricos.diasConMasActividad.map((dia) => ({
-              fecha: dia.fecha,
-              ticketsEmitidos: dia.resumen?.totalTicketsEmitidos || 0,
-              ticketsAtendidos: dia.resumen?.totalTicketsAtendidos || 0,
-              eficiencia: dia.resumen?.eficienciaDiaria || 0,
-            })),
-          },
-        },
-
-        // ANÁLISIS TEMPORAL CONSOLIDADO
-        analisisTemporalConsolidado: {
-          distribucionPorDiaSemana: {},
-          horasPicoGlobales: {},
-          tendenciasMensuales: {},
-          patronesEstacionales: {},
-        },
-
-        // DATOS DETALLADOS POR DÍA
-        datosPorDia: backupsCompletos.map((backup) => ({
-          fecha: backup.fecha,
-          fechaFormateada: new Date(backup.fecha).toLocaleDateString("es-AR", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          }),
-          resumen: backup.resumen || {},
-          analisisTemporal: backup.datosDetallados?.analisisTemporal || {},
-          estadisticasClientes: backup.datosDetallados?.estadisticasClientes || {},
-          rendimiento: backup.datosDetallados?.rendimiento || {},
-          ticketsCompletos: backup.tickets || [],
-        })),
-
-        // ESTADO ACTUAL (HOY)
-        estadoActual: {
-          fecha: new Date().toISOString().split("T")[0],
-          estado: estado,
-          estadisticas: estadisticas,
-          metricasAvanzadas: calcularMetricasAvanzadas(),
-        },
-      }
-
-      // Calcular análisis temporal consolidado
-      backupsCompletos.forEach((backup) => {
-        const fecha = new Date(backup.fecha)
-        const diaSemana = fecha.toLocaleDateString("es-AR", { weekday: "long" })
-        const mes = fecha.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
-
-        // Distribución por día de la semana
-        if (!datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[diaSemana]) {
-          datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[diaSemana] = {
-            totalTickets: 0,
-            totalDias: 0,
-            promedio: 0,
-          }
-        }
-        datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[diaSemana].totalTickets +=
-          backup.resumen?.totalTicketsEmitidos || 0
-        datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[diaSemana].totalDias += 1
-
-        // Tendencias mensuales
-        if (!datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes]) {
-          datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes] = {
-            totalTickets: 0,
-            totalDias: 0,
-            promedio: 0,
-          }
-        }
-        datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes].totalTickets +=
-          backup.resumen?.totalTicketsEmitidos || 0
-        datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes].totalDias += 1
-
-        // Horas pico globales
-        if (backup.resumen?.distribucionPorHora) {
-          Object.entries(backup.resumen.distribucionPorHora).forEach(([hora, cantidad]) => {
-            if (!datosConsolidados.analisisTemporalConsolidado.horasPicoGlobales[hora]) {
-              datosConsolidados.analisisTemporalConsolidado.horasPicoGlobales[hora] = 0
-            }
-            datosConsolidados.analisisTemporalConsolidado.horasPicoGlobales[hora] += cantidad
-          })
-        }
-      })
-
-      // Calcular promedios
-      Object.keys(datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana).forEach((dia) => {
-        const data = datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[dia]
-        data.promedio = Math.round(data.totalTickets / data.totalDias)
-      })
-
-      Object.keys(datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales).forEach((mes) => {
-        const data = datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes]
-        data.promedio = Math.round(data.totalTickets / data.totalDias)
-      })
-
-      // Crear archivo JSON completo
-      const jsonBlob = new Blob([JSON.stringify(datosConsolidados, null, 2)], {
-        type: "application/json",
-      })
-      const jsonUrl = URL.createObjectURL(jsonBlob)
-      const jsonLink = document.createElement("a")
-      jsonLink.href = jsonUrl
-      jsonLink.download = `ZOCO-HistorialCompleto-${new Date().toISOString().split("T")[0]}.json`
-      document.body.appendChild(jsonLink)
-      jsonLink.click()
-      document.body.removeChild(jsonLink)
-      URL.revokeObjectURL(jsonUrl)
-
-      // Crear archivo CSV consolidado
-      const csvData = [
-        // Encabezados
-        [
-          "Fecha",
-          "Día Semana",
-          "Tickets Emitidos",
-          "Tickets Atendidos",
-          "Tickets Pendientes",
-          "Eficiencia (%)",
-          "Tiempo Promedio Espera (min)",
-          "Hora Pico",
-          "Tickets en Hora Pico",
-          "Velocidad Atención",
-          "Tiempo Entre Tickets",
-          "Nombres Únicos",
-          "Clientes Recurrentes",
-        ],
-        // Datos de cada día
-        ...datosConsolidados.datosPorDia.map((dia) => [
-          dia.fecha,
-          new Date(dia.fecha).toLocaleDateString("es-AR", { weekday: "long" }),
-          dia.resumen.totalTicketsEmitidos || 0,
-          dia.resumen.totalTicketsAtendidos || 0,
-          dia.resumen.ticketsPendientes || 0,
-          dia.resumen.eficienciaDiaria || 0,
-          dia.resumen.tiempoPromedioEsperaReal || 0,
-          dia.resumen.horaPico?.hora || 0,
-          dia.resumen.horaPico?.cantidad || 0,
-          dia.resumen.velocidadAtencion || 0,
-          dia.resumen.tiempoEntreTickets || 0,
-          dia.estadisticasClientes.nombresUnicos || 0,
-          dia.estadisticasClientes.clientesRecurrentes || 0,
-        ]),
-      ]
-
-      const csvContent = csvData.map((row) => row.join(",")).join("\n")
-      const csvBlob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const csvUrl = URL.createObjectURL(csvBlob)
-      const csvLink = document.createElement("a")
-      csvLink.href = csvUrl
-      csvLink.download = `ZOCO-HistorialConsolidado-${new Date().toISOString().split("T")[0]}.csv`
-      document.body.appendChild(csvLink)
-      jsonLink.click()
-      document.body.removeChild(csvLink)
-      URL.revokeObjectURL(csvUrl)
-
-      alert(
-        `✅ Descarga completa exitosa!\n\n📊 Datos incluidos:\n- ${backupsCompletos.length} días de historial\n- ${totalesHistoricos.totalTicketsEmitidos} tickets totales\n- Análisis temporal consolidado\n- Tendencias y patrones\n\n📁 Archivos generados:\n- JSON completo con todos los detalles\n- CSV consolidado para análisis`,
-      )
-    } catch (error) {
-      console.error("Error al descargar todos los datos:", error)
-      alert("❌ Error al descargar los datos históricos completos")
-    } finally {
-      setDescargandoTodos(false)
-    }
-  }
-
-  const totalesHistoricos = calcularTotalesHistoricos()
-
   if (loading || !isClient) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 flex items-center justify-center p-4">
@@ -1080,7 +449,7 @@ export default function PaginaAdmin() {
           </div>
 
           {/* Botones de navegación - AGREGADO BOTÓN PRÓXIMOS */}
-          <div className="flex justify-center gap-4">
+          <div className="flex justify-center gap-4 flex-wrap">
             <a
               href="/"
               className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -1183,6 +552,67 @@ export default function PaginaAdmin() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Acciones Administrativas Principales */}
+        <Card className="mb-8 bg-gradient-to-r from-orange-50 to-red-50 border-orange-200">
+          <CardHeader>
+            <CardTitle className="text-xl text-orange-800 flex items-center gap-2">
+              <Shield className="h-6 w-6" />
+              🔧 Acciones Administrativas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Crear Backup Manual */}
+              <Button
+                onClick={forzarBackupDiario}
+                disabled={creandoBackup}
+                className="bg-green-600 hover:bg-green-700 text-white h-20 flex flex-col items-center justify-center"
+              >
+                {creandoBackup ? (
+                  <>
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mb-2"></div>
+                    <span className="text-sm">Creando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-6 w-6 mb-2" />
+                    <span className="text-sm font-semibold">Crear Backup Hoy</span>
+                  </>
+                )}
+              </Button>
+
+              {/* Reiniciar Contador */}
+              <Button
+                onClick={() => setMostrarConfirmacionReinicio(true)}
+                disabled={procesandoAccion}
+                className="bg-orange-600 hover:bg-orange-700 text-white h-20 flex flex-col items-center justify-center"
+              >
+                <RotateCcw className="h-6 w-6 mb-2" />
+                <span className="text-sm font-semibold">Reiniciar Contador</span>
+              </Button>
+
+              {/* Eliminar Registros */}
+              <Button
+                onClick={() => setMostrarConfirmacionEliminar(true)}
+                disabled={procesandoAccion}
+                className="bg-red-600 hover:bg-red-700 text-white h-20 flex flex-col items-center justify-center"
+              >
+                <AlertTriangle className="h-6 w-6 mb-2" />
+                <span className="text-sm font-semibold">Eliminar Todo</span>
+              </Button>
+
+              {/* Exportar Datos */}
+              <Button
+                onClick={exportarDatos}
+                className="bg-blue-600 hover:bg-blue-700 text-white h-20 flex flex-col items-center justify-center"
+              >
+                <Download className="h-6 w-6 mb-2" />
+                <span className="text-sm font-semibold">Exportar Datos</span>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* MÉTRICAS AVANZADAS MEJORADAS */}
         <Card className="mb-8 bg-gradient-to-r from-cyan-50 to-blue-50 border-cyan-200">
@@ -1472,261 +902,40 @@ export default function PaginaAdmin() {
           </CardContent>
         </Card>
 
-        {/* NUEVA SECCIÓN: Totales Históricos Consolidados */}
-        {backups.length > 0 && (
-          <Card className="mb-8 bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200">
-            <CardHeader>
-              <CardTitle className="text-xl flex items-center justify-between text-emerald-800">
-                <div className="flex items-center gap-2">
-                  <Archive className="h-6 w-6" />📊 Totales Históricos Consolidados
-                </div>
-                <Button
-                  onClick={descargarTodosLosDatos}
-                  disabled={descargandoTodos}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                >
-                  {descargandoTodos ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Descargando...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="mr-2 h-4 w-4" />
-                      Descargar Todo el Historial
-                    </>
-                  )}
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {/* Resumen de totales históricos */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div className="bg-white p-4 rounded-lg border-l-4 border-blue-500 text-center">
-                  <div className="text-3xl font-bold text-blue-600 mb-2">{totalesHistoricos.totalDias}</div>
-                  <p className="text-sm font-semibold text-blue-800">Días Operativos</p>
-                  <p className="text-xs text-blue-600">Registrados en historial</p>
-                </div>
-
-                <div className="bg-white p-4 rounded-lg border-l-4 border-green-500 text-center">
-                  <div className="text-3xl font-bold text-green-600 mb-2">
-                    {totalesHistoricos.totalTicketsEmitidos.toLocaleString()}
-                  </div>
-                  <p className="text-sm font-semibold text-green-800">Total Tickets Emitidos</p>
-                  <p className="text-xs text-green-600">En todo el historial</p>
-                </div>
-
-                <div className="bg-white p-4 rounded-lg border-l-4 border-orange-500 text-center">
-                  <div className="text-3xl font-bold text-orange-600 mb-2">
-                    {totalesHistoricos.totalTicketsAtendidos.toLocaleString()}
-                  </div>
-                  <p className="text-sm font-semibold text-orange-800">Total Tickets Atendidos</p>
-                  <p className="text-xs text-orange-600">Procesados históricamente</p>
-                </div>
-
-                <div className="bg-white p-4 rounded-lg border-l-4 border-purple-500 text-center">
-                  <div className="text-3xl font-bold text-purple-600 mb-2">{totalesHistoricos.eficienciaPromedio}%</div>
-                  <p className="text-sm font-semibold text-purple-800">Eficiencia Promedio</p>
-                  <p className="text-xs text-purple-600">Histórica general</p>
-                </div>
-              </div>
-
-              {/* Promedios y tendencias */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-gradient-to-r from-cyan-50 to-blue-50 p-4 rounded-lg border border-cyan-200">
-                  <h4 className="font-semibold text-cyan-800 mb-3 flex items-center gap-2">
-                    <BarChart3 className="h-5 w-5" />
-                    Promedios Diarios
-                  </h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-cyan-700">Tickets emitidos:</span>
-                      <span className="font-bold text-cyan-800">{totalesHistoricos.promedioTicketsPorDia}/día</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-cyan-700">Tickets atendidos:</span>
-                      <span className="font-bold text-cyan-800">{totalesHistoricos.promedioAtendidosPorDia}/día</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-r from-yellow-50 to-orange-50 p-4 rounded-lg border border-yellow-200">
-                  <h4 className="font-semibold text-yellow-800 mb-3 flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5" />
-                    Records Históricos
-                  </h4>
-                  <div className="space-y-2">
-                    <div>
-                      <span className="text-sm text-yellow-700">Mejor día:</span>
-                      <p className="font-bold text-yellow-800">
-                        {totalesHistoricos.mejorDia?.fecha || "N/A"} (
-                        {totalesHistoricos.mejorDia?.resumen?.totalTicketsEmitidos || 0} tickets)
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-sm text-yellow-700">Tendencia:</span>
-                      <p className="font-bold text-yellow-800 capitalize">
-                        {totalesHistoricos.tendenciaGeneral === "creciente" && "📈 Creciente"}
-                        {totalesHistoricos.tendenciaGeneral === "decreciente" && "📉 Decreciente"}
-                        {totalesHistoricos.tendenciaGeneral === "estable" && "📊 Estable"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-lg border border-indigo-200">
-                  <h4 className="font-semibold text-indigo-800 mb-3 flex items-center gap-2">
-                    <Target className="h-5 w-5" />
-                    Comparativa Hoy
-                  </h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-indigo-700">vs Promedio:</span>
-                      <span
-                        className={`font-bold ${
-                          estado.totalAtendidos > totalesHistoricos.promedioTicketsPorDia
-                            ? "text-green-600"
-                            : "text-red-600"
-                        }`}
-                      >
-                        {estado.totalAtendidos > totalesHistoricos.promedioTicketsPorDia ? "↗️ Mejor" : "↘️ Menor"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-indigo-700">Diferencia:</span>
-                      <span className="font-bold text-indigo-800">
-                        {Math.abs(estado.totalAtendidos - totalesHistoricos.promedioTicketsPorDia)} tickets
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Top 5 días más activos */}
-              <div className="bg-white p-4 rounded-lg border border-gray-200">
-                <h4 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />🏆 Top 5 Días Más Activos
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                  {totalesHistoricos.diasConMasActividad.map((dia, index) => (
-                    <div
-                      key={dia.fecha}
-                      className={`p-3 rounded-lg text-center border-2 ${
-                        index === 0
-                          ? "bg-yellow-50 border-yellow-300"
-                          : index === 1
-                            ? "bg-gray-50 border-gray-300"
-                            : index === 2
-                              ? "bg-orange-50 border-orange-300"
-                              : "bg-blue-50 border-blue-300"
-                      }`}
-                    >
-                      <div className="text-lg font-bold mb-1">
-                        {index === 0 && "🥇"}
-                        {index === 1 && "🥈"}
-                        {index === 2 && "🥉"}
-                        {index > 2 && `#${index + 1}`}
-                      </div>
-                      <div className="text-sm font-semibold text-gray-800">{dia.fecha}</div>
-                      <div className="text-2xl font-bold text-blue-600 my-1">
-                        {dia.resumen?.totalTicketsEmitidos || 0}
-                      </div>
-                      <div className="text-xs text-gray-600">tickets</div>
-                      <div className="text-xs text-green-600 mt-1">
-                        {dia.resumen?.eficienciaDiaria || 0}% eficiencia
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Historial de Días Anteriores MEJORADO */}
+        {/* Historial de Días Anteriores MEJORADO - Solo mostrar algunos */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Calendar className="h-5 w-5" />
-                Historial de Días Anteriores
+                Historial Reciente (Últimos 10 días)
               </div>
               <div className="flex gap-2">
                 <Button onClick={cargarBackups} variant="outline" size="sm">
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Actualizar
                 </Button>
-                {backups.length > 0 && (
-                  <Button
-                    onClick={descargarTodosLosDatos}
-                    disabled={descargandoTodos}
-                    className="bg-green-600 hover:bg-green-700 text-white"
-                    size="sm"
-                  >
-                    {descargandoTodos ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Descargando...
-                      </>
-                    ) : (
-                      <>
-                        <FileText className="mr-2 h-4 w-4" />
-                        Descargar Todos
-                      </>
-                    )}
-                  </Button>
-                )}
+                <a
+                  href="/resumen"
+                  className="inline-flex items-center justify-center px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm"
+                >
+                  <BarChart3 className="mr-2 h-4 w-4" />
+                  Ver Todo el Historial
+                </a>
               </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
             {backups.length > 0 ? (
               <div className="space-y-4">
-                {/* Resumen del historial */}
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
-                  <h4 className="font-semibold text-blue-800 mb-3">📊 Resumen del Historial</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600">{backups.length}</div>
-                      <p className="text-blue-700">Días registrados</p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-green-600">
-                        {Math.round(
-                          backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) /
-                            backups.length,
-                        )}
-                      </div>
-                      <p className="text-green-700">Promedio tickets/día</p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-orange-600">
-                        {Math.max(...backups.map((backup) => backup.resumen?.totalTicketsEmitidos || 0))}
-                      </div>
-                      <p className="text-orange-700">Día más activo</p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-purple-600">
-                        {Math.round(
-                          backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0), 0) /
-                            backups.length,
-                        )}
-                      </div>
-                      <p className="text-purple-700">Promedio atendidos/día</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Lista de días con métricas MEJORADA */}
+                {/* Lista de días con métricas MEJORADA - Solo primeros 10 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {backups.map((backup, index) => {
+                  {backups.slice(0, 10).map((backup, index) => {
                     const emitidos = backup.resumen?.totalTicketsEmitidos || 0
                     const atendidos = backup.resumen?.totalTicketsAtendidos || 0
                     const eficiencia = emitidos > 0 ? Math.round((atendidos / emitidos) * 100) : 0
                     const pendientes = emitidos - atendidos
                     const esReciente = index < 3
-                    const esMejorDia =
-                      emitidos === Math.max(...backups.map((b) => b.resumen?.totalTicketsEmitidos || 0))
 
                     // NUEVAS MÉTRICAS SOLICITADAS
                     const tiempoEsperaReal = backup.resumen?.tiempoPromedioEsperaReal || 0
@@ -1736,18 +945,16 @@ export default function PaginaAdmin() {
                       <div
                         key={index}
                         className={`p-4 rounded-lg border-2 transition-all duration-200 hover:shadow-lg ${
-                          esMejorDia
-                            ? "bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-300"
-                            : esReciente
-                              ? "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300"
-                              : "bg-gray-50 border-gray-300"
+                          esReciente
+                            ? "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300"
+                            : "bg-gray-50 border-gray-300"
                         }`}
                       >
                         <div className="flex justify-between items-start mb-3">
                           <div>
                             <h4
                               className={`font-bold text-lg ${
-                                esMejorDia ? "text-yellow-800" : esReciente ? "text-blue-800" : "text-gray-800"
+                                esReciente ? "text-blue-800" : "text-gray-800"
                               }`}
                             >
                               📅 {backup.fecha}
@@ -1761,12 +968,7 @@ export default function PaginaAdmin() {
                               })}
                             </p>
                           </div>
-                          {esMejorDia && (
-                            <div className="bg-yellow-500 text-white px-2 py-1 rounded-full text-xs font-bold">
-                              🏆 RÉCORD
-                            </div>
-                          )}
-                          {esReciente && !esMejorDia && (
+                          {esReciente && (
                             <div className="bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">
                               RECIENTE
                             </div>
@@ -1844,120 +1046,54 @@ export default function PaginaAdmin() {
                           </div>
                         )}
 
-                        {/* Botones de acción mejorados */}
-                        <div className="space-y-2">
-                          <Button
-                            onClick={() => verBackup(backup.fecha)}
-                            variant="outline"
-                            size="sm"
-                            className="w-full hover:bg-blue-50"
-                          >
-                            👁️ Ver Detalles Completos
-                          </Button>
-
-                          {/* Botones de descarga mejorados */}
-                          <div className="grid grid-cols-2 gap-2">
-                            <Button
-                              onClick={() => descargarBackupCompleto(backup)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
-                              size="sm"
-                            >
-                              📄 JSON Completo
-                            </Button>
-                            <Button
-                              onClick={() => descargarBackupCSV(backup)}
-                              className="bg-green-600 hover:bg-green-700 text-white text-xs"
-                              size="sm"
-                            >
-                              📊 CSV Resumen
-                            </Button>
-                          </div>
-
-                          <Button
-                            onClick={() => descargarBackupRaw(backup)}
-                            variant="outline"
-                            size="sm"
-                            className="w-full text-xs hover:bg-gray-50"
-                          >
-                            🗂️ Backup Raw (Original)
-                          </Button>
-                        </div>
+                        {/* Botón de acción */}
+                        <Button
+                          onClick={() => verBackup(backup.fecha)}
+                          variant="outline"
+                          size="sm"
+                          className="w-full hover:bg-blue-50"
+                        >
+                          👁️ Ver Detalles
+                        </Button>
                       </div>
                     )
                   })}
                 </div>
 
-                {/* Comparativa con día actual */}
-                <div className="bg-gradient-to-r from-green-50 to-teal-50 p-4 rounded-lg border border-green-200">
-                  <h4 className="font-semibold text-green-800 mb-3">📈 Comparativa con Hoy</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-green-600">{estado.totalAtendidos}</div>
-                      <p className="text-green-700">Tickets hoy</p>
-                      <p className="text-xs text-green-600">
-                        vs promedio:{" "}
-                        {estado.totalAtendidos >
-                        Math.round(
-                          backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) /
-                            backups.length,
-                        )
-                          ? "↗️"
-                          : "↘️"}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-blue-600">{estado.numerosLlamados}</div>
-                      <p className="text-blue-700">Atendidos hoy</p>
-                      <p className="text-xs text-blue-600">
-                        vs promedio:{" "}
-                        {estado.numerosLlamados >
-                        Math.round(
-                          backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0), 0) /
-                            backups.length,
-                        )
-                          ? "↗️"
-                          : "↘️"}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-orange-600">
-                        {Math.round((estado.numerosLlamados / Math.max(estado.totalAtendidos, 1)) * 100)}%
-                      </div>
-                      <p className="text-orange-700">Eficiencia hoy</p>
-                      <p className="text-xs text-orange-600">
-                        vs promedio:{" "}
-                        {Math.round((estado.numerosLlamados / Math.max(estado.totalAtendidos, 1)) * 100) >
-                        Math.round(
-                          backups.reduce(
-                            (sum, backup) =>
-                              sum +
-                              ((backup.resumen?.totalTicketsAtendidos || 0) /
-                                Math.max(backup.resumen?.totalTicketsEmitidos || 1, 1)) *
-                                100,
-                            0,
-                          ) / backups.length,
-                        )
-                          ? "↗️"
-                          : "↘️"}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-purple-600">
-                        {new Date().getHours() > 0
-                          ? Math.round(estado.totalAtendidos / new Date().getHours())
-                          : estado.totalAtendidos}
-                      </div>
-                      <p className="text-purple-700">Tickets/hora hoy</p>
-                      <p className="text-xs text-purple-600">Ritmo actual</p>
-                    </div>
+                {/* Mensaje para ver más */}
+                {backups.length > 10 && (
+                  <div className="text-center py-4 bg-gray-50 rounded-lg border">
+                    <p className="text-gray-600 mb-2">
+                      Mostrando los últimos 10 días. Hay {backups.length - 10} días más en el historial.
+                    </p>
+                    <a
+                      href="/resumen"
+                      className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                    >
+                      <BarChart3 className="mr-2 h-4 w-4" />
+                      Ver Historial Completo con Paginación
+                    </a>
                   </div>
-                </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-12">
                 <div className="text-6xl mb-4">📊</div>
                 <p className="text-xl text-gray-500 mb-2">No hay historial disponible</p>
-                <p className="text-gray-400">Los backups aparecerán aquí después del primer día de operación</p>
+                <p className="text-gray-400 mb-4">Los backups aparecerán aquí después del primer día de operación</p>
+                <Button onClick={forzarBackupDiario} disabled={creandoBackup} className="bg-green-600 hover:bg-green-700 text-white">
+                  {creandoBackup ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Creando Backup...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Crear Primer Backup
+                    </>
+                  )}
+                </Button>
               </div>
             )}
           </CardContent>
@@ -2053,36 +1189,4 @@ export default function PaginaAdmin() {
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <span className="font-semibold">Tickets emitidos:</span>
-                        <p>{backupSeleccionado.resumen.totalTicketsEmitidos}</p>
-                      </div>
-                      <div>
-                        <span className="font-semibold">Tickets atendidos:</span>
-                        <p>{backupSeleccionado.resumen.totalTicketsAtendidos}</p>
-                      </div>
-                      <div>
-                        <span className="font-semibold">Primer ticket:</span>
-                        <p>#{backupSeleccionado.resumen.primerTicket}</p>
-                      </div>
-                      <div>
-                        <span className="font-semibold">Último ticket:</span>
-                        <p>#{backupSeleccionado.resumen.ultimoTicket}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Footer */}
-        <footer className="text-center mt-8 pt-4 border-t border-gray-200">
-          <div className="text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 5.2 | Historial Consolidado + Descarga Masiva</p>
-            <p>Actualización inteligente cada 120s | Cache compartido entre páginas</p>
-          </div>
-        </footer>
-      </div>
-    </div>
-  )
-}
+                        <p>{backupSeleccionado.resumen.total
