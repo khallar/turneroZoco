@@ -94,15 +94,24 @@ export default function PaginaProximos() {
 
   // Calcular próximos 5 números
   const calcularProximos5 = () => {
-    if (!estado || !estado.tickets) return []
+    if (!estado || !estado.tickets || !Array.isArray(estado.tickets)) {
+      console.warn("⚠️ No hay tickets disponibles o no es un array:", estado?.tickets)
+      return []
+    }
 
     const proximoNumero = estado.numerosLlamados + 1
     const proximos = []
+
+    console.log(`🔍 Calculando próximos 5 desde número ${proximoNumero}`)
+    console.log(`📊 Tickets disponibles: ${estado.tickets.length}`)
+    console.log(`📊 Total atendidos: ${estado.totalAtendidos}`)
 
     for (let i = 0; i < 5; i++) {
       const numeroAMostrar = proximoNumero + i
       if (numeroAMostrar <= estado.totalAtendidos) {
         const ticket = estado.tickets.find((t) => t.numero === numeroAMostrar)
+        console.log(`🎫 Buscando ticket #${numeroAMostrar}:`, ticket ? "✅ Encontrado" : "❌ No encontrado")
+
         proximos.push({
           numero: numeroAMostrar,
           nombre: ticket?.nombre || "Cliente ZOCO",
@@ -111,6 +120,7 @@ export default function PaginaProximos() {
       }
     }
 
+    console.log(`✅ Próximos calculados: ${proximos.length}`)
     return proximos
   }
 
@@ -195,6 +205,16 @@ export default function PaginaProximos() {
             )}
           </div>
 
+          {/* Información de debug para tickets */}
+          {estado?.tickets && (
+            <div className="text-xs text-gray-500 mb-4">
+              📊 Tickets cargados: {estado.tickets.length} | Total esperado: {estado.totalAtendidos}
+              {estado.tickets.length !== estado.totalAtendidos && (
+                <span className="text-red-500 ml-2">⚠️ Inconsistencia detectada</span>
+              )}
+            </div>
+          )}
+
           {/* Botones de navegación y actualización */}
           <div className="flex justify-center gap-4 mb-8">
             <a
@@ -278,7 +298,21 @@ export default function PaginaProximos() {
                   <div className="text-center py-12">
                     <div className="text-6xl text-gray-300 mb-4">🎫</div>
                     <p className="text-xl text-gray-500 mb-2">No hay turnos pendientes</p>
-                    <p className="text-gray-400">Todos los números han sido llamados</p>
+                    <p className="text-gray-400">
+                      {(estado?.totalAtendidos || 0) === 0
+                        ? "No se han emitido tickets hoy"
+                        : "Todos los números han sido llamados"}
+                    </p>
+                    <div className="mt-4">
+                      <Button
+                        onClick={actualizarDatosManual}
+                        className="bg-purple-600 hover:bg-purple-700"
+                        disabled={actualizandoDatos}
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Verificar Nuevos Tickets
+                      </Button>
+                    </div>
                   </div>
                 )}
               </CardContent>

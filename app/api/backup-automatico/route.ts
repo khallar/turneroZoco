@@ -1,72 +1,70 @@
 import { NextResponse } from "next/server"
-import { forzarBackupDiario, obtenerBackups, leerEstadoSistema, getTodayDateString } from "@/lib/database"
+import { forzarBackupDiario, obtenerBackups } from "@/lib/database"
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url)
-    const action = searchParams.get("action")
+    console.log("📋 Verificando estado de backups automáticos...")
 
-    if (action === "verificar_estado") {
-      // Verificar estado de backups
-      const backups = await obtenerBackups()
-      const fechaHoy = getTodayDateString()
-      const fechaAyer = getYesterdayDateString()
+    const backups = await obtenerBackups()
+    const fechaHoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+    const fechaAyer = new Date(Date.now() - 24 * 60 * 60 * 1000).toLocaleDateString("en-CA", {
+      timeZone: "America/Argentina/Buenos_Aires",
+    })
 
-      const backupHoy = backups.find((b) => b.fecha === fechaHoy)
-      const backupAyer = backups.find((b) => b.fecha === fechaAyer)
+    const backupHoy = backups.find((b) => b.fecha === fechaHoy)
+    const backupAyer = backups.find((b) => b.fecha === fechaAyer)
 
-      const estado = await leerEstadoSistema()
-
-      return NextResponse.json({
-        success: true,
-        estado: {
-          fechaActual: fechaHoy,
-          ticketsHoy: estado.totalAtendidos,
-          backupHoyExiste: !!backupHoy,
-          backupAyerExiste: !!backupAyer,
-          totalBackups: backups.length,
-          ultimosBackups: backups.slice(0, 5).map((b) => ({
-            fecha: b.fecha,
-            tickets: b.resumen?.totalTicketsEmitidos || 0,
-          })),
-        },
-      })
-    }
-
-    if (action === "forzar_backup") {
-      const resultado = await forzarBackupDiario()
-      return NextResponse.json(resultado, {
-        status: resultado.success ? 200 : 400,
-      })
-    }
-
-    return NextResponse.json(
-      {
-        error: "Acción no válida",
+    return NextResponse.json({
+      success: true,
+      backups: {
+        total: backups.length,
+        hoy: backupHoy ? "✅ Existe" : "❌ No existe",
+        ayer: backupAyer ? "✅ Existe" : "❌ No existe",
+        fechaHoy,
+        fechaAyer,
+        ultimosBackups: backups.slice(0, 5).map((b) => ({
+          fecha: b.fecha,
+          tickets: b.resumen?.totalTicketsEmitidos || 0,
+          creado: b.createdAt,
+        })),
       },
-      { status: 400 },
-    )
+    })
   } catch (error) {
-    console.error("❌ Error en backup automático:", error)
+    console.error("❌ Error al verificar backups automáticos:", error)
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Error desconocido",
+        error: "Error al verificar backups",
+        details: error instanceof Error ? error.message : "Error desconocido",
       },
       { status: 500 },
     )
   }
 }
 
-function getYesterdayDateString(): string {
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  const options: Intl.DateTimeFormatOptions = {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "America/Argentina/Buenos_Aires",
+export async function POST() {
+  try {
+    console.log("🔧 Forzando creación de backup automático...")
+
+    const resultado = await forzarBackupDiario()
+
+    return NextResponse.json(resultado, {
+      status: resultado.success ? 200 : 400,
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+      },
+    })
+  } catch (error) {
+    console.error("❌ Error al forzar backup automático:", error)
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Error interno al crear backup automático",
+        details: error instanceof Error ? error.message : "Error desconocido",
+      },
+      { status: 500 },
+    )
   }
-  const formatter = new Intl.DateTimeFormat("en-CA", options)
-  return formatter.format(yesterday)
 }

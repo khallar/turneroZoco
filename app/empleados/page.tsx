@@ -88,6 +88,7 @@ export default function PaginaEmpleados() {
     console.log("Intentando llamar número:", proximoNumeroALlamar)
     console.log("Total atendidos:", estado.totalAtendidos)
     console.log("Números ya llamados:", estado.numerosLlamados)
+    console.log("Tickets disponibles:", estado.tickets?.length || 0)
 
     if (proximoNumeroALlamar > estado.totalAtendidos) {
       alert("No hay más números en espera para llamar")
@@ -95,7 +96,7 @@ export default function PaginaEmpleados() {
     }
 
     // Buscar el ticket correspondiente
-    const ticketALlamar = estado.tickets.find((ticket) => ticket.numero === proximoNumeroALlamar)
+    const ticketALlamar = estado.tickets?.find((ticket) => ticket.numero === proximoNumeroALlamar)
     console.log("Ticket encontrado:", ticketALlamar)
 
     const nuevoEstado = {
@@ -202,6 +203,7 @@ export default function PaginaEmpleados() {
     totalTicketsEnArray: estado?.tickets?.length || 0,
     ultimoTicketEnArray: estado?.tickets?.[estado.tickets.length - 1]?.numero || "N/A",
     cacheStats: cacheStats,
+    proximoTicket: proximoTicket,
   }
 
   console.log("🔍 Debug info empleados:", debugInfo)
@@ -247,6 +249,16 @@ export default function PaginaEmpleados() {
               <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">📦 {cacheStats.totalEntries}</span>
             )}
           </div>
+
+          {/* Información de debug para tickets */}
+          {estado?.tickets && (
+            <div className="text-xs text-gray-500 mb-2">
+              📊 Tickets cargados: {estado.tickets.length} | Total esperado: {estado.totalAtendidos}
+              {estado.tickets.length !== estado.totalAtendidos && (
+                <span className="text-red-500 ml-2">⚠️ Inconsistencia detectada</span>
+              )}
+            </div>
+          )}
 
           {/* Botón de refresh manual */}
           <div className="flex justify-center mb-4">

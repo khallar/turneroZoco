@@ -176,6 +176,25 @@ export function useSistemaEstado(pagina: keyof typeof INTERVALOS_ACTUALIZACION =
         if (response.ok) {
           const data = await response.json()
           console.log(`✅ Estado cargado desde servidor (página: ${pagina})`)
+          console.log(`📊 Datos recibidos:`, {
+            totalAtendidos: data.totalAtendidos,
+            numerosLlamados: data.numerosLlamados,
+            ticketsLength: data.tickets?.length || 0,
+            ultimoNumero: data.ultimoNumero,
+            numeroActual: data.numeroActual,
+          })
+
+          // Validar que los datos sean consistentes
+          if (data.tickets && Array.isArray(data.tickets)) {
+            console.log(`🎫 Tickets recibidos: ${data.tickets.length}`)
+            if (data.tickets.length > 0) {
+              console.log(`🔍 Primer ticket:`, data.tickets[0])
+              console.log(`🔍 Último ticket:`, data.tickets[data.tickets.length - 1])
+            }
+          } else {
+            console.warn("⚠️ No se recibieron tickets o no es un array:", data.tickets)
+            data.tickets = [] // Asegurar que sea un array
+          }
 
           setEstado(data)
           setError(null)

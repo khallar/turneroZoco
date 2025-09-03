@@ -50,67 +50,114 @@ function debeReiniciarse(estado: EstadoSistema): boolean {
   }
 }
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const action = searchParams.get("action")
+export async function GET() {
+  try {
+    console.log("\n=== 📥 GET /api/sistema - TURNOS_ZOCO (Upstash Redis) ===")
 
-  if (action === "actualizar_llamados") {
-    // Código para actualizar llamados
-    return NextResponse.json({ message: "Llamados actualizados" })
-  }
-
-  // Manejar acción de forzar backup
-  if (action === "forzar_backup") {
+    // Verificar conexión a la base de datos (no bloquear si falla)
     try {
-      const resultado = await crearBackupDiario()
+      const conexionOK = await verificarConexionDB()
+      if (!conexionOK) {
+        console.log("⚠️ Advertencia: Problema de conexión detectado, pero continuando...")
+      }
+    } catch (connectionError) {
+      console.error("❌ Error al verificar conexión, pero continuando:", connectionError)
+    }
 
-      return NextResponse.json(resultado, {
-        status: resultado.success ? 200 : 400,
-        headers: {
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-        },
-      })
-    } catch (error) {
-      console.error("❌ Error al forzar backup:", error)
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Error interno al crear backup",
-        },
-        { status: 500 },
+    let estado
+    try {
+      estado = await leerEstadoSistema() // Esto ya devuelve el estado con los tickets
+    } catch (readError) {
+      console.error("❌ Error al leer estado, intentando recuperación:", readError)
+
+      // Intentar recuperar datos del día actual
+      const fechaHoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+      try {
+        estado = await recuperarDatosPerdidos(fechaHoy)
+        console.log("✅ Datos recuperados exitosamente")
+      } catch (recoveryError) {
+        console.error("❌ No se pudieron recuperar los datos, creando estado inicial:", recoveryError)
+
+        // Crear estado completamente nuevo como último recurso
+        estado = {
+          numeroActual: 1,
+          ultimoNumero: 0,
+          totalAtendidos: 0,
+          numerosLlamados: 0,
+          fechaInicio: fechaHoy,
+          ultimoReinicio: new Date().toISOString(),
+          tickets: [],
+          lastSync: Date.now(),
+        }
+
+        await escribirEstadoSistema(estado)
+      }
+    }
+
+    // Log detallado del estado leído
+    console.log(
+      `📊 Estado leído: Total atendidos: ${estado.totalAtendidos}, Tickets en array: ${estado.tickets.length}, Último número: ${estado.ultimoNumero}`,
+    )
+
+    // Verificación adicional de integridad
+    if (estado.totalAtendidos !== estado.tickets.length) {
+      console.log(
+        `⚠️ ALERTA: Inconsistencia detectada en GET - Estado: ${estado.totalAtendidos}, Array: ${estado.tickets.length}`,
       )
     }
-  }
 
-  // Manejar acción de recuperar datos perdidos
-  if (action === "recuperar_datos_perdidos") {
-    try {
-      const resultado = await recuperarDatosPerdidos()
+    // Verificar si debe reiniciarse automáticamente
+    if (debeReiniciarse(estado)) {
+      console.log("🔄 Ejecutando reinicio automático (TURNOS_ZOCO)")
 
-      return NextResponse.json(resultado, {
-        status: resultado.success ? 200 : 400,
-        headers: {
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-        },
-      })
-    } catch (error) {
-      console.error("❌ Error al recuperar datos perdidos:", error)
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Error interno al recuperar datos perdidos",
-        },
-        { status: 500 },
-      )
+      // Crear backup en background con el estado actual (incluyendo tickets)
+      crearBackupDiario(estado).catch((err) => console.error("Error en backup (TURNOS_ZOCO):", err))
+
+      const ahora = new Date()
+      const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+
+      estado = {
+        numeroActual: 1,
+        ultimoNumero: 0,
+        totalAtendidos: 0,
+        numerosLlamados: 0,
+        fechaInicio: fechaHoy,
+        ultimoReinicio: ahora.toISOString(),
+        tickets: [],
+        lastSync: Date.now(),
+      }
+
+      // Escribir el estado inicial del nuevo día con persistencia mejorada
+      await escribirEstadoSistema(estado)
     }
-  }
 
-  // ** rest of code here **
-  return NextResponse.json({ message: "Acción no reconocida" })
+    console.log("📤 Estado devuelto desde TURNOS_ZOCO (Upstash Redis):", {
+      numeroActual: estado.numeroActual,
+      totalAtendidos: estado.totalAtendidos,
+      numerosLlamados: estado.numerosLlamados,
+      totalTickets: estado.tickets?.length || 0,
+      ultimoNumero: estado.ultimoNumero,
+    })
+
+    // IMPORTANTE: Asegurar que siempre se devuelvan los tickets
+    const respuesta = {
+      ...estado,
+      tickets: estado.tickets || [], // Garantizar que tickets sea un array
+    }
+
+    console.log(`🎫 Devolviendo ${respuesta.tickets.length} tickets en la respuesta`)
+
+    return NextResponse.json(respuesta)
+  } catch (error) {
+    console.error("❌ Error en GET /api/sistema (TURNOS_ZOCO):", error)
+    return NextResponse.json(
+      {
+        error: "Error interno del servidor - TURNOS_ZOCO (Upstash Redis)",
+        details: error instanceof Error ? error.message : "Error desconocido",
+      },
+      { status: 500 },
+    )
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -165,6 +212,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             error: "Nombre requerido y no puede estar vacío",
+            success: false,
           },
           { status: 400 },
         )
@@ -188,14 +236,21 @@ export async function POST(request: NextRequest) {
           numeroActual: estadoActualizado.numeroActual,
           totalAtendidos: estadoActualizado.totalAtendidos,
           ultimoNumero: estadoActualizado.ultimoNumero,
+          ticketsLength: estadoActualizado.tickets?.length || 0,
         })
 
-        return NextResponse.json({
+        // IMPORTANTE: Asegurar que se devuelvan los tickets
+        const respuesta = {
           ...estadoActualizado,
+          tickets: estadoActualizado.tickets || [], // Garantizar que tickets sea un array
           ticketGenerado: nuevoTicket,
           success: true,
           message: "Ticket generado exitosamente",
-        })
+        }
+
+        console.log(`🎫 Devolviendo ${respuesta.tickets.length} tickets en respuesta POST`)
+
+        return NextResponse.json(respuesta)
       } catch (error) {
         console.error("❌ Error al generar ticket (TURNOS_ZOCO):", error)
 
@@ -242,6 +297,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
           ...estado,
+          tickets: estado.tickets || [], // Garantizar que tickets sea un array
           estadisticas,
         })
       } catch (error) {
@@ -360,12 +416,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Validar datos para actualizaciones normales
-    // Nota: nuevoEstado.tickets ya no se usa para la escritura directa del estado principal
     if (
       typeof nuevoEstado.numeroActual !== "number" ||
       typeof nuevoEstado.totalAtendidos !== "number" ||
       typeof nuevoEstado.numerosLlamados !== "number"
-      // !Array.isArray(nuevoEstado.tickets) // Ya no se valida aquí
     ) {
       return NextResponse.json({ error: "Datos inválidos" }, { status: 400 })
     }
@@ -373,14 +427,13 @@ export async function POST(request: NextRequest) {
     console.log("📝 Actualizando estado normal en TURNOS_ZOCO (Upstash Redis)")
 
     // Actualizar estado manteniendo fechas originales
-    const estadoActualizado: EstadoSistema = {
+    const estadoActualizado = {
       numeroActual: nuevoEstado.numeroActual,
       ultimoNumero: nuevoEstado.ultimoNumero,
       totalAtendidos: nuevoEstado.totalAtendidos,
       numerosLlamados: nuevoEstado.numerosLlamados,
       fechaInicio: estado.fechaInicio, // Mantener la fecha de inicio original
       ultimoReinicio: estado.ultimoReinicio, // Mantener la fecha de último reinicio original
-      tickets: estado.tickets, // Mantener los tickets originales
       lastSync: Date.now(),
     }
 
@@ -389,7 +442,16 @@ export async function POST(request: NextRequest) {
 
     // Devolver el estado completo (metadata + tickets) después de la actualización
     const estadoFinal = await leerEstadoSistema()
-    return NextResponse.json(estadoFinal)
+
+    // IMPORTANTE: Asegurar que se devuelvan los tickets
+    const respuestaFinal = {
+      ...estadoFinal,
+      tickets: estadoFinal.tickets || [], // Garantizar que tickets sea un array
+    }
+
+    console.log(`🎫 Devolviendo ${respuestaFinal.tickets.length} tickets en respuesta final`)
+
+    return NextResponse.json(respuestaFinal)
   } catch (error) {
     console.error("❌ Error en POST /api/sistema (TURNOS_ZOCO):", error)
     return NextResponse.json(
