@@ -331,7 +331,8 @@ export function useSistemaEstado(pagina: keyof typeof INTERVALOS_ACTUALIZACION =
 
   // Función optimizada para generar ticket
   const generarTicket = useCallback(
-    async (nombre: string, reintentos = 2) => {
+    async (nombre: string, reintentos = 1) => {
+      // Reducir reintentos de 2 a 1
       if (!isClient) return null
 
       for (let intento = 1; intento <= reintentos; intento++) {
@@ -398,7 +399,7 @@ export function useSistemaEstado(pagina: keyof typeof INTERVALOS_ACTUALIZACION =
 
       return null
     },
-    [isClient],
+    [isClient], // Remover cargarDebugInfo de las dependencias
   )
 
   // Función para obtener backups (con cache)
