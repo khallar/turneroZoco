@@ -234,13 +234,33 @@ export async function POST(request: NextRequest) {
         // Respuesta de error más específica
         const errorMessage = error instanceof Error ? error.message : "Error desconocido"
 
+        console.error("❌ Stack trace:", error instanceof Error ? error.stack : "No stack available")
+
         if (errorMessage.includes("timeout") || errorMessage.includes("Timeout")) {
           return NextResponse.json(
             {
               error: "Timeout al generar ticket - conexión lenta",
               details: "La operación tardó demasiado. Por favor, intente nuevamente.",
+              debug: {
+                originalError: errorMessage,
+                timestamp: new Date().toISOString(),
+              },
             },
             { status: 408 },
+          )
+        }
+
+        if (errorMessage.includes("No se encontraron variables de entorno")) {
+          return NextResponse.json(
+            {
+              error: "Error de configuración de base de datos",
+              details: "Problema con la configuración de Redis. Contacte al administrador.",
+              debug: {
+                originalError: errorMessage,
+                timestamp: new Date().toISOString(),
+              },
+            },
+            { status: 503 },
           )
         }
 
@@ -248,6 +268,11 @@ export async function POST(request: NextRequest) {
           {
             error: "Error al generar ticket en TURNOS_ZOCO (Upstash Redis)",
             details: errorMessage,
+            debug: {
+              timestamp: new Date().toISOString(),
+              action: "GENERAR_TICKET",
+              nombre: nombre,
+            },
           },
           { status: 500 },
         )

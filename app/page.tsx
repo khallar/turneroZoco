@@ -194,15 +194,21 @@ export default function SistemaAtencion() {
     } catch (error) {
       console.error("Error al generar ticket:", error)
 
-      // Mensaje de error más amigable
+      // Mensaje de error más amigable y específico
       const errorMessage = error instanceof Error ? error.message : "Error desconocido"
 
-      if (errorMessage.includes("503") || errorMessage.includes("ocupado")) {
-        alert("El sistema está ocupado en este momento. Por favor, espere unos segundos e intente nuevamente.")
-      } else if (errorMessage.includes("timeout") || errorMessage.includes("Timeout")) {
-        alert("La conexión está lenta. Por favor, verifique su conexión a internet e intente nuevamente.")
+      if (errorMessage.includes("408") || errorMessage.includes("timeout") || errorMessage.includes("Timeout")) {
+        alert("⏱️ La conexión está lenta.\n\nPor favor, espere unos segundos e intente nuevamente.")
+      } else if (errorMessage.includes("503") || errorMessage.includes("configuración")) {
+        alert("🔧 Problema de configuración del sistema.\n\nPor favor, contacte al administrador o intente más tarde.")
+      } else if (errorMessage.includes("500")) {
+        alert(
+          "⚠️ Error interno del servidor.\n\nPor favor, intente nuevamente en unos momentos.\n\nSi el problema persiste, contacte al administrador.",
+        )
+      } else if (errorMessage.includes("400")) {
+        alert("📝 Error en los datos enviados.\n\nPor favor, verifique el nombre e intente nuevamente.")
       } else {
-        alert(`Error al generar el ticket: ${errorMessage}\n\nPor favor, intente nuevamente.`)
+        alert(`❌ Error al generar el ticket:\n\n${errorMessage}\n\nPor favor, intente nuevamente.`)
       }
     } finally {
       setGenerandoTicket(false)
