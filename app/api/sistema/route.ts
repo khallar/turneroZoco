@@ -8,7 +8,8 @@ import {
   verificarConexionDB,
   limpiarDatosAntiguos,
   recuperarDatosPerdidos,
-  obtenerResumenDiasAnteriores, // Importar la función para obtener el resumen histórico
+  obtenerResumenDiasAnteriores,
+  guardarResumenHistorico,
 } from "@/lib/database"
 
 interface TicketInfo {
@@ -25,8 +26,10 @@ interface EstadoSistema {
   numerosLlamados: number
   fechaInicio: string
   ultimoReinicio: string
-  tickets: TicketInfo[] // Mantener aquí para la consistencia del tipo en la API
+  tickets: TicketInfo[]
   lastSync?: number
+  activo?: boolean
+  nombreActual?: string
 }
 
 // Función para verificar si debe reiniciarse
@@ -89,6 +92,7 @@ export async function GET() {
           ultimoReinicio: new Date().toISOString(),
           tickets: [],
           lastSync: Date.now(),
+          activo: true,
         }
 
         await escribirEstadoSistema(estado)
@@ -126,6 +130,7 @@ export async function GET() {
         ultimoReinicio: ahora.toISOString(),
         tickets: [],
         lastSync: Date.now(),
+        activo: true,
       }
 
       // Escribir el estado inicial del nuevo día con persistencia mejorada
@@ -138,6 +143,8 @@ export async function GET() {
       numerosLlamados: estado.numerosLlamados,
       totalTickets: estado.tickets?.length || 0,
       ultimoNumero: estado.ultimoNumero,
+      activo: estado.activo,
+      nombreActual: estado.nombreActual,
     })
 
     return NextResponse.json(estado)
@@ -158,9 +165,9 @@ export async function POST(request: NextRequest) {
     console.log("\n=== 📨 POST /api/sistema - TURNOS_ZOCO (Upstash Redis) ===")
 
     const body = await request.json()
-    const { action, ...nuevoEstado } = body
+    const { accion, datos } = body
 
-    console.log("🎯 Acción recibida (TURNOS_ZOCO):", action)
+    console.log("🎯 Acción recibida (TURNOS_ZOCO):", accion)
 
     // Verificar conexión a la base de datos (no bloquear si falla)
     try {
@@ -193,13 +200,14 @@ export async function POST(request: NextRequest) {
         ultimoReinicio: ahora.toISOString(),
         tickets: [],
         lastSync: Date.now(),
+        activo: true,
       }
       // No es necesario escribir el estado aquí, se hará si la acción lo requiere
     }
 
     // Acción especial para generar ticket de forma atómica - OPTIMIZADA
-    if (action === "GENERAR_TICKET") {
-      const { nombre } = body
+    if (accion === "GENERAR_TICKET") {
+      const { nombre } = datos
 
       if (!nombre || typeof nombre !== "string") {
         return NextResponse.json({ error: "Nombre requerido" }, { status: 400 })
@@ -247,7 +255,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Acción para obtener estadísticas
-    if (action === "OBTENER_ESTADISTICAS") {
+    if (accion === "OBTENER_ESTADISTICAS") {
       try {
         const estadisticas = await obtenerEstadisticas(estado) // 'estado' ya incluye tickets
 
@@ -268,7 +276,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Acción administrativa: Eliminar todos los registros
-    if (action === "ELIMINAR_TODOS_REGISTROS") {
+    if (accion === "ELIMINAR_TODOS_REGISTROS") {
       console.log("🗑️ Eliminando todos los registros (TURNOS_ZOCO)...")
 
       try {
@@ -286,6 +294,7 @@ export async function POST(request: NextRequest) {
           ultimoReinicio: ahora.toISOString(),
           tickets: [], // Reiniciar tickets para el estado de retorno
           lastSync: Date.now(),
+          activo: true,
         }
 
         // Escribir el estado limpio (solo metadata)
@@ -310,7 +319,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Acción administrativa: Reiniciar contador diario
-    if (action === "REINICIAR_CONTADOR_DIARIO") {
+    if (accion === "REINICIAR_CONTADOR_DIARIO") {
       console.log("🔄 Reiniciando contador diario (TURNOS_ZOCO)...")
 
       try {
@@ -319,11 +328,7 @@ export async function POST(request: NextRequest) {
 
         // 2. Obtener y guardar el resumen histórico actualizado
         const resumenHistorico = await obtenerResumenDiasAnteriores()
-        // Aquí deberías tener una función para guardar el resumen histórico.
-        // Por ejemplo: await guardarResumenHistorico(resumenHistorico);
-        // Como no tengo la implementación de guardarResumenHistorico, lo dejo comentado.
-        // Implementar esta función es crucial para completar la tarea.
-        // await guardarResumenHistorico(resumenHistorico);
+        await guardarResumenHistorico(resumenHistorico)
 
         const ahora = new Date()
         const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
@@ -336,6 +341,7 @@ export async function POST(request: NextRequest) {
           ultimoReinicio: ahora.toISOString(),
           tickets: [], // Reiniciar tickets para el estado de retorno
           lastSync: Date.now(),
+          activo: true,
         }
 
         // Escribir el estado reiniciado (solo metadata)
@@ -344,8 +350,9 @@ export async function POST(request: NextRequest) {
 
         // Devolver el estado reiniciado directamente, sin una nueva lectura de DB
         return NextResponse.json({
-          ...estadoReiniciado,
-          mensaje: "Contador diario reiniciado exitosamente",
+          success: true,
+          message: "Contador reiniciado y backup creado exitosamente",
+          estado: estadoReiniciado,
         })
       } catch (error) {
         console.error("❌ Error al reiniciar contador (TURNOS_ZOCO):", error)
@@ -360,7 +367,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Acción de mantenimiento: Limpiar datos antiguos
-    if (action === "LIMPIAR_DATOS_ANTIGUOS") {
+    if (accion === "LIMPIAR_DATOS_ANTIGUOS") {
       try {
         await limpiarDatosAntiguos()
         return NextResponse.json({
@@ -378,13 +385,92 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Acción para pausar el sistema
+    if (accion === "PAUSAR_SISTEMA") {
+      console.log("⏸️ Pausando sistema (TURNOS_ZOCO)...")
+
+      try {
+        estado.activo = false
+        await escribirEstadoSistema(estado)
+        console.log("✅ Sistema pausado exitosamente (TURNOS_ZOCO)")
+
+        return NextResponse.json({
+          ...estado,
+          mensaje: "Sistema pausado exitosamente",
+        })
+      } catch (error) {
+        console.error("❌ Error al pausar sistema (TURNOS_ZOCO):", error)
+        return NextResponse.json(
+          {
+            error: "Error al pausar sistema",
+            details: error instanceof Error ? error.message : "Error desconocido",
+          },
+          { status: 500 },
+        )
+      }
+    }
+
+    // Acción para reanudar el sistema
+    if (accion === "REANUDAR_SISTEMA") {
+      console.log("⏯️ Reanudando sistema (TURNOS_ZOCO)...")
+
+      try {
+        estado.activo = true
+        await escribirEstadoSistema(estado)
+        console.log("✅ Sistema reanudado exitosamente (TURNOS_ZOCO)")
+
+        return NextResponse.json({
+          ...estado,
+          mensaje: "Sistema reanudado exitosamente",
+        })
+      } catch (error) {
+        console.error("❌ Error al reanudar sistema (TURNOS_ZOCO):", error)
+        return NextResponse.json(
+          {
+            error: "Error al reanudar sistema",
+            details: error instanceof Error ? error.message : "Error desconocido",
+          },
+          { status: 500 },
+        )
+      }
+    }
+
+    // Acción para actualizar el nombre actual
+    if (accion === "ACTUALIZAR_NOMBRE") {
+      const { nombre } = datos
+
+      if (!nombre || typeof nombre !== "string") {
+        return NextResponse.json({ error: "Nombre requerido" }, { status: 400 })
+      }
+
+      console.log("📝 Actualizando nombre actual en TURNOS_ZOCO (Upstash Redis)")
+
+      try {
+        estado.nombreActual = nombre
+        await escribirEstadoSistema(estado)
+        console.log("✅ Nombre actualizado exitosamente (TURNOS_ZOCO)")
+
+        return NextResponse.json({
+          ...estado,
+          mensaje: "Nombre actualizado exitosamente",
+        })
+      } catch (error) {
+        console.error("❌ Error al actualizar nombre (TURNOS_ZOCO):", error)
+        return NextResponse.json(
+          {
+            error: "Error al actualizar nombre",
+            details: error instanceof Error ? error.message : "Error desconocido",
+          },
+          { status: 500 },
+        )
+      }
+    }
+
     // Validar datos para actualizaciones normales
-    // Nota: nuevoEstado.tickets ya no se usa para la escritura directa del estado principal
     if (
-      typeof nuevoEstado.numeroActual !== "number" ||
-      typeof nuevoEstado.totalAtendidos !== "number" ||
-      typeof nuevoEstado.numerosLlamados !== "number"
-      // !Array.isArray(nuevoEstado.tickets) // Ya no se valida aquí
+      typeof datos.numeroActual !== "number" ||
+      typeof datos.totalAtendidos !== "number" ||
+      typeof datos.numerosLlamados !== "number"
     ) {
       return NextResponse.json({ error: "Datos inválidos" }, { status: 400 })
     }
@@ -393,13 +479,15 @@ export async function POST(request: NextRequest) {
 
     // Actualizar estado manteniendo fechas originales
     const estadoActualizado = {
-      numeroActual: nuevoEstado.numeroActual,
-      ultimoNumero: nuevoEstado.ultimoNumero,
-      totalAtendidos: nuevoEstado.totalAtendidos,
-      numerosLlamados: nuevoEstado.numerosLlamados,
+      numeroActual: datos.numeroActual,
+      ultimoNumero: datos.ultimoNumero,
+      totalAtendidos: datos.totalAtendidos,
+      numerosLlamados: datos.numerosLlamados,
       fechaInicio: estado.fechaInicio, // Mantener la fecha de inicio original
       ultimoReinicio: estado.ultimoReinicio, // Mantener la fecha de último reinicio original
       lastSync: Date.now(),
+      activo: estado.activo,
+      nombreActual: estado.nombreActual,
     }
 
     // Escribir solo la metadata del estado

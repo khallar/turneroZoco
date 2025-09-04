@@ -8,7 +8,7 @@ interface TicketInfo {
 }
 
 // EstadoSistema ahora NO contendrá el array 'tickets' directamente
-interface EstadoSistema {
+interface EstadoSistemaOld {
   numeroActual: number
   ultimoNumero: number
   totalAtendidos: number
@@ -16,6 +16,37 @@ interface EstadoSistema {
   fechaInicio: string // YYYY-MM-DD
   ultimoReinicio: string // ISO string
   lastSync?: number
+}
+
+export interface EstadoSistema {
+  ticketActual: number
+  totalTickets: number
+  fechaInicio: string
+  activo: boolean
+  nombreActual?: string
+}
+
+export interface BackupDiario {
+  fecha: string
+  ticketFinal: number
+  totalTickets: number
+  fechaInicio: string
+  fechaFin: string
+}
+
+export interface ResumenHistorico {
+  totalDias: number
+  totalTicketsHistorico: number
+  promedioTicketsPorDia: number
+  mejorDia: {
+    fecha: string
+    tickets: number
+  }
+  peorDia: {
+    fecha: string
+    tickets: number
+  }
+  ultimaActualizacion: string
 }
 
 // Función para obtener las variables de entorno correctas
@@ -108,6 +139,10 @@ const BACKUP_KEY_PREFIX = "TURNOS_ZOCO:backup:" // TURNOS_ZOCO:backup:YYYY-MM-DD
 const LOGS_KEY = "TURNOS_ZOCO:logs"
 const COUNTER_KEY_PREFIX = "TURNOS_ZOCO:counter:" // Para el contador atómico de número de ticket
 
+const ESTADO_KEY = "sistema:estado"
+const BACKUP_PREFIX = "backup:diario:"
+const RESUMEN_HISTORICO_KEY = "resumen:historico"
+
 // Función auxiliar para obtener la fecha actual en formato YYYY-MM-DD (Argentina)
 export function getTodayDateString(): string {
   const now = new Date()
@@ -146,7 +181,7 @@ function safeJsonParse(data: any, fallback: any = null): any {
 }
 
 // Función helper para validar estructura de datos
-function validateEstadoSistema(data: any): EstadoSistema | null {
+function validateEstadoSistema(data: any): EstadoSistemaOld | null {
   if (!data || typeof data !== "object") {
     return null
   }
@@ -172,7 +207,7 @@ function validateEstadoSistema(data: any): EstadoSistema | null {
     return null
   }
 
-  return data as EstadoSistema
+  return data as EstadoSistemaOld
 }
 
 // Función helper para validar tickets
@@ -231,7 +266,7 @@ async function retryOperation<T>(
 }
 
 // leerEstadoSistema ahora devuelve el estado (metadata) Y los tickets
-export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: TicketInfo[] }> {
+export async function leerEstadoSistema(): Promise<EstadoSistemaOld & { tickets: TicketInfo[] }> {
   return retryOperation(
     async () => {
       console.log("📖 Leyendo estado y tickets desde TURNOS_ZOCO (Upstash Redis)...")
@@ -255,7 +290,7 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
       }
 
       const [estadoRaw, ticketsRaw, contadorActual, estadoExists, ticketsExists] = results
-      let estado: EstadoSistema
+      let estado: EstadoSistemaOld
 
       // Validar y parsear tickets de forma segura
       const ticketsParsed = safeJsonParse(ticketsRaw, [])
@@ -340,7 +375,7 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
 }
 
 // escribirEstadoSistema ahora solo escribe la metadata del estado
-export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void> {
+export async function escribirEstadoSistema(estado: EstadoSistemaOld): Promise<void> {
   try {
     console.log("💾 Escribiendo estado (metadata) a TURNOS_ZOCO (Upstash Redis) con persistencia mejorada...")
     const estadoKey = STATE_KEY_PREFIX + estado.fechaInicio
@@ -375,7 +410,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
       const results = await redis
         .multi()
         .incr(counterKey) // Incrementa el contador diario de tickets (atómico)
-        .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado actual
+        .get<EstadoSistemaOld>(estadoKey) // Obtiene la metadata del estado actual
         .exec()
 
       if (!Array.isArray(results) || results.length !== 2) {
@@ -389,7 +424,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
 
       // Validar y parsear estado de forma segura
       const estadoParsed = safeJsonParse(estadoRaw, null)
-      let estadoActual: EstadoSistema
+      let estadoActual: EstadoSistemaOld
 
       const estadoValidado = validateEstadoSistema(estadoParsed)
       if (estadoValidado) {
@@ -446,7 +481,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
 // --- Backup & Admin Functions ---
 
 // crearBackupDiario ahora espera el estado completo (metadata + tickets)
-export async function crearBackupDiario(estado: EstadoSistema & { tickets: TicketInfo[] }): Promise<void> {
+export async function crearBackupDiarioOld(estado: EstadoSistemaOld & { tickets: TicketInfo[] }): Promise<void> {
   try {
     console.log("📦 Creando backup diario mejorado en TURNOS_ZOCO (Upstash Redis)...")
 
@@ -544,8 +579,27 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
   }
 }
 
+export async function crearBackupDiario(estado: EstadoSistema): Promise<void> {
+  try {
+    const fecha = new Date().toISOString().split("T")[0]
+    const backup: BackupDiario = {
+      fecha,
+      ticketFinal: estado.ticketActual,
+      totalTickets: estado.totalTickets,
+      fechaInicio: estado.fechaInicio,
+      fechaFin: new Date().toISOString(),
+    }
+
+    await redis.set(`${BACKUP_PREFIX}${fecha}`, backup)
+    console.log(`Backup creado para ${fecha}:`, backup)
+  } catch (error) {
+    console.error("Error al crear backup diario:", error)
+    throw error
+  }
+}
+
 // Nueva función para calcular métricas específicas para el backup
-function calcularMetricasParaBackup(estado: EstadoSistema & { tickets: TicketInfo[] }) {
+function calcularMetricasParaBackup(estado: EstadoSistemaOld & { tickets: TicketInfo[] }) {
   if (!estado.tickets || estado.tickets.length === 0) {
     return {
       tiempoEsperaReal: 0,
@@ -974,6 +1028,44 @@ export async function obtenerBackups(): Promise<any[]> {
   }
 }
 
+export async function obtenerBackupsPorFecha(fechaInicio: string, fechaFin: string): Promise<BackupDiario[]> {
+  try {
+    const keys = await redis.keys(`${BACKUP_PREFIX}*`)
+    const backups: BackupDiario[] = []
+
+    for (const key of keys) {
+      const backup = (await redis.get(key)) as BackupDiario
+      if (backup && backup.fecha >= fechaInicio && backup.fecha <= fechaFin) {
+        backups.push(backup)
+      }
+    }
+
+    return backups.sort((a, b) => a.fecha.localeCompare(b.fecha))
+  } catch (error) {
+    console.error("Error al obtener backups por fecha:", error)
+    throw error
+  }
+}
+
+export async function obtenerTodosLosBackups(): Promise<BackupDiario[]> {
+  try {
+    const keys = await redis.keys(`${BACKUP_PREFIX}*`)
+    const backups: BackupDiario[] = []
+
+    for (const key of keys) {
+      const backup = (await redis.get(key)) as BackupDiario
+      if (backup) {
+        backups.push(backup)
+      }
+    }
+
+    return backups.sort((a, b) => a.fecha.localeCompare(b.fecha))
+  } catch (error) {
+    console.error("Error al obtener todos los backups:", error)
+    throw error
+  }
+}
+
 export async function obtenerBackup(fecha: string): Promise<any | null> {
   try {
     console.log(`📋 Obteniendo backup específico para fecha: ${fecha}`)
@@ -998,7 +1090,7 @@ export async function obtenerBackup(fecha: string): Promise<any | null> {
 }
 
 // NUEVA FUNCIÓN: Obtener resumen consolidado de días anteriores
-export async function obtenerResumenDiasAnteriores(): Promise<{
+export async function obtenerResumenDiasAnterioresOld(): Promise<{
   resumenGeneral: any
   datosPorDia: any[]
   tendencias: any
@@ -1254,8 +1346,50 @@ export async function obtenerResumenDiasAnteriores(): Promise<{
   }
 }
 
+export async function obtenerResumenDiasAnteriores(): Promise<ResumenHistorico> {
+  try {
+    const backups = await obtenerTodosLosBackups()
+
+    if (backups.length === 0) {
+      return {
+        totalDias: 0,
+        totalTicketsHistorico: 0,
+        promedioTicketsPorDia: 0,
+        mejorDia: { fecha: "", tickets: 0 },
+        peorDia: { fecha: "", tickets: 0 },
+        ultimaActualizacion: new Date().toISOString(),
+      }
+    }
+
+    const totalTicketsHistorico = backups.reduce((sum, backup) => sum + backup.totalTickets, 0)
+    const promedioTicketsPorDia = Math.round(totalTicketsHistorico / backups.length)
+
+    const mejorDia = backups.reduce((mejor, actual) => (actual.totalTickets > mejor.totalTickets ? actual : mejor))
+
+    const peorDia = backups.reduce((peor, actual) => (actual.totalTickets < peor.totalTickets ? actual : peor))
+
+    return {
+      totalDias: backups.length,
+      totalTicketsHistorico,
+      promedioTicketsPorDia,
+      mejorDia: {
+        fecha: mejorDia.fecha,
+        tickets: mejorDia.totalTickets,
+      },
+      peorDia: {
+        fecha: peorDia.fecha,
+        tickets: peorDia.totalTickets,
+      },
+      ultimaActualizacion: new Date().toISOString(),
+    }
+  } catch (error) {
+    console.error("Error al obtener resumen de días anteriores:", error)
+    throw error
+  }
+}
+
 // NUEVA FUNCIÓN: Guardar resumen consolidado de días anteriores
-export async function guardarResumenHistorico(resumen: any): Promise<void> {
+export async function guardarResumenHistoricoOld(resumen: any): Promise<void> {
   try {
     console.log("💾 Guardando resumen histórico en TURNOS_ZOCO (Upstash Redis)...")
 
@@ -1268,6 +1402,26 @@ export async function guardarResumenHistorico(resumen: any): Promise<void> {
   } catch (error) {
     console.error("❌ Error al guardar resumen histórico en TURNOS_ZOCO (Upstash Redis):", error)
     // No lanzar error para no bloquear otras operaciones
+  }
+}
+
+export async function guardarResumenHistorico(resumen: ResumenHistorico): Promise<void> {
+  try {
+    await redis.set(RESUMEN_HISTORICO_KEY, resumen)
+    console.log("Resumen histórico guardado:", resumen)
+  } catch (error) {
+    console.error("Error al guardar resumen histórico:", error)
+    throw error
+  }
+}
+
+export async function obtenerResumenHistoricoGuardado(): Promise<ResumenHistorico | null> {
+  try {
+    const resumen = await redis.get(RESUMEN_HISTORICO_KEY)
+    return resumen as ResumenHistorico | null
+  } catch (error) {
+    console.error("Error al obtener resumen histórico guardado:", error)
+    throw error
   }
 }
 
@@ -1335,7 +1489,7 @@ export async function limpiarDatosAntiguos(): Promise<void> {
   }
 }
 
-export async function obtenerEstadisticas(estado: EstadoSistema & { tickets: TicketInfo[] }) {
+export async function obtenerEstadisticas(estado: EstadoSistemaOld & { tickets: TicketInfo[] }) {
   try {
     // Esta función procesa datos ya obtenidos de Redis, por lo que su eficiencia
     // depende de la eficiencia de 'leerEstadoSistema'.
@@ -1497,12 +1651,41 @@ export async function verificarConexionDB(): Promise<{ connected: boolean; detai
   }
 }
 
+export async function obtenerEstadoSistema(): Promise<EstadoSistema> {
+  try {
+    const estado = await redis.get(ESTADO_KEY)
+    if (!estado) {
+      const estadoInicial: EstadoSistema = {
+        ticketActual: 1,
+        totalTickets: 0,
+        fechaInicio: new Date().toISOString(),
+        activo: true,
+      }
+      await redis.set(ESTADO_KEY, estadoInicial)
+      return estadoInicial
+    }
+    return estado as EstadoSistema
+  } catch (error) {
+    console.error("Error al obtener estado del sistema:", error)
+    throw error
+  }
+}
+
+export async function actualizarEstadoSistema(estado: EstadoSistema): Promise<void> {
+  try {
+    await redis.set(ESTADO_KEY, estado)
+  } catch (error) {
+    console.error("Error al actualizar estado del sistema:", error)
+    throw error
+  }
+}
+
 export async function cerrarConexiones(): Promise<void> {
   console.log("🔌 No es necesario cerrar conexiones para TURNOS_ZOCO (Upstash Redis - HTTP)")
 }
 
 // Nueva función para recuperar datos en caso de pérdida - MEJORADA CON VALIDACIÓN
-export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSistema & { tickets: TicketInfo[] }> {
+export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSistemaOld & { tickets: TicketInfo[] }> {
   try {
     console.log("🔧 Intentando recuperar datos perdidos para:", fecha)
 
@@ -1577,7 +1760,7 @@ export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSiste
 
         if (ticketsRecuperados.length > 0) {
           const ultimoNumero = Math.max(...ticketsRecuperados.map((t) => t.numero))
-          const estadoReconstruido: EstadoSistema = {
+          const estadoReconstruido: EstadoSistemaOld = {
             numeroActual: ultimoNumero + 1,
             ultimoNumero: ultimoNumero,
             totalAtendidos: ticketsRecuperados.length,
@@ -1609,7 +1792,7 @@ export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSiste
     // Si llegamos aquí, no se pudieron recuperar los datos
     console.log("⚠️ No se pudieron recuperar datos, creando estado inicial limpio")
 
-    const estadoInicial: EstadoSistema = {
+    const estadoInicial: EstadoSistemaOld = {
       numeroActual: 1,
       ultimoNumero: 0,
       totalAtendidos: 0,
@@ -1628,7 +1811,7 @@ export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSiste
     console.error("❌ Error crítico al recuperar datos perdidos:", error)
 
     // Como último recurso, crear un estado completamente nuevo
-    const estadoEmergencia: EstadoSistema = {
+    const estadoEmergencia: EstadoSistemaOld = {
       numeroActual: 1,
       ultimoNumero: 0,
       totalAtendidos: 0,
