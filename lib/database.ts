@@ -241,10 +241,6 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
       const counterKey = COUNTER_KEY_PREFIX + fechaHoy
 
       // Pipeline optimizado para reducir latencia
-      // Verificar backup automático en paralelo (no bloquear lectura)
-      verificarYCrearBackupAutomatico().catch((error) => {
-        console.error("⚠️ Error en verificación de backup automático (no crítico):", error)
-      })
       const pipeline = redis.pipeline()
       pipeline.get(estadoKey)
       pipeline.lrange(ticketsListKey, 0, -1)
@@ -1258,6 +1254,23 @@ export async function obtenerResumenDiasAnteriores(): Promise<{
   }
 }
 
+// NUEVA FUNCIÓN: Guardar resumen consolidado de días anteriores
+export async function guardarResumenHistorico(resumen: any): Promise<void> {
+  try {
+    console.log("💾 Guardando resumen histórico en TURNOS_ZOCO (Upstash Redis)...")
+
+    const resumenKey = "TURNOS_ZOCO:resumen_historico" // Clave para el resumen histórico
+
+    // OPTIMIZACIÓN: SET con expiración para el resumen.
+    await redis.set(resumenKey, resumen, { ex: 60 * 24 * 60 * 60 }) // 60 días de expiración para el resumen
+
+    console.log("✅ Resumen histórico guardado exitosamente en TURNOS_ZOCO (Upstash Redis)")
+  } catch (error) {
+    console.error("❌ Error al guardar resumen histórico en TURNOS_ZOCO (Upstash Redis):", error)
+    // No lanzar error para no bloquear otras operaciones
+  }
+}
+
 // Función para limpiar datos antiguos (estados diarios, listas de tickets y backups)
 export async function limpiarDatosAntiguos(): Promise<void> {
   try {
@@ -1480,133 +1493,6 @@ export async function verificarConexionDB(): Promise<{ connected: boolean; detai
         config: redisConfig?.name || "No configurado",
         timestamp: new Date().toISOString(),
       },
-    }
-  }
-}
-
-// FUNCIÓN MEJORADA: Verificar si necesita crear backup automático
-async function verificarYCrearBackupAutomatico(): Promise<void> {
-  try {
-    const fechaHoy = getTodayDateString()
-    const fechaAyer = getYesterdayDateString()
-
-    console.log(`🔍 Verificando backup automático - Hoy: ${fechaHoy}, Ayer: ${fechaAyer}`)
-
-    // Verificar si ya existe backup para ayer
-    const backupAyer = BACKUP_KEY_PREFIX + fechaAyer
-    const existeBackupAyer = await redis.exists(backupAyer)
-
-    console.log(`📦 Backup de ayer (${fechaAyer}): ${existeBackupAyer ? "✅ Existe" : "❌ No existe"}`)
-
-    if (!existeBackupAyer) {
-      console.log(`🔧 Intentando crear backup retroactivo para ${fechaAyer}...`)
-
-      // Intentar recuperar datos de ayer
-      const estadoAyerKey = STATE_KEY_PREFIX + fechaAyer
-      const ticketsAyerKey = TICKETS_LIST_KEY_PREFIX + fechaAyer
-
-      console.log(`🔍 Buscando datos de ayer en claves: ${estadoAyerKey}, ${ticketsAyerKey}`)
-
-      const [estadoAyer, ticketsAyer] = await redis.pipeline().get(estadoAyerKey).lrange(ticketsAyerKey, 0, -1).exec()
-
-      console.log(
-        `📊 Datos encontrados - Estado: ${!!estadoAyer}, Tickets: ${Array.isArray(ticketsAyer) ? ticketsAyer.length : 0}`,
-      )
-
-      const estadoParsed = safeJsonParse(estadoAyer, null)
-      const estadoValidado = validateEstadoSistema(estadoParsed)
-
-      const ticketsParsed = safeJsonParse(ticketsAyer, [])
-      const ticketsValidados = validateTickets(ticketsParsed)
-
-      if (estadoValidado && ticketsValidados.length > 0) {
-        console.log(`✅ Creando backup retroactivo para ${fechaAyer} con ${ticketsValidados.length} tickets`)
-        await crearBackupDiario({ ...estadoValidado, tickets: ticketsValidados })
-        console.log(`🎉 Backup retroactivo creado exitosamente para ${fechaAyer}`)
-      } else {
-        console.log(`⚠️ No hay datos suficientes para crear backup de ${fechaAyer}`)
-        console.log(`   - Estado válido: ${!!estadoValidado}`)
-        console.log(`   - Tickets válidos: ${ticketsValidados.length}`)
-      }
-    }
-
-    // Verificar si necesitamos crear backup para hoy (si ya terminó el día)
-    const ahora = new Date()
-    const horaActual = ahora.getHours()
-
-    // Si es después de las 23:00, considerar crear backup del día actual
-    if (horaActual >= 23) {
-      const backupHoy = BACKUP_KEY_PREFIX + fechaHoy
-      const existeBackupHoy = await redis.exists(backupHoy)
-
-      if (!existeBackupHoy) {
-        console.log(`🌙 Es tarde (${horaActual}:00), verificando si crear backup de hoy...`)
-
-        const estadoHoyKey = STATE_KEY_PREFIX + fechaHoy
-        const ticketsHoyKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
-
-        const [estadoHoy, ticketsHoy] = await redis.pipeline().get(estadoHoyKey).lrange(ticketsHoyKey, 0, -1).exec()
-
-        const estadoHoyParsed = safeJsonParse(estadoHoy, null)
-        const estadoHoyValidado = validateEstadoSistema(estadoHoyParsed)
-
-        const ticketsHoyParsed = safeJsonParse(ticketsHoy, [])
-        const ticketsHoyValidados = validateTickets(ticketsHoyParsed)
-
-        if (estadoHoyValidado && ticketsHoyValidados.length > 0) {
-          console.log(`🌙 Creando backup de fin de día para ${fechaHoy} con ${ticketsHoyValidados.length} tickets`)
-          await crearBackupDiario({ ...estadoHoyValidado, tickets: ticketsHoyValidados })
-          console.log(`🎉 Backup de fin de día creado para ${fechaHoy}`)
-        }
-      }
-    }
-
-    console.log(`✅ Verificación de backup automático completada`)
-  } catch (error) {
-    console.error("❌ Error en verificación de backup automático:", error)
-  }
-}
-
-// Función auxiliar para obtener la fecha de ayer
-function getYesterdayDateString(): string {
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  const options: Intl.DateTimeFormatOptions = {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "America/Argentina/Buenos_Aires",
-  }
-  const formatter = new Intl.DateTimeFormat("en-CA", options)
-  return formatter.format(yesterday)
-}
-
-// NUEVA FUNCIÓN: Forzar creación de backup para el día actual
-export async function forzarBackupDiario(): Promise<{ success: boolean; message: string }> {
-  try {
-    console.log("🔧 Forzando creación de backup diario...")
-
-    const fechaHoy = getTodayDateString()
-    const estado = await leerEstadoSistema()
-
-    if (estado.totalAtendidos === 0) {
-      return {
-        success: false,
-        message: "No hay tickets para respaldar hoy",
-      }
-    }
-
-    await crearBackupDiario(estado)
-
-    return {
-      success: true,
-      message: `Backup creado exitosamente para ${fechaHoy} con ${estado.totalAtendidos} tickets`,
-    }
-  } catch (error) {
-    console.error("❌ Error al forzar backup diario:", error)
-    return {
-      success: false,
-      message: `Error al crear backup: ${error instanceof Error ? error.message : "Error desconocido"}`,
     }
   }
 }

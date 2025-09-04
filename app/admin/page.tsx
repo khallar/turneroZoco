@@ -176,70 +176,6 @@ export default function PaginaAdmin() {
     URL.revokeObjectURL(url)
   }
 
-  const crearBackupManual = async () => {
-    try {
-      const response = await fetch("/api/backup-automatico", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          accion: "forzar_backup_hoy",
-        }),
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        alert(`✅ ${result.message}`)
-        await cargarBackups() // Recargar la lista de backups
-      } else {
-        alert(`❌ ${result.message}`)
-      }
-    } catch (error) {
-      console.error("Error al crear backup manual:", error)
-      alert("❌ Error al crear backup manual")
-    }
-  }
-
-  const verificarBackupAyer = async () => {
-    try {
-      const response = await fetch("/api/backup-automatico?verificar=ayer")
-      const result = await response.json()
-
-      if (result.success) {
-        alert(
-          `✅ Backup de ayer existe: ${result.fecha}\n📊 Datos: ${result.datos?.ticketsEmitidos || 0} tickets emitidos`,
-        )
-      } else {
-        const confirmar = confirm(`⚠️ No existe backup para ${result.fecha}\n¿Desea intentar crearlo ahora?`)
-        if (confirmar) {
-          // Intentar crear backup retroactivo
-          const createResponse = await fetch("/api/backup-automatico", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              accion: "verificar_y_crear",
-              fecha: result.fecha,
-            }),
-          })
-
-          const createResult = await createResponse.json()
-          alert(createResult.success ? `✅ ${createResult.message}` : `❌ ${createResult.message}`)
-
-          if (createResult.success) {
-            await cargarBackups()
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Error al verificar backup de ayer:", error)
-      alert("❌ Error al verificar backup de ayer")
-    }
-  }
-
   // Calcular estadísticas administrativas
   const calcularEstadisticasAdmin = () => {
     if (!estado.tickets || estado.tickets.length === 0) {
@@ -1174,20 +1110,6 @@ export default function PaginaAdmin() {
               Resumen Histórico
             </a>
           </div>
-          <div className="flex justify-center gap-4 mb-4">
-            <Button onClick={crearBackupManual} className="bg-orange-600 hover:bg-orange-700 text-white">
-              <Archive className="mr-2 h-4 w-4" />
-              Crear Backup Manual
-            </Button>
-            <Button
-              onClick={verificarBackupAyer}
-              variant="outline"
-              className="border-orange-300 text-orange-700 hover:bg-orange-50 bg-transparent"
-            >
-              <Calendar className="mr-2 h-4 w-4" />
-              Verificar Backup Ayer
-            </Button>
-          </div>
         </div>
 
         {/* Estadísticas de Cache - MINIMIZADO */}
@@ -1261,87 +1183,6 @@ export default function PaginaAdmin() {
             </CardContent>
           </Card>
         </div>
-
-        {/* Monitoreo de Backups Automáticos */}
-        <Card className="mb-8 bg-gradient-to-r from-orange-50 to-red-50 border-orange-200">
-          <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2 text-orange-800">
-              <Archive className="h-6 w-6" />🔄 Monitoreo de Backups Automáticos
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <div className="bg-white p-4 rounded-lg border-l-4 border-green-500">
-                <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  <span className="font-semibold text-green-800">Backup Hoy</span>
-                </div>
-                <div className="text-2xl font-bold text-green-600 mb-1">
-                  {estado?.totalAtendidos > 0 ? "✅ Listo" : "⏳ Pendiente"}
-                </div>
-                <p className="text-sm text-green-700">
-                  {estado?.totalAtendidos > 0 ? `${estado.totalAtendidos} tickets para respaldar` : "Sin actividad aún"}
-                </p>
-              </div>
-
-              <div className="bg-white p-4 rounded-lg border-l-4 border-blue-500">
-                <div className="flex items-center gap-2 mb-2">
-                  <Calendar className="h-5 w-5 text-blue-600" />
-                  <span className="font-semibold text-blue-800">Historial</span>
-                </div>
-                <div className="text-2xl font-bold text-blue-600 mb-1">{backups.length}</div>
-                <p className="text-sm text-blue-700">Días respaldados</p>
-              </div>
-
-              <div className="bg-white p-4 rounded-lg border-l-4 border-purple-500">
-                <div className="flex items-center gap-2 mb-2">
-                  <Activity className="h-5 w-5 text-purple-600" />
-                  <span className="font-semibold text-purple-800">Estado Sistema</span>
-                </div>
-                <div className="text-2xl font-bold text-purple-600 mb-1">
-                  {new Date().getHours() >= 23 ? "🌙 Fin de día" : "☀️ Operativo"}
-                </div>
-                <p className="text-sm text-purple-700">
-                  {new Date().getHours() >= 23 ? "Backup automático activado" : "Monitoreando actividad"}
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-r from-yellow-50 to-orange-50 p-4 rounded-lg border border-yellow-200">
-              <h4 className="font-semibold text-yellow-800 mb-3 flex items-center gap-2">
-                <Zap className="h-5 w-5" />⚡ Acciones Rápidas de Backup
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Button
-                  onClick={crearBackupManual}
-                  className="bg-orange-600 hover:bg-orange-700 text-white w-full"
-                  size="sm"
-                >
-                  <Archive className="mr-2 h-4 w-4" />
-                  Backup Manual Ahora
-                </Button>
-                <Button
-                  onClick={verificarBackupAyer}
-                  variant="outline"
-                  className="border-orange-300 text-orange-700 hover:bg-orange-50 w-full bg-transparent"
-                  size="sm"
-                >
-                  <Calendar className="mr-2 h-4 w-4" />
-                  Verificar Ayer
-                </Button>
-                <Button
-                  onClick={cargarBackups}
-                  variant="outline"
-                  className="border-blue-300 text-blue-700 hover:bg-blue-50 w-full bg-transparent"
-                  size="sm"
-                >
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Actualizar Lista
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* MÉTRICAS AVANZADAS MEJORADAS */}
         <Card className="mb-8 bg-gradient-to-r from-cyan-50 to-blue-50 border-cyan-200">

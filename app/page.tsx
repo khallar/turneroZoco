@@ -58,8 +58,8 @@ export default function SistemaAtencion() {
     verificarIntegridad,
     cargarEstado,
     isClient,
-    cacheStats,
-  } = useSistemaEstado("principal")
+    cacheStats, // Nueva utilidad de cache
+  } = useSistemaEstado("principal") // Especificar que es la página principal
 
   const [horaActual, setHoraActual] = useState<Date | null>(null)
   const [tiempoHastaReinicio, setTiempoHastaReinicio] = useState("")
@@ -160,6 +160,7 @@ export default function SistemaAtencion() {
   }, [estado.tickets, verificarIntegridad, isClient])
 
   const iniciarGeneracionTicket = () => {
+    // Solo abrir el modal, no asignar número todavía
     setMostrarModalNombre(true)
   }
 
@@ -171,48 +172,24 @@ export default function SistemaAtencion() {
       console.log("Nombre:", nombre)
 
       // Generar ticket de forma atómica en el servidor
-      const response = await fetch("/api/sistema", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "GENERAR_TICKET",
-          nombre: nombre.trim(),
-        }),
-      })
+      const ticketCreado = await generarTicket(nombre)
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Error de conexión" }))
-        throw new Error(errorData.error || `Error HTTP: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (data.ticketGenerado) {
-        console.log("Ticket creado exitosamente:", data.ticketGenerado)
+      if (ticketCreado) {
+        console.log("Ticket creado exitosamente:", ticketCreado)
 
         const fraseAleatoria = FRASES_ALEATORIAS[Math.floor(Math.random() * FRASES_ALEATORIAS.length)]
 
         // Cerrar modal y mostrar ticket inmediatamente
         setMostrarModalNombre(false)
         setTicketGenerado({
-          numero: data.ticketGenerado.numero,
-          nombre: data.ticketGenerado.nombre,
+          numero: ticketCreado.numero,
+          nombre: ticketCreado.nombre,
           frase: fraseAleatoria,
-          fecha: data.ticketGenerado.fecha,
+          fecha: ticketCreado.fecha,
         })
-
-        // Actualizar el estado local con los nuevos datos
-        if (data.numeroActual && data.totalAtendidos !== undefined) {
-          // Forzar recarga del estado después de generar ticket
-          setTimeout(() => {
-            cargarEstado()
-          }, 1000)
-        }
       } else {
-        console.error("No se recibió ticket en la respuesta:", data)
-        throw new Error("No se pudo crear el ticket - respuesta inválida del servidor")
+        console.error("No se pudo crear el ticket")
+        alert("Error: No se pudo generar el ticket. Por favor, intente nuevamente.")
       }
     } catch (error) {
       console.error("Error al generar ticket:", error)
@@ -224,10 +201,6 @@ export default function SistemaAtencion() {
         alert("El sistema está ocupado en este momento. Por favor, espere unos segundos e intente nuevamente.")
       } else if (errorMessage.includes("timeout") || errorMessage.includes("Timeout")) {
         alert("La conexión está lenta. Por favor, verifique su conexión a internet e intente nuevamente.")
-      } else if (errorMessage.includes("HTTP: 500")) {
-        alert("Error interno del servidor. Por favor, intente nuevamente en unos momentos.")
-      } else if (errorMessage.includes("HTTP: 400")) {
-        alert("Datos inválidos. Por favor, verifique el nombre ingresado.")
       } else {
         alert(`Error al generar el ticket: ${errorMessage}\n\nPor favor, intente nuevamente.`)
       }
@@ -282,14 +255,6 @@ export default function SistemaAtencion() {
               {generandoTicket ? "GENERANDO..." : "SACAR NÚMERO"}
             </Button>
           </div>
-
-          {/* Debug info para tickets */}
-          {estado?.tickets && (
-            <div className="text-xs text-gray-500 mb-4 bg-gray-100 p-2 rounded">
-              📊 Debug: {estado.tickets.length} tickets cargados | Total: {estado.totalAtendidos} | Llamados:{" "}
-              {estado.numerosLlamados}
-            </div>
-          )}
         </div>
 
         {/* Panel de debug optimizado */}
