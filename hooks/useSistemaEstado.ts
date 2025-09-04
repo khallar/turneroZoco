@@ -556,3 +556,5 @@ export function useSistemaEstado(pagina: keyof typeof INTERVALOS_ACTUALIZACION =
     invalidateCache: () => cacheManager.clear(),
   }
 }
+
+// Also export as named export to ensure compatibility
