@@ -1,17 +1,11 @@
 import { Redis } from "@upstash/redis"
 
-// Configuración de Redis con fallback a variables de entorno alternativas
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || "",
-  token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || "",
-})
-
 // Interfaces
 interface TicketInfo {
   numero: number
   nombre: string
   fecha: string
-  timestamp?: number
+  timestamp: number
 }
 
 interface EstadoSistema {
@@ -20,85 +14,86 @@ interface EstadoSistema {
   totalAtendidos: number
   numerosLlamados: number
   fechaInicio: string
-  ultimoReinicio?: string
+  ultimoReinicio: string
   tickets: TicketInfo[]
   lastSync?: number
 }
 
-interface BackupData {
-  fecha: string
-  estado: EstadoSistema
-  timestamp: number
-  version: string
+// Función para obtener las variables de entorno correctas
+function getRedisConfig() {
+  const configs = [
+    {
+      url: process.env.KV_REST_API_URL,
+      token: process.env.KV_REST_API_TOKEN,
+      name: "KV_REST_API (Principal)",
+    },
+    {
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      name: "UPSTASH_REDIS_REST",
+    },
+  ]
+
+  console.log("🔍 Detectando configuración de Redis...")
+
+  for (const config of configs) {
+    if (config.url && config.token) {
+      console.log(`✅ Usando configuración Redis: ${config.name}`)
+      return { url: config.url, token: config.token, name: config.name }
+    }
+  }
+
+  throw new Error("No se encontraron variables de entorno válidas para Redis")
+}
+
+// Inicializar cliente Redis
+let redis: Redis
+let redisConfig: { url: string; token: string; name: string }
+
+try {
+  redisConfig = getRedisConfig()
+  redis = new Redis({
+    url: redisConfig.url,
+    token: redisConfig.token,
+    retry: {
+      retries: 3,
+      backoff: (retryCount) => Math.exp(retryCount) * 50,
+    },
+  })
+  console.log(`🔗 Cliente Redis inicializado: ${redisConfig.name}`)
+} catch (error) {
+  console.error("❌ Error al inicializar Redis:", error)
+  throw error
 }
 
 // Constantes
 const REDIS_KEYS = {
-  ESTADO: "turnos:estado",
-  BACKUP_PREFIX: "turnos:backup:",
-  RESUMEN_HISTORICO: "turnos:resumen_historico",
-  MUTEX: "turnos:mutex",
+  ESTADO: "turnos_zoco:estado",
+  BACKUP_PREFIX: "turnos_zoco:backup:",
+  MUTEX_PREFIX: "turnos_zoco:mutex:",
 } as const
 
-const MUTEX_TTL = 30000 // 30 segundos
-const MAX_RETRIES = 3
-const RETRY_DELAY = 1000 // 1 segundo
-
-// Función para obtener un mutex (lock) para operaciones críticas
-async function acquireMutex(key: string, ttl: number = MUTEX_TTL): Promise<boolean> {
-  try {
-    const result = await redis.set(key, "locked", { px: ttl, nx: true })
-    return result === "OK"
-  } catch (error) {
-    console.error("❌ Error al adquirir mutex:", error)
-    return false
+// Función auxiliar para obtener la fecha actual
+function getTodayDateString(): string {
+  const now = new Date()
+  const options: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "America/Argentina/Buenos_Aires",
   }
+  return new Intl.DateTimeFormat("en-CA", options).format(now)
 }
 
-// Función para liberar un mutex
-async function releaseMutex(key: string): Promise<void> {
-  try {
-    await redis.del(key)
-  } catch (error) {
-    console.error("❌ Error al liberar mutex:", error)
-  }
-}
-
-// Función para reintentos con backoff exponencial
-async function retryOperation<T>(
-  operation: () => Promise<T>,
-  maxRetries: number = MAX_RETRIES,
-  baseDelay: number = RETRY_DELAY,
-): Promise<T> {
-  let lastError: Error
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await operation()
-    } catch (error) {
-      lastError = error as Error
-      console.error(`❌ Intento ${attempt}/${maxRetries} falló:`, error)
-
-      if (attempt < maxRetries) {
-        const delay = baseDelay * Math.pow(2, attempt - 1) // Backoff exponencial
-        console.log(`⏳ Esperando ${delay}ms antes del siguiente intento...`)
-        await new Promise((resolve) => setTimeout(resolve, delay))
-      }
-    }
-  }
-
-  throw lastError!
-}
-
-// Función para validar y sanitizar el estado
+// Función para validar el estado
 function validarEstado(estado: any): EstadoSistema {
-  const fechaHoy = new Date().toDateString()
+  const fechaHoy = getTodayDateString()
 
   return {
-    numeroActual: Math.max(1, Number.parseInt(estado?.numeroActual) || 1),
-    ultimoNumero: Math.max(0, Number.parseInt(estado?.ultimoNumero) || 0),
-    totalAtendidos: Math.max(0, Number.parseInt(estado?.totalAtendidos) || 0),
-    numerosLlamados: Math.max(0, Number.parseInt(estado?.numerosLlamados) || 0),
+    numeroActual: Math.max(1, Number(estado?.numeroActual) || 1),
+    ultimoNumero: Math.max(0, Number(estado?.ultimoNumero) || 0),
+    totalAtendidos: Math.max(0, Number(estado?.totalAtendidos) || 0),
+    numerosLlamados: Math.max(0, Number(estado?.numerosLlamados) || 0),
     fechaInicio: estado?.fechaInicio || fechaHoy,
     ultimoReinicio: estado?.ultimoReinicio || new Date().toISOString(),
     tickets: Array.isArray(estado?.tickets) ? estado.tickets : [],
@@ -106,199 +101,9 @@ function validarEstado(estado: any): EstadoSistema {
   }
 }
 
-// Función principal para obtener el estado del sistema
-export async function obtenerEstadoSistema(): Promise<EstadoSistema> {
-  return retryOperation(async () => {
-    console.log("📥 Obteniendo estado del sistema desde Redis...")
-
-    try {
-      const estadoRaw = await redis.get(REDIS_KEYS.ESTADO)
-
-      if (!estadoRaw) {
-        console.log("📝 No hay estado previo, creando estado inicial...")
-        const estadoInicial = crearEstadoInicial()
-        await guardarEstadoSistema(estadoInicial)
-        return estadoInicial
-      }
-
-      const estado = validarEstado(estadoRaw)
-      console.log("✅ Estado obtenido correctamente")
-      return estado
-    } catch (error) {
-      console.error("❌ Error al obtener estado:", error)
-      throw error
-    }
-  })
-}
-
-// Función para guardar el estado del sistema
-export async function guardarEstadoSistema(estado: EstadoSistema): Promise<EstadoSistema> {
-  return retryOperation(async () => {
-    console.log("💾 Guardando estado del sistema...")
-
-    try {
-      const estadoValidado = validarEstado(estado)
-      estadoValidado.lastSync = Date.now()
-
-      await redis.set(REDIS_KEYS.ESTADO, JSON.stringify(estadoValidado))
-      console.log("✅ Estado guardado correctamente")
-      return estadoValidado
-    } catch (error) {
-      console.error("❌ Error al guardar estado:", error)
-      throw error
-    }
-  })
-}
-
-// Función atómica para generar un ticket
-export async function generarTicketAtomico(
-  nombre: string,
-): Promise<{ estado: EstadoSistema; ticketGenerado: TicketInfo }> {
-  const mutexKey = REDIS_KEYS.MUTEX + ":generar_ticket"
-
-  return retryOperation(async () => {
-    console.log(`🎫 Iniciando generación de ticket para: ${nombre}`)
-
-    // Paso 1: Adquirir mutex
-    const mutexAdquirido = await acquireMutex(mutexKey, MUTEX_TTL)
-    if (!mutexAdquirido) {
-      throw new Error("Sistema ocupado, intente nuevamente")
-    }
-
-    try {
-      // Paso 2: Obtener estado actual
-      console.log("📥 Obteniendo estado actual...")
-      const estadoActual = await obtenerEstadoSistema()
-
-      // Paso 3: Crear nuevo ticket
-      const nuevoNumero = estadoActual.ultimoNumero + 1
-      const nuevoTicket: TicketInfo = {
-        numero: nuevoNumero,
-        nombre: nombre.trim(),
-        fecha: new Date().toDateString(),
-        timestamp: Date.now(),
-      }
-
-      console.log(`🎫 Creando ticket #${nuevoNumero} para ${nombre}`)
-
-      // Paso 4: Actualizar estado
-      const nuevoEstado: EstadoSistema = {
-        ...estadoActual,
-        ultimoNumero: nuevoNumero,
-        tickets: [...estadoActual.tickets, nuevoTicket],
-        lastSync: Date.now(),
-      }
-
-      // Paso 5: Guardar usando transacción Redis
-      console.log("💾 Guardando estado actualizado...")
-      const multi = redis.multi()
-      multi.set(REDIS_KEYS.ESTADO, JSON.stringify(nuevoEstado))
-
-      const results = await multi.exec()
-
-      // Paso 6: Verificar que la transacción fue exitosa
-      if (!results || results.length === 0 || results[0] !== "OK") {
-        throw new Error("Error en la transacción de Redis")
-      }
-
-      console.log(`✅ Ticket #${nuevoNumero} generado exitosamente`)
-      return {
-        estado: nuevoEstado,
-        ticketGenerado: nuevoTicket,
-      }
-    } finally {
-      // Liberar mutex siempre
-      await releaseMutex(mutexKey)
-    }
-  })
-}
-
-// Función para llamar al siguiente número
-export async function llamarSiguienteNumero(): Promise<EstadoSistema> {
-  const mutexKey = REDIS_KEYS.MUTEX + ":llamar_siguiente"
-
-  return retryOperation(async () => {
-    console.log("📢 Llamando siguiente número...")
-
-    const mutexAdquirido = await acquireMutex(mutexKey, MUTEX_TTL)
-    if (!mutexAdquirido) {
-      throw new Error("Sistema ocupado, intente nuevamente")
-    }
-
-    try {
-      const estadoActual = await obtenerEstadoSistema()
-
-      const nuevoEstado: EstadoSistema = {
-        ...estadoActual,
-        numeroActual: estadoActual.numeroActual + 1,
-        numerosLlamados: estadoActual.numerosLlamados + 1,
-        lastSync: Date.now(),
-      }
-
-      return await guardarEstadoSistema(nuevoEstado)
-    } finally {
-      await releaseMutex(mutexKey)
-    }
-  })
-}
-
-// Función para marcar como atendido
-export async function marcarComoAtendido(): Promise<EstadoSistema> {
-  const mutexKey = REDIS_KEYS.MUTEX + ":marcar_atendido"
-
-  return retryOperation(async () => {
-    console.log("✅ Marcando como atendido...")
-
-    const mutexAdquirido = await acquireMutex(mutexKey, MUTEX_TTL)
-    if (!mutexAdquirido) {
-      throw new Error("Sistema ocupado, intente nuevamente")
-    }
-
-    try {
-      const estadoActual = await obtenerEstadoSistema()
-
-      const nuevoEstado: EstadoSistema = {
-        ...estadoActual,
-        totalAtendidos: estadoActual.totalAtendidos + 1,
-        lastSync: Date.now(),
-      }
-
-      return await guardarEstadoSistema(nuevoEstado)
-    } finally {
-      await releaseMutex(mutexKey)
-    }
-  })
-}
-
-// Función para reiniciar el sistema
-export async function reiniciarSistema(): Promise<EstadoSistema> {
-  const mutexKey = REDIS_KEYS.MUTEX + ":reiniciar"
-
-  return retryOperation(async () => {
-    console.log("🔄 Reiniciando sistema...")
-
-    const mutexAdquirido = await acquireMutex(mutexKey, MUTEX_TTL)
-    if (!mutexAdquirido) {
-      throw new Error("Sistema ocupado, intente nuevamente")
-    }
-
-    try {
-      // Crear backup antes de reiniciar
-      const estadoActual = await obtenerEstadoSistema()
-      await crearBackupDiario(estadoActual)
-
-      // Crear nuevo estado inicial
-      const estadoInicial = crearEstadoInicial()
-      return await guardarEstadoSistema(estadoInicial)
-    } finally {
-      await releaseMutex(mutexKey)
-    }
-  })
-}
-
 // Función para crear estado inicial
 function crearEstadoInicial(): EstadoSistema {
-  const fechaHoy = new Date().toDateString()
+  const fechaHoy = getTodayDateString()
   return {
     numeroActual: 1,
     ultimoNumero: 0,
@@ -311,221 +116,274 @@ function crearEstadoInicial(): EstadoSistema {
   }
 }
 
+// Función para reintentos con backoff exponencial
+async function retryOperation<T>(operation: () => Promise<T>, maxRetries = 3, baseDelay = 1000): Promise<T> {
+  let lastError: Error
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation()
+    } catch (error) {
+      lastError = error as Error
+      console.error(`❌ Intento ${attempt}/${maxRetries} falló:`, error)
+
+      if (attempt < maxRetries) {
+        const delay = baseDelay * Math.pow(2, attempt - 1)
+        console.log(`⏳ Esperando ${delay}ms antes del siguiente intento...`)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+    }
+  }
+
+  throw lastError!
+}
+
+// Función principal para obtener el estado del sistema
+export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: TicketInfo[] }> {
+  return retryOperation(async () => {
+    console.log("📖 Leyendo estado del sistema...")
+
+    try {
+      const estadoRaw = await redis.get(REDIS_KEYS.ESTADO)
+
+      if (!estadoRaw) {
+        console.log("📝 No hay estado previo, creando estado inicial...")
+        const estadoInicial = crearEstadoInicial()
+        await escribirEstadoSistema(estadoInicial)
+        return estadoInicial
+      }
+
+      const estado = validarEstado(estadoRaw)
+      console.log("✅ Estado obtenido correctamente")
+      return estado
+    } catch (error) {
+      console.error("❌ Error al leer estado:", error)
+      throw error
+    }
+  })
+}
+
+// Función para escribir el estado del sistema
+export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void> {
+  return retryOperation(async () => {
+    console.log("💾 Escribiendo estado del sistema...")
+
+    try {
+      const estadoValidado = validarEstado(estado)
+      estadoValidado.lastSync = Date.now()
+
+      await redis.set(REDIS_KEYS.ESTADO, estadoValidado)
+      console.log("✅ Estado guardado correctamente")
+    } catch (error) {
+      console.error("❌ Error al escribir estado:", error)
+      throw error
+    }
+  })
+}
+
+// Función atómica para generar un ticket
+export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> {
+  return retryOperation(async () => {
+    console.log(`🎫 Generando ticket para: ${nombre}`)
+
+    try {
+      // Obtener estado actual
+      const estadoActual = await leerEstadoSistema()
+
+      // Crear nuevo ticket
+      const nuevoNumero = estadoActual.ultimoNumero + 1
+      const nuevoTicket: TicketInfo = {
+        numero: nuevoNumero,
+        nombre: nombre.trim(),
+        fecha: new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" }),
+        timestamp: Date.now(),
+      }
+
+      // Actualizar estado
+      const nuevoEstado: EstadoSistema = {
+        ...estadoActual,
+        numeroActual: nuevoNumero + 1,
+        ultimoNumero: nuevoNumero,
+        totalAtendidos: nuevoNumero,
+        tickets: [...estadoActual.tickets, nuevoTicket],
+        lastSync: Date.now(),
+      }
+
+      // Guardar estado actualizado
+      await escribirEstadoSistema(nuevoEstado)
+
+      console.log(`✅ Ticket #${nuevoNumero} generado exitosamente`)
+      return nuevoTicket
+    } catch (error) {
+      console.error("❌ Error al generar ticket:", error)
+      throw error
+    }
+  })
+}
+
 // Función para crear backup diario
-export async function crearBackupDiario(estado?: EstadoSistema): Promise<void> {
+export async function crearBackupDiario(estado: EstadoSistema & { tickets: TicketInfo[] }): Promise<void> {
   return retryOperation(async () => {
     console.log("💾 Creando backup diario...")
 
     try {
-      const estadoActual = estado || (await obtenerEstadoSistema())
-      const fechaHoy = new Date().toISOString().split("T")[0] // YYYY-MM-DD
+      const fechaHoy = getTodayDateString()
+      const backupKey = REDIS_KEYS.BACKUP_PREFIX + fechaHoy
 
-      const backup: BackupData = {
+      const backupData = {
         fecha: fechaHoy,
-        estado: estadoActual,
+        estado: estado,
         timestamp: Date.now(),
         version: "1.0",
       }
 
-      const backupKey = REDIS_KEYS.BACKUP_PREFIX + fechaHoy
-      await redis.set(backupKey, JSON.stringify(backup))
-
+      await redis.set(backupKey, backupData, { ex: 60 * 24 * 60 * 60 }) // 60 días
       console.log(`✅ Backup creado para ${fechaHoy}`)
     } catch (error) {
       console.error("❌ Error al crear backup:", error)
-      throw error
+      // No lanzar error para no bloquear otras operaciones
     }
   })
 }
 
-// Función para obtener lista de backups
-export async function obtenerListaBackups(): Promise<string[]> {
-  return retryOperation(async () => {
-    try {
-      const keys = await redis.keys(REDIS_KEYS.BACKUP_PREFIX + "*")
-      return keys
-        .map((key) => key.replace(REDIS_KEYS.BACKUP_PREFIX, ""))
-        .sort()
-        .reverse()
-    } catch (error) {
-      console.error("❌ Error al obtener lista de backups:", error)
-      return []
-    }
-  })
-}
-
-// Función para obtener backup específico
-export async function obtenerBackup(fecha: string): Promise<BackupData | null> {
-  return retryOperation(async () => {
-    try {
-      const backupKey = REDIS_KEYS.BACKUP_PREFIX + fecha
-      const backup = await redis.get(backupKey)
-      return backup ? (backup as BackupData) : null
-    } catch (error) {
-      console.error(`❌ Error al obtener backup ${fecha}:`, error)
-      return null
-    }
-  })
-}
-
-// Función para restaurar desde backup
-export async function restaurarDesdeBackup(fecha: string): Promise<EstadoSistema> {
-  const mutexKey = REDIS_KEYS.MUTEX + ":restaurar"
-
-  return retryOperation(async () => {
-    console.log(`🔄 Restaurando desde backup ${fecha}...`)
-
-    const mutexAdquirido = await acquireMutex(mutexKey, MUTEX_TTL)
-    if (!mutexAdquirido) {
-      throw new Error("Sistema ocupado, intente nuevamente")
-    }
-
-    try {
-      const backup = await obtenerBackup(fecha)
-      if (!backup) {
-        throw new Error(`Backup no encontrado para la fecha ${fecha}`)
-      }
-
-      const estadoRestaurado = validarEstado(backup.estado)
-      estadoRestaurado.lastSync = Date.now()
-
-      return await guardarEstadoSistema(estadoRestaurado)
-    } finally {
-      await releaseMutex(mutexKey)
-    }
-  })
-}
-
-// Función para verificar salud de la base de datos
-export async function verificarSaludDB(): Promise<{
-  conectado: boolean
-  latencia?: number
-  error?: string
-  detalles?: any
-}> {
+// Función para obtener estadísticas
+export async function obtenerEstadisticas(estado: EstadoSistema & { tickets: TicketInfo[] }) {
   try {
-    const inicio = Date.now()
+    const ahora = new Date()
+    const inicioDelDia = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate())
+    const unaHoraAtras = new Date(ahora.getTime() - 60 * 60 * 1000)
 
-    // Hacer un ping simple
-    await redis.ping()
+    // Filtrar tickets de hoy
+    const ticketsHoy = estado.tickets.filter((ticket) => {
+      const fechaTicket = new Date(ticket.timestamp || ticket.fecha)
+      return fechaTicket >= inicioDelDia
+    })
 
-    const latencia = Date.now() - inicio
+    // Tickets de la última hora
+    const ticketsUltimaHora = estado.tickets.filter((ticket) => {
+      const timestampTicket = ticket.timestamp || 0
+      return timestampTicket >= unaHoraAtras.getTime()
+    })
 
-    // Obtener información adicional
-    const info = await redis.info()
-
-    return {
-      conectado: true,
-      latencia,
-      detalles: {
-        servidor: "Upstash Redis",
-        timestamp: new Date().toISOString(),
-        info: typeof info === "string" ? info.split("\n").slice(0, 5).join("\n") : "Info no disponible",
-      },
+    const estadisticas = {
+      totalTicketsHoy: ticketsHoy.length,
+      ticketsAtendidos: estado.numerosLlamados,
+      ticketsPendientes: Math.max(0, estado.totalAtendidos - estado.numerosLlamados),
+      promedioTiempoPorTicket:
+        ticketsHoy.length > 1
+          ? Math.round(
+              (ticketsHoy[ticketsHoy.length - 1].timestamp - ticketsHoy[0].timestamp) / ticketsHoy.length / 1000 / 60,
+            )
+          : 0,
+      horaInicioOperaciones: estado.fechaInicio,
+      ultimaActividad: ticketsHoy.length > 0 ? ticketsHoy[ticketsHoy.length - 1].fecha : "Sin actividad",
+      ticketsUltimaHora: ticketsUltimaHora.length,
     }
+
+    return estadisticas
   } catch (error) {
+    console.error("❌ Error al obtener estadísticas:", error)
+    throw error
+  }
+}
+
+// Función para verificar conexión a la base de datos
+export async function verificarConexionDB(): Promise<{ connected: boolean; details: any }> {
+  try {
+    console.log("🔍 Verificando conexión a Redis...")
+
+    const startTime = Date.now()
+    const testKey = "turnos_zoco:health_check:" + Date.now()
+    const testValue = "health_check_" + Math.random()
+
+    // Test básico
+    await redis.set(testKey, testValue, { ex: 30 })
+    const result = await redis.get(testKey)
+    await redis.del(testKey)
+
+    const responseTime = Date.now() - startTime
+    const isConnected = result === testValue
+
+    const details = {
+      connected: isConnected,
+      responseTime: responseTime + "ms",
+      config: redisConfig.name,
+      endpoint: redisConfig.url,
+      testResult: result === testValue ? "✅ Exitoso" : "❌ Fallido",
+      timestamp: new Date().toISOString(),
+    }
+
+    if (isConnected) {
+      console.log("✅ Conexión a Redis verificada exitosamente")
+    } else {
+      console.error("❌ Fallo en la verificación de conexión")
+    }
+
+    return { connected: isConnected, details }
+  } catch (error) {
+    console.error("❌ Error al verificar conexión:", error)
     return {
-      conectado: false,
-      error: error instanceof Error ? error.message : "Error desconocido",
+      connected: false,
+      details: {
+        error: "Error de conexión",
+        message: error instanceof Error ? error.message : "Error desconocido",
+        config: redisConfig?.name || "No configurado",
+        timestamp: new Date().toISOString(),
+      },
     }
   }
 }
 
-// Función para reparar inconsistencias
-export async function repararInconsistencias(): Promise<{
-  reparado: boolean
-  cambios: string[]
-  estadoFinal: EstadoSistema
-}> {
-  const mutexKey = REDIS_KEYS.MUTEX + ":reparar"
+// Función para limpiar datos antiguos
+export async function limpiarDatosAntiguos(): Promise<void> {
+  try {
+    console.log("🧹 Limpiando datos antiguos...")
 
-  return retryOperation(async () => {
-    console.log("🔧 Iniciando reparación de inconsistencias...")
+    const keys = await redis.keys(REDIS_KEYS.BACKUP_PREFIX + "*")
+    const now = Date.now()
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000
 
-    const mutexAdquirido = await acquireMutex(mutexKey, MUTEX_TTL)
-    if (!mutexAdquirido) {
-      throw new Error("Sistema ocupado, intente nuevamente")
+    const keysToDelete = []
+    for (const key of keys) {
+      const datePart = key.replace(REDIS_KEYS.BACKUP_PREFIX, "")
+      const keyDate = new Date(datePart).getTime()
+      if (keyDate < thirtyDaysAgo) {
+        keysToDelete.push(key)
+      }
     }
 
-    try {
-      const estadoActual = await obtenerEstadoSistema()
-      const cambios: string[] = []
-      const estadoReparado = { ...estadoActual }
-
-      // Verificar y reparar totalAtendidos vs tickets.length
-      const ticketsReales = estadoReparado.tickets.length
-      if (estadoReparado.totalAtendidos !== ticketsReales) {
-        cambios.push(`totalAtendidos corregido: ${estadoReparado.totalAtendidos} → ${ticketsReales}`)
-        estadoReparado.totalAtendidos = ticketsReales
-      }
-
-      // Verificar y reparar ultimoNumero
-      if (estadoReparado.tickets.length > 0) {
-        const maxNumero = Math.max(...estadoReparado.tickets.map((t) => t.numero))
-        if (estadoReparado.ultimoNumero !== maxNumero) {
-          cambios.push(`ultimoNumero corregido: ${estadoReparado.ultimoNumero} → ${maxNumero}`)
-          estadoReparado.ultimoNumero = maxNumero
-        }
-      }
-
-      // Verificar numeroActual
-      if (estadoReparado.numeroActual > estadoReparado.ultimoNumero + 1) {
-        const nuevoNumeroActual = estadoReparado.ultimoNumero + 1
-        cambios.push(`numeroActual corregido: ${estadoReparado.numeroActual} → ${nuevoNumeroActual}`)
-        estadoReparado.numeroActual = nuevoNumeroActual
-      }
-
-      // Verificar numerosLlamados
-      const numerosLlamadosEsperados = Math.max(0, estadoReparado.numeroActual - 1)
-      if (estadoReparado.numerosLlamados !== numerosLlamadosEsperados) {
-        cambios.push(`numerosLlamados corregido: ${estadoReparado.numerosLlamados} → ${numerosLlamadosEsperados}`)
-        estadoReparado.numerosLlamados = numerosLlamadosEsperados
-      }
-
-      // Guardar si hay cambios
-      if (cambios.length > 0) {
-        estadoReparado.lastSync = Date.now()
-        await guardarEstadoSistema(estadoReparado)
-        console.log(`✅ Reparación completada: ${cambios.length} cambios realizados`)
-      } else {
-        console.log("✅ No se encontraron inconsistencias")
-      }
-
-      return {
-        reparado: cambios.length > 0,
-        cambios,
-        estadoFinal: estadoReparado,
-      }
-    } finally {
-      await releaseMutex(mutexKey)
+    if (keysToDelete.length > 0) {
+      await redis.del(...keysToDelete)
+      console.log(`🗑️ Eliminados ${keysToDelete.length} backups antiguos`)
     }
-  })
+
+    console.log("✅ Limpieza completada")
+  } catch (error) {
+    console.error("❌ Error al limpiar datos antiguos:", error)
+  }
 }
 
-// Función para guardar resumen histórico
-export async function guardarResumenHistorico(resumen: any): Promise<void> {
-  return retryOperation(async () => {
-    console.log("📊 Guardando resumen histórico...")
+// Función para recuperar datos perdidos
+export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSistema & { tickets: TicketInfo[] }> {
+  try {
+    console.log("🔧 Intentando recuperar datos para:", fecha)
 
-    try {
-      await redis.set(REDIS_KEYS.RESUMEN_HISTORICO, JSON.stringify(resumen))
-      console.log("✅ Resumen histórico guardado")
-    } catch (error) {
-      console.error("❌ Error al guardar resumen histórico:", error)
-      throw error
-    }
-  })
-}
+    const backupKey = REDIS_KEYS.BACKUP_PREFIX + fecha
+    const backup = await redis.get(backupKey)
 
-// Función para obtener resumen histórico
-export async function obtenerResumenHistorico(): Promise<any> {
-  return retryOperation(async () => {
-    try {
-      const resumen = await redis.get(REDIS_KEYS.RESUMEN_HISTORICO)
-      return resumen || null
-    } catch (error) {
-      console.error("❌ Error al obtener resumen histórico:", error)
-      return null
+    if (backup && typeof backup === "object" && "estado" in backup) {
+      console.log("✅ Datos recuperados desde backup")
+      return validarEstado(backup.estado)
     }
-  })
+
+    console.log("⚠️ No se pudieron recuperar datos, creando estado inicial")
+    const estadoInicial = crearEstadoInicial()
+    estadoInicial.fechaInicio = fecha
+    return estadoInicial
+  } catch (error) {
+    console.error("❌ Error al recuperar datos:", error)
+    const estadoEmergencia = crearEstadoInicial()
+    estadoEmergencia.fechaInicio = fecha
+    return estadoEmergencia
+  }
 }

@@ -1,84 +1,130 @@
 import { type NextRequest, NextResponse } from "next/server"
 import {
-  obtenerEstadoSistema,
-  guardarEstadoSistema,
+  leerEstadoSistema,
+  escribirEstadoSistema,
   generarTicketAtomico,
-  llamarSiguienteNumero,
-  marcarComoAtendido,
-  reiniciarSistema,
-  verificarSaludDB,
-  repararInconsistencias,
+  crearBackupDiario,
+  obtenerEstadisticas,
+  verificarConexionDB,
+  limpiarDatosAntiguos,
+  recuperarDatosPerdidos,
 } from "@/lib/database"
 
-// Mutex simple en memoria para evitar operaciones concurrentes
-let operacionEnProceso = false
-const TIMEOUT_OPERACION = 30000 // 30 segundos
-
-async function ejecutarConMutex<T>(operacion: () => Promise<T>): Promise<T> {
-  if (operacionEnProceso) {
-    throw new Error("Sistema ocupado, intente nuevamente")
-  }
-
-  operacionEnProceso = true
-  const timeoutId = setTimeout(() => {
-    operacionEnProceso = false
-    console.log("⚠️ Timeout de operación, liberando mutex")
-  }, TIMEOUT_OPERACION)
-
-  try {
-    const resultado = await operacion()
-    return resultado
-  } finally {
-    clearTimeout(timeoutId)
-    operacionEnProceso = false
-  }
+interface TicketInfo {
+  numero: number
+  nombre: string
+  fecha: string
+  timestamp: number
 }
 
-// Función para calcular estadísticas
-function calcularEstadisticas(estado: any) {
-  const ahora = new Date()
-  const inicioDelDia = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate())
-  const unaHoraAtras = new Date(ahora.getTime() - 60 * 60 * 1000)
-
-  // Filtrar tickets de hoy
-  const ticketsHoy = estado.tickets.filter((ticket: any) => {
-    const fechaTicket = new Date(ticket.fecha)
-    return fechaTicket >= inicioDelDia
-  })
-
-  // Tickets de la última hora
-  const ticketsUltimaHora = estado.tickets.filter((ticket: any) => {
-    const timestampTicket = ticket.timestamp || 0
-    return timestampTicket >= unaHoraAtras.getTime()
-  })
-
-  // Calcular promedio de tiempo por ticket (estimado)
-  const tiempoTranscurrido = ahora.getTime() - inicioDelDia.getTime()
-  const horasTranscurridas = Math.max(1, tiempoTranscurrido / (1000 * 60 * 60))
-  const promedioTiempoPorTicket = estado.totalAtendidos > 0 ? horasTranscurridas / estado.totalAtendidos : 0
-
-  return {
-    totalTicketsHoy: ticketsHoy.length,
-    ticketsAtendidos: estado.totalAtendidos,
-    ticketsPendientes: Math.max(0, estado.ultimoNumero - estado.numeroActual + 1),
-    promedioTiempoPorTicket: Math.round(promedioTiempoPorTicket * 60), // en minutos
-    horaInicioOperaciones: estado.ultimoReinicio || new Date().toISOString(),
-    ultimaActividad: new Date(estado.lastSync || Date.now()).toISOString(),
-    ticketsUltimaHora: ticketsUltimaHora.length,
-  }
+interface EstadoSistema {
+  numeroActual: number
+  ultimoNumero: number
+  totalAtendidos: number
+  numerosLlamados: number
+  fechaInicio: string
+  ultimoReinicio: string
+  tickets: TicketInfo[]
+  lastSync?: number
 }
 
-// GET - Obtener estado actual
-export async function GET() {
+// Función para verificar si debe reiniciarse
+function debeReiniciarse(estado: EstadoSistema): boolean {
   try {
-    console.log("📥 GET /api/sistema - Obteniendo estado...")
+    const ahora = new Date()
+    const fechaActualArgentina = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }))
+    const fechaHoyString = fechaActualArgentina.toISOString().split("T")[0]
+    const fechaInicioString = estado.fechaInicio
 
-    if (operacionEnProceso) {
-      return NextResponse.json({ error: "Sistema ocupado", details: "Hay una operación en proceso" }, { status: 503 })
+    const esDiaDiferente = fechaHoyString !== fechaInicioString
+
+    if (esDiaDiferente) {
+      console.log(`🔄 Reinicio automático necesario: ${fechaHoyString} vs ${fechaInicioString}`)
+      return true
     }
 
-    const estado = await obtenerEstadoSistema()
-    console.log("✅ Estado obtenido correctamente")
+    return false
+  } catch (error) {
+    console.error("❌ Error verificando reinicio:", error)
+    return false
+  }
+}
+
+export async function GET() {
+  try {
+    console.log("\n=== 📥 GET /api/sistema ===")
+
+    // Verificar conexión a la base de datos
+    try {
+      const conexionOK = await verificarConexionDB()
+      if (!conexionOK.connected) {
+        console.log("⚠️ Advertencia: Problema de conexión detectado")
+      }
+    } catch (connectionError) {
+      console.error("❌ Error al verificar conexión:", connectionError)
+    }
+
+    let estado
+    try {
+      estado = await leerEstadoSistema()
+    } catch (readError) {
+      console.error("❌ Error al leer estado, intentando recuperación:", readError)
+
+      // Intentar recuperar datos del día actual
+      const fechaHoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+      try {
+        estado = await recuperarDatosPerdidos(fechaHoy)
+        console.log("✅ Datos recuperados exitosamente")
+      } catch (recoveryError) {
+        console.error("❌ No se pudieron recuperar los datos:", recoveryError)
+
+        // Crear estado completamente nuevo como último recurso
+        estado = {
+          numeroActual: 1,
+          ultimoNumero: 0,
+          totalAtendidos: 0,
+          numerosLlamados: 0,
+          fechaInicio: fechaHoy,
+          ultimoReinicio: new Date().toISOString(),
+          tickets: [],
+          lastSync: Date.now(),
+        }
+
+        await escribirEstadoSistema(estado)
+      }
+    }
+
+    // Verificar si debe reiniciarse automáticamente
+    if (debeReiniciarse(estado)) {
+      console.log("🔄 Ejecutando reinicio automático")
+
+      // Crear backup en background
+      crearBackupDiario(estado).catch((err) => console.error("Error en backup:", err))
+
+      const ahora = new Date()
+      const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+
+      estado = {
+        numeroActual: 1,
+        ultimoNumero: 0,
+        totalAtendidos: 0,
+        numerosLlamados: 0,
+        fechaInicio: fechaHoy,
+        ultimoReinicio: ahora.toISOString(),
+        tickets: [],
+        lastSync: Date.now(),
+      }
+
+      await escribirEstadoSistema(estado)
+    }
+
+    console.log("📤 Estado devuelto:", {
+      numeroActual: estado.numeroActual,
+      totalAtendidos: estado.totalAtendidos,
+      numerosLlamados: estado.numerosLlamados,
+      totalTickets: estado.tickets?.length || 0,
+      ultimoNumero: estado.ultimoNumero,
+    })
 
     return NextResponse.json(estado)
   } catch (error) {
@@ -93,124 +139,237 @@ export async function GET() {
   }
 }
 
-// POST - Manejar acciones del sistema
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    console.log("📨 POST /api/sistema - Acción:", body.action || "GUARDAR_ESTADO")
+    console.log("\n=== 📨 POST /api/sistema ===")
 
-    // Si no hay action, es una actualización de estado
-    if (!body.action) {
-      return await ejecutarConMutex(async () => {
-        const estadoGuardado = await guardarEstadoSistema(body)
-        console.log("✅ Estado guardado correctamente")
-        return NextResponse.json(estadoGuardado)
-      })
+    const body = await request.json()
+    const { action, ...nuevoEstado } = body
+
+    console.log("🎯 Acción recibida:", action)
+
+    let estado = await leerEstadoSistema()
+
+    // Verificar si debe reiniciarse antes de cualquier operación
+    if (debeReiniciarse(estado)) {
+      console.log("🔄 Reinicio automático durante POST")
+
+      // Crear backup en background
+      crearBackupDiario(estado).catch((err) => console.error("Error en backup:", err))
+
+      const ahora = new Date()
+      const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+
+      estado = {
+        numeroActual: 1,
+        ultimoNumero: 0,
+        totalAtendidos: 0,
+        numerosLlamados: 0,
+        fechaInicio: fechaHoy,
+        ultimoReinicio: ahora.toISOString(),
+        tickets: [],
+        lastSync: Date.now(),
+      }
     }
 
-    // Manejar acciones específicas
-    switch (body.action) {
-      case "GENERAR_TICKET": {
-        if (!body.nombre || typeof body.nombre !== "string" || body.nombre.trim().length === 0) {
+    // Acción especial para generar ticket
+    if (action === "GENERAR_TICKET") {
+      const { nombre } = body
+
+      if (!nombre || typeof nombre !== "string") {
+        return NextResponse.json({ error: "Nombre requerido" }, { status: 400 })
+      }
+
+      console.log("🎫 Generando ticket para:", nombre)
+
+      try {
+        const nuevoTicket = await generarTicketAtomico(nombre)
+        const estadoActualizado = await leerEstadoSistema()
+
+        console.log("✅ Ticket generado exitosamente")
+
+        return NextResponse.json({
+          ...estadoActualizado,
+          ticketGenerado: nuevoTicket,
+        })
+      } catch (error) {
+        console.error("❌ Error al generar ticket:", error)
+
+        const errorMessage = error instanceof Error ? error.message : "Error desconocido"
+
+        if (errorMessage.includes("timeout") || errorMessage.includes("Timeout")) {
           return NextResponse.json(
-            { error: "Nombre requerido", details: "El nombre no puede estar vacío" },
-            { status: 400 },
+            {
+              error: "Timeout al generar ticket",
+              details: "La operación tardó demasiado. Intente nuevamente.",
+            },
+            { status: 408 },
           )
         }
 
-        return await ejecutarConMutex(async () => {
-          const resultado = await generarTicketAtomico(body.nombre.trim())
-          console.log(`✅ Ticket generado: #${resultado.ticketGenerado.numero}`)
-
-          return NextResponse.json({
-            ...resultado.estado,
-            ticketGenerado: resultado.ticketGenerado,
-          })
-        })
-      }
-
-      case "LLAMAR_SIGUIENTE": {
-        return await ejecutarConMutex(async () => {
-          const estado = await llamarSiguienteNumero()
-          console.log(`✅ Siguiente número llamado: ${estado.numeroActual}`)
-          return NextResponse.json(estado)
-        })
-      }
-
-      case "MARCAR_ATENDIDO": {
-        return await ejecutarConMutex(async () => {
-          const estado = await marcarComoAtendido()
-          console.log("✅ Marcado como atendido")
-          return NextResponse.json(estado)
-        })
-      }
-
-      case "REINICIAR_SISTEMA": {
-        return await ejecutarConMutex(async () => {
-          const estado = await reiniciarSistema()
-          console.log("✅ Sistema reiniciado")
-          return NextResponse.json(estado)
-        })
-      }
-
-      case "OBTENER_ESTADISTICAS": {
-        const estado = await obtenerEstadoSistema()
-        const estadisticas = calcularEstadisticas(estado)
-        console.log("✅ Estadísticas calculadas")
-        return NextResponse.json({ estadisticas })
-      }
-
-      case "VERIFICAR_SALUD_DB": {
-        const salud = await verificarSaludDB()
-        console.log("✅ Salud de DB verificada:", salud.conectado ? "OK" : "ERROR")
-        return NextResponse.json(salud)
-      }
-
-      case "REPARAR_INCONSISTENCIAS": {
-        return await ejecutarConMutex(async () => {
-          const resultado = await repararInconsistencias()
-          console.log(`✅ Reparación completada: ${resultado.cambios.length} cambios`)
-          return NextResponse.json(resultado)
-        })
-      }
-
-      case "SINCRONIZAR_DB": {
-        return await ejecutarConMutex(async () => {
-          const estado = await obtenerEstadoSistema()
-          console.log("✅ Sincronización forzada completada")
-          return NextResponse.json(estado)
-        })
-      }
-
-      default:
         return NextResponse.json(
-          { error: "Acción no válida", details: `Acción '${body.action}' no reconocida` },
-          { status: 400 },
+          {
+            error: "Error al generar ticket",
+            details: errorMessage,
+          },
+          { status: 500 },
         )
+      }
     }
+
+    // Acción para obtener estadísticas
+    if (action === "OBTENER_ESTADISTICAS") {
+      try {
+        const estadisticas = await obtenerEstadisticas(estado)
+
+        return NextResponse.json({
+          ...estado,
+          estadisticas,
+        })
+      } catch (error) {
+        console.error("❌ Error al obtener estadísticas:", error)
+        return NextResponse.json(
+          {
+            error: "Error al obtener estadísticas",
+            details: error instanceof Error ? error.message : "Error desconocido",
+          },
+          { status: 500 },
+        )
+      }
+    }
+
+    // Acción administrativa: Eliminar todos los registros
+    if (action === "ELIMINAR_TODOS_REGISTROS") {
+      console.log("🗑️ Eliminando todos los registros...")
+
+      try {
+        await crearBackupDiario(estado)
+
+        const ahora = new Date()
+        const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+        const estadoLimpio: EstadoSistema = {
+          numeroActual: 1,
+          ultimoNumero: 0,
+          totalAtendidos: 0,
+          numerosLlamados: 0,
+          fechaInicio: fechaHoy,
+          ultimoReinicio: ahora.toISOString(),
+          tickets: [],
+          lastSync: Date.now(),
+        }
+
+        await escribirEstadoSistema(estadoLimpio)
+        console.log("✅ Todos los registros eliminados exitosamente")
+
+        return NextResponse.json({
+          ...estadoLimpio,
+          mensaje: "Todos los registros han sido eliminados exitosamente",
+        })
+      } catch (error) {
+        console.error("❌ Error al eliminar registros:", error)
+        return NextResponse.json(
+          {
+            error: "Error al eliminar registros",
+            details: error instanceof Error ? error.message : "Error desconocido",
+          },
+          { status: 500 },
+        )
+      }
+    }
+
+    // Acción administrativa: Reiniciar contador diario
+    if (action === "REINICIAR_CONTADOR_DIARIO") {
+      console.log("🔄 Reiniciando contador diario...")
+
+      try {
+        await crearBackupDiario(estado)
+
+        const ahora = new Date()
+        const fechaHoy = ahora.toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" })
+        const estadoReiniciado: EstadoSistema = {
+          numeroActual: 1,
+          ultimoNumero: 0,
+          totalAtendidos: 0,
+          numerosLlamados: 0,
+          fechaInicio: fechaHoy,
+          ultimoReinicio: ahora.toISOString(),
+          tickets: [],
+          lastSync: Date.now(),
+        }
+
+        await escribirEstadoSistema(estadoReiniciado)
+        console.log("✅ Contador diario reiniciado exitosamente")
+
+        return NextResponse.json({
+          ...estadoReiniciado,
+          mensaje: "Contador diario reiniciado exitosamente",
+        })
+      } catch (error) {
+        console.error("❌ Error al reiniciar contador:", error)
+        return NextResponse.json(
+          {
+            error: "Error al reiniciar contador",
+            details: error instanceof Error ? error.message : "Error desconocido",
+          },
+          { status: 500 },
+        )
+      }
+    }
+
+    // Acción de mantenimiento: Limpiar datos antiguos
+    if (action === "LIMPIAR_DATOS_ANTIGUOS") {
+      try {
+        await limpiarDatosAntiguos()
+        return NextResponse.json({
+          mensaje: "Datos antiguos limpiados exitosamente",
+        })
+      } catch (error) {
+        console.error("❌ Error al limpiar datos antiguos:", error)
+        return NextResponse.json(
+          {
+            error: "Error al limpiar datos antiguos",
+            details: error instanceof Error ? error.message : "Error desconocido",
+          },
+          { status: 500 },
+        )
+      }
+    }
+
+    // Validar datos para actualizaciones normales
+    if (
+      typeof nuevoEstado.numeroActual !== "number" ||
+      typeof nuevoEstado.totalAtendidos !== "number" ||
+      typeof nuevoEstado.numerosLlamados !== "number"
+    ) {
+      return NextResponse.json({ error: "Datos inválidos" }, { status: 400 })
+    }
+
+    console.log("📝 Actualizando estado normal")
+
+    // Actualizar estado manteniendo fechas originales
+    const estadoActualizado = {
+      numeroActual: nuevoEstado.numeroActual,
+      ultimoNumero: nuevoEstado.ultimoNumero,
+      totalAtendidos: nuevoEstado.totalAtendidos,
+      numerosLlamados: nuevoEstado.numerosLlamados,
+      fechaInicio: estado.fechaInicio,
+      ultimoReinicio: estado.ultimoReinicio,
+      tickets: estado.tickets,
+      lastSync: Date.now(),
+    }
+
+    await escribirEstadoSistema(estadoActualizado)
+
+    const estadoFinal = await leerEstadoSistema()
+    return NextResponse.json(estadoFinal)
   } catch (error) {
     console.error("❌ Error en POST /api/sistema:", error)
-
-    // Determinar el código de estado basado en el tipo de error
-    let status = 500
-    let errorMessage = "Error interno del servidor"
-
-    if (error instanceof Error) {
-      if (error.message.includes("ocupado")) {
-        status = 503
-        errorMessage = "Sistema ocupado"
-      } else if (error.message.includes("requerido") || error.message.includes("vacío")) {
-        status = 400
-        errorMessage = "Datos inválidos"
-      }
-    }
-
     return NextResponse.json(
       {
-        error: errorMessage,
+        error: "Error interno del servidor",
         details: error instanceof Error ? error.message : "Error desconocido",
       },
-      { status },
+      { status: 500 },
     )
   }
 }
