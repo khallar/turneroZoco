@@ -254,6 +254,79 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // NUEVA ACCIÓN: Reparar inconsistencias
+    if (accion === "REPARAR_INCONSISTENCIAS") {
+      console.log("🔧 Reparando inconsistencias detectadas (TURNOS_ZOCO)...")
+
+      try {
+        // 1. Leer estado actual
+        const estadoActual = await leerEstadoSistema()
+
+        // 2. Verificar y corregir inconsistencias
+        const estadoCorregido = { ...estadoActual }
+        const cambiosRealizados = []
+
+        // Verificar consistencia entre totalAtendidos y tickets.length
+        if (estadoActual.totalAtendidos !== estadoActual.tickets.length) {
+          console.log(`🔧 Corrigiendo totalAtendidos: ${estadoActual.totalAtendidos} -> ${estadoActual.tickets.length}`)
+          estadoCorregido.totalAtendidos = estadoActual.tickets.length
+          cambiosRealizados.push(`totalAtendidos corregido a ${estadoActual.tickets.length}`)
+        }
+
+        // Verificar que numeroActual sea correcto
+        if (estadoActual.tickets.length > 0) {
+          const ultimoTicketReal = estadoActual.tickets[estadoActual.tickets.length - 1]
+          if (estadoCorregido.ultimoNumero !== ultimoTicketReal.numero) {
+            console.log(`🔧 Corrigiendo ultimoNumero: ${estadoCorregido.ultimoNumero} -> ${ultimoTicketReal.numero}`)
+            estadoCorregido.ultimoNumero = ultimoTicketReal.numero
+            estadoCorregido.numeroActual = ultimoTicketReal.numero + 1
+            cambiosRealizados.push(`ultimoNumero corregido a ${ultimoTicketReal.numero}`)
+            cambiosRealizados.push(`numeroActual corregido a ${ultimoTicketReal.numero + 1}`)
+          }
+        }
+
+        // Verificar que numerosLlamados no sea mayor que totalAtendidos
+        if (estadoCorregido.numerosLlamados > estadoCorregido.totalAtendidos) {
+          console.log(
+            `🔧 Corrigiendo numerosLlamados: ${estadoCorregido.numerosLlamados} -> ${estadoCorregido.totalAtendidos}`,
+          )
+          estadoCorregido.numerosLlamados = estadoCorregido.totalAtendidos
+          cambiosRealizados.push(`numerosLlamados corregido a ${estadoCorregido.totalAtendidos}`)
+        }
+
+        // Si hay cambios, guardar el estado corregido
+        if (cambiosRealizados.length > 0) {
+          estadoCorregido.lastSync = Date.now()
+          await escribirEstadoSistema(estadoCorregido)
+          console.log("✅ Inconsistencias reparadas exitosamente")
+
+          return NextResponse.json({
+            success: true,
+            message: "Inconsistencias reparadas exitosamente",
+            cambiosRealizados,
+            estadoCorregido,
+          })
+        } else {
+          console.log("✅ No se encontraron inconsistencias")
+          return NextResponse.json({
+            success: true,
+            message: "No se encontraron inconsistencias",
+            cambiosRealizados: [],
+            estadoActual,
+          })
+        }
+      } catch (error) {
+        console.error("❌ Error al reparar inconsistencias (TURNOS_ZOCO):", error)
+        return NextResponse.json(
+          {
+            error: "Error al reparar inconsistencias",
+            details: error instanceof Error ? error.message : "Error desconocido",
+          },
+          { status: 500 },
+        )
+      }
+    }
+
     // Acción para obtener estadísticas
     if (accion === "OBTENER_ESTADISTICAS") {
       try {

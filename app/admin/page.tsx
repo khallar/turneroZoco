@@ -25,6 +25,9 @@ import {
   Download,
   FileText,
   Archive,
+  Wifi,
+  WifiOff,
+  Send as Sync,
 } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 
@@ -51,11 +54,37 @@ export default function PaginaAdmin() {
   const [horaActual, setHoraActual] = useState(new Date())
   const [mostrarMetricasAvanzadas, setMostrarMetricasAvanzadas] = useState(false)
   const [descargandoTodos, setDescargandoTodos] = useState(false)
+  const [sincronizandoDB, setSincronizandoDB] = useState(false)
+  const [estadoConexionDB, setEstadoConexionDB] = useState<any>(null)
+  const [isOnline, setIsOnline] = useState(true)
 
   useEffect(() => {
     if (isClient) {
       cargarDatosAdmin()
       cargarBackups()
+      verificarConexionInicial()
+    }
+  }, [isClient])
+
+  // Verificar conexión
+  useEffect(() => {
+    if (!isClient) return
+
+    setIsOnline(typeof navigator !== "undefined" ? navigator.onLine : true)
+
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline)
+      window.addEventListener("offline", handleOffline)
+    }
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", handleOnline)
+        window.removeEventListener("offline", handleOffline)
+      }
     }
   }, [isClient])
 
@@ -70,6 +99,17 @@ export default function PaginaAdmin() {
     setHoraActual(new Date())
     return () => clearInterval(interval)
   }, [isClient])
+
+  const verificarConexionInicial = async () => {
+    try {
+      const response = await fetch("/api/health")
+      const data = await response.json()
+      setEstadoConexionDB(data)
+    } catch (error) {
+      console.error("Error al verificar conexión inicial:", error)
+      setEstadoConexionDB({ connected: false, error: "Error de conexión" })
+    }
+  }
 
   const cargarDatosAdmin = async () => {
     try {
@@ -106,7 +146,7 @@ export default function PaginaAdmin() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          action: "ELIMINAR_TODOS_REGISTROS",
+          accion: "ELIMINAR_TODOS_REGISTROS",
         }),
       })
 
@@ -135,7 +175,7 @@ export default function PaginaAdmin() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          action: "REINICIAR_CONTADOR_DIARIO",
+          accion: "REINICIAR_CONTADOR_DIARIO",
         }),
       })
 
@@ -155,6 +195,87 @@ export default function PaginaAdmin() {
     }
   }
 
+  // NUEVA FUNCIÓN: Sincronizar con base de datos
+  const sincronizarConBaseDatos = async () => {
+    setSincronizandoDB(true)
+    try {
+      console.log("🔄 Iniciando sincronización manual con base de datos...")
+
+      // 1. Verificar estado de conexión
+      const healthResponse = await fetch("/api/health")
+      const healthData = await healthResponse.json()
+      setEstadoConexionDB(healthData)
+
+      if (!healthData.connected) {
+        throw new Error("No hay conexión con la base de datos")
+      }
+
+      // 2. Forzar recarga completa del estado
+      invalidateCache()
+      await new Promise((resolve) => setTimeout(resolve, 500)) // Esperar a que se limpie el cache
+
+      // 3. Cargar estado fresco desde la base de datos
+      await cargarEstado(true, true) // Forzar actualización con estadísticas
+
+      // 4. Verificar integridad de datos
+      const response = await fetch("/api/debug")
+      const debugData = await response.json()
+
+      console.log("📊 Datos de sincronización:", debugData)
+
+      // 5. Si hay inconsistencias, intentar repararlas
+      if (debugData.inconsistencias && debugData.inconsistencias.length > 0) {
+        console.log("🔧 Reparando inconsistencias detectadas...")
+
+        // Llamar endpoint de reparación
+        const repairResponse = await fetch("/api/sistema", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            accion: "REPARAR_INCONSISTENCIAS",
+          }),
+        })
+
+        if (repairResponse.ok) {
+          console.log("✅ Inconsistencias reparadas")
+        }
+      }
+
+      // 6. Recargar datos después de la sincronización
+      await cargarDatosAdmin()
+      await cargarBackups()
+
+      alert("✅ Sincronización completada exitosamente")
+    } catch (error) {
+      console.error("❌ Error en sincronización:", error)
+      alert(`❌ Error en sincronización: ${error instanceof Error ? error.message : "Error desconocido"}`)
+    } finally {
+      setSincronizandoDB(false)
+    }
+  }
+
+  // NUEVA FUNCIÓN: Verificar estado de la base de datos
+  const verificarEstadoDB = async () => {
+    try {
+      const response = await fetch("/api/health")
+      const data = await response.json()
+      setEstadoConexionDB(data)
+
+      if (data.connected) {
+        alert(
+          `✅ Conexión exitosa\n\nDetalles:\n- Tiempo de respuesta: ${data.details.responseTime}\n- Configuración: ${data.details.config}\n- Región: ${data.details.region}`,
+        )
+      } else {
+        alert(`❌ Error de conexión\n\nDetalles:\n${data.details.error || "Error desconocido"}`)
+      }
+    } catch (error) {
+      console.error("Error al verificar estado DB:", error)
+      alert("❌ Error al verificar conexión con la base de datos")
+    }
+  }
+
   const exportarDatos = () => {
     const datos = {
       fecha: new Date().toISOString(),
@@ -163,6 +284,7 @@ export default function PaginaAdmin() {
       backups: backups,
       cacheStats: cacheStats,
       metricasAvanzadas: calcularMetricasAvanzadas(),
+      estadoConexionDB: estadoConexionDB,
     }
 
     const blob = new Blob([JSON.stringify(datos, null, 2)], { type: "application/json" })
@@ -340,6 +462,7 @@ export default function PaginaAdmin() {
       cacheHitRate: cacheStats.entries.filter((e) => e.fresh).length / Math.max(cacheStats.entries.length, 1),
       tiempoRespuestaPromedio: ultimaSincronizacion ? Date.now() - ultimaSincronizacion.getTime() : 0,
       disponibilidadSistema: error ? 0.95 : 1.0,
+      estadoConexionDB: estadoConexionDB?.connected ? 1.0 : 0.0,
     }
 
     // 11. Análisis de tendencias
@@ -830,6 +953,7 @@ export default function PaginaAdmin() {
             desde: backups[backups.length - 1]?.fecha || "N/A",
             hasta: backups[0]?.fecha || "N/A",
           },
+          estadoConexionDB: estadoConexionDB,
         },
 
         // TOTALES HISTÓRICOS CONSOLIDADOS
@@ -837,7 +961,7 @@ export default function PaginaAdmin() {
           resumenGeneral: {
             totalDiasOperativos: totalesHistoricos.totalDias,
             totalTicketsEmitidos: totalesHistoricos.totalTicketsEmitidos,
-            totalTicketsAtendidos: totalesHistoricos.totalTicketsAtendidos,
+            totalTicketsAtendidos: totalesHistoricos.totalTicketsAtendientes,
             totalTicketsPendientes: totalesHistoricos.totalTicketsPendientes,
             promedioTicketsPorDia: totalesHistoricos.promedioTicketsPorDia,
             promedioAtendidosPorDia: totalesHistoricos.promedioAtendidosPorDia,
@@ -894,6 +1018,7 @@ export default function PaginaAdmin() {
           estado: estado,
           estadisticas: estadisticas,
           metricasAvanzadas: calcularMetricasAvanzadas(),
+          estadoConexionDB: estadoConexionDB,
         },
       }
 
@@ -1005,7 +1130,7 @@ export default function PaginaAdmin() {
       csvLink.href = csvUrl
       csvLink.download = `ZOCO-HistorialConsolidado-${new Date().toISOString().split("T")[0]}.csv`
       document.body.appendChild(csvLink)
-      jsonLink.click()
+      csvLink.click()
       document.body.removeChild(csvLink)
       URL.revokeObjectURL(csvUrl)
 
@@ -1070,6 +1195,19 @@ export default function PaginaAdmin() {
                   : "Nunca"}
               </span>
             </div>
+            <div className="flex items-center gap-1">
+              {isOnline && estadoConexionDB?.connected ? (
+                <>
+                  <Wifi className="h-4 w-4 text-green-500" />
+                  <span className="text-green-500">DB Online</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="h-4 w-4 text-red-500" />
+                  <span className="text-red-500">DB Offline</span>
+                </>
+              )}
+            </div>
             {cacheStats.totalEntries > 0 && (
               <div className="flex items-center gap-1">
                 <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
@@ -1079,8 +1217,8 @@ export default function PaginaAdmin() {
             )}
           </div>
 
-          {/* Botones de navegación - AGREGADO BOTÓN PRÓXIMOS */}
-          <div className="flex justify-center gap-4">
+          {/* Botones de navegación y sincronización - AGREGADO BOTÓN SINCRONIZAR */}
+          <div className="flex justify-center gap-4 mb-8">
             <a
               href="/"
               className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -1109,6 +1247,99 @@ export default function PaginaAdmin() {
               <BarChart3 className="mr-2 h-4 w-4" />
               Resumen Histórico
             </a>
+          </div>
+
+          {/* NUEVA SECCIÓN: Herramientas de Sincronización */}
+          <div className="mb-8">
+            <Card className="bg-gradient-to-r from-cyan-50 to-blue-50 border-cyan-200">
+              <CardHeader>
+                <CardTitle className="text-xl flex items-center justify-center gap-2 text-cyan-800">
+                  <Sync className="h-6 w-6" />🔄 Herramientas de Sincronización y Diagnóstico
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Sincronizar con DB */}
+                  <Button
+                    onClick={sincronizarConBaseDatos}
+                    disabled={sincronizandoDB}
+                    className="bg-cyan-600 hover:bg-cyan-700 text-white h-auto py-4 px-6 flex flex-col items-center gap-2"
+                  >
+                    {sincronizandoDB ? (
+                      <>
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                        <span className="text-sm">Sincronizando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sync className="h-6 w-6" />
+                        <span className="text-sm font-semibold">Sincronizar con DB</span>
+                        <span className="text-xs opacity-80">Forzar actualización completa</span>
+                      </>
+                    )}
+                  </Button>
+
+                  {/* Verificar Estado DB */}
+                  <Button
+                    onClick={verificarEstadoDB}
+                    className="bg-blue-600 hover:bg-blue-700 text-white h-auto py-4 px-6 flex flex-col items-center gap-2"
+                  >
+                    <Database className="h-6 w-6" />
+                    <span className="text-sm font-semibold">Verificar Estado DB</span>
+                    <span className="text-xs opacity-80">Comprobar conexión</span>
+                  </Button>
+
+                  {/* Limpiar Cache */}
+                  <Button
+                    onClick={invalidateCache}
+                    className="bg-orange-600 hover:bg-orange-700 text-white h-auto py-4 px-6 flex flex-col items-center gap-2"
+                  >
+                    <RefreshCw className="h-6 w-6" />
+                    <span className="text-sm font-semibold">Limpiar Cache</span>
+                    <span className="text-xs opacity-80">Invalidar datos en cache</span>
+                  </Button>
+                </div>
+
+                {/* Estado de conexión DB */}
+                {estadoConexionDB && (
+                  <div className="mt-4 p-4 bg-white rounded-lg border">
+                    <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <Database className="h-4 w-4" />
+                      Estado de la Base de Datos
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Conexión:</span>
+                        <span
+                          className={`px-2 py-1 rounded text-xs font-bold ${
+                            estadoConexionDB.connected ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {estadoConexionDB.connected ? "✅ Conectado" : "❌ Desconectado"}
+                        </span>
+                      </div>
+                      {estadoConexionDB.details?.responseTime && (
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">Tiempo respuesta:</span>
+                          <span className="text-blue-600 font-mono">{estadoConexionDB.details.responseTime}</span>
+                        </div>
+                      )}
+                      {estadoConexionDB.details?.config && (
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">Configuración:</span>
+                          <span className="text-gray-600 text-xs">{estadoConexionDB.details.config}</span>
+                        </div>
+                      )}
+                    </div>
+                    {estadoConexionDB.details?.error && (
+                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                        <strong>Error:</strong> {estadoConexionDB.details.error}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
 
@@ -1180,6 +1411,68 @@ export default function PaginaAdmin() {
             <CardContent>
               <div className="text-3xl font-bold">{estadisticasAdminCalculadas.eficienciaGeneral}%</div>
               <p className="text-xs opacity-80">Tasa de atención</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Acciones Administrativas */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <Card className="bg-gradient-to-r from-red-100 to-pink-100 border-red-300">
+            <CardHeader>
+              <CardTitle className="text-red-800 flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Acciones Críticas
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button
+                onClick={() => setMostrarConfirmacionReinicio(true)}
+                className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+                disabled={procesandoAccion}
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Reiniciar Contador Diario
+              </Button>
+              <Button
+                onClick={() => setMostrarConfirmacionEliminar(true)}
+                className="w-full bg-red-600 hover:bg-red-700 text-white"
+                disabled={procesandoAccion}
+              >
+                <AlertTriangle className="mr-2 h-4 w-4" />
+                Eliminar Todos los Registros
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-r from-green-100 to-teal-100 border-green-300">
+            <CardHeader>
+              <CardTitle className="text-green-800 flex items-center gap-2">
+                <Download className="h-5 w-5" />
+                Exportar Datos
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button onClick={exportarDatos} className="w-full bg-green-600 hover:bg-green-700 text-white">
+                <FileText className="mr-2 h-4 w-4" />
+                Exportar Estado Actual
+              </Button>
+              <Button
+                onClick={descargarTodosLosDatos}
+                disabled={descargandoTodos}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {descargandoTodos ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Descargando...
+                  </>
+                ) : (
+                  <>
+                    <Archive className="mr-2 h-4 w-4" />
+                    Descargar Historial Completo
+                  </>
+                )}
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -2078,8 +2371,10 @@ export default function PaginaAdmin() {
         {/* Footer */}
         <footer className="text-center mt-8 pt-4 border-t border-gray-200">
           <div className="text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 5.2 | Historial Consolidado + Descarga Masiva</p>
-            <p>Actualización inteligente cada 120s | Cache compartido entre páginas</p>
+            <p>Develop by: Karim :) | Versión 5.3 | Sincronización DB + Diagnóstico Avanzado</p>
+            <p>
+              Actualización inteligente cada 120s | Cache compartido entre páginas | Sincronización manual disponible
+            </p>
           </div>
         </footer>
       </div>
