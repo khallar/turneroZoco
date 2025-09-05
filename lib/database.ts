@@ -808,7 +808,7 @@ export async function verificarConexionDB(): Promise<{ connected: boolean; detai
     // Test básico con manejo de errores mejorado
     try {
       const testKey = "TURNOS_ZOCO:health_check:" + Date.now()
-      const testValue = "health_check_" + Math.random()
+      const testValue = "health_check_" + Math.random().toString(36).substring(7)
 
       console.log("🧪 Ejecutando test de conexión básico...")
 
@@ -819,6 +819,9 @@ export async function verificarConexionDB(): Promise<{ connected: boolean; detai
       ])
 
       console.log("✅ SET exitoso")
+
+      // Esperar un momento para asegurar consistencia
+      await new Promise((resolve) => setTimeout(resolve, 100))
 
       // Intentar operación GET con timeout
       const result = await Promise.race([
@@ -843,7 +846,7 @@ export async function verificarConexionDB(): Promise<{ connected: boolean; detai
         connected: isConnected,
         responseTime: responseTime + "ms",
         config: redisConfig.name,
-        endpoint: redisConfig.url,
+        endpoint: redisConfig.url.substring(0, 50) + "...",
         region: redisConfig.url.includes("us1") ? "US East" : redisConfig.url.includes("eu1") ? "EU West" : "Global",
         testResult: result === testValue ? "✅ Exitoso" : "❌ Fallido",
         testValue: testValue,
@@ -857,6 +860,25 @@ export async function verificarConexionDB(): Promise<{ connected: boolean; detai
       } else {
         console.error("❌ Fallo en la verificación de conexión - valores no coinciden")
         console.error(`Esperado: ${testValue}, Recibido: ${result}`)
+
+        // Si falla la verificación de valores, intentar con ping como alternativa
+        try {
+          const pingResult = await redis.ping()
+          if (pingResult === "PONG") {
+            console.log("✅ Ping exitoso como fallback")
+            return {
+              connected: true,
+              details: {
+                ...details,
+                connected: true,
+                testResult: "✅ Ping exitoso (fallback)",
+                warning: "SET/GET test falló, pero ping exitoso",
+              },
+            }
+          }
+        } catch (pingError) {
+          console.error("❌ Ping también falló:", pingError)
+        }
       }
 
       return { connected: isConnected, details }
@@ -879,7 +901,7 @@ export async function verificarConexionDB(): Promise<{ connected: boolean; detai
             connected: true,
             responseTime: Date.now() - startTime + "ms",
             config: redisConfig.name,
-            endpoint: redisConfig.url,
+            endpoint: redisConfig.url.substring(0, 50) + "...",
             testResult: "✅ Ping exitoso (fallback)",
             pingResult: pingResult,
             warning: "Operaciones SET/GET fallaron, pero ping exitoso",
@@ -895,7 +917,7 @@ export async function verificarConexionDB(): Promise<{ connected: boolean; detai
           details: {
             error: "Todas las operaciones de conexión fallaron",
             config: redisConfig.name,
-            endpoint: redisConfig.url,
+            endpoint: redisConfig.url.substring(0, 50) + "...",
             operationError: operationError instanceof Error ? operationError.message : String(operationError),
             pingError: pingError instanceof Error ? pingError.message : String(pingError),
             timestamp: new Date().toISOString(),

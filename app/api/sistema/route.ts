@@ -56,9 +56,12 @@ export async function GET() {
 
     // Verificar conexión a la base de datos (no bloquear si falla)
     try {
-      const conexionOK = await verificarConexionDB()
-      if (!conexionOK) {
+      const conexionResult = await verificarConexionDB()
+      if (!conexionResult.connected) {
         console.log("⚠️ Advertencia: Problema de conexión detectado, pero continuando...")
+        console.log("Detalles:", conexionResult.details)
+      } else {
+        console.log("✅ Conexión verificada exitosamente")
       }
     } catch (connectionError) {
       console.error("❌ Error al verificar conexión, pero continuando:", connectionError)
@@ -163,9 +166,12 @@ export async function POST(request: NextRequest) {
 
     // Verificar conexión a la base de datos (no bloquear si falla)
     try {
-      const conexionOK = await verificarConexionDB()
-      if (!conexionOK) {
+      const conexionResult = await verificarConexionDB()
+      if (!conexionResult.connected) {
         console.log("⚠️ Advertencia: Problema de conexión detectado, pero continuando...")
+        console.log("Detalles:", conexionResult.details)
+      } else {
+        console.log("✅ Conexión verificada exitosamente")
       }
     } catch (connectionError) {
       console.error("❌ Error al verificar conexión, pero continuando:", connectionError)
