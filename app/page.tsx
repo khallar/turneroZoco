@@ -21,11 +21,6 @@ const frases = [
   "Su tiempo es valioso, pronto será atendido.",
   "Bienvenido a ZOCO, donde su satisfacción es nuestra prioridad.",
   "Gracias por elegirnos, será atendido en breve.",
-  "Su número será llamado pronto, gracias por esperar.",
-  "Apreciamos su visita y su paciencia.",
-  "En ZOCO valoramos su tiempo y confianza.",
-  "Será atendido por nuestro equipo especializado.",
-  "Gracias por ser parte de la familia ZOCO.",
 ]
 
 export default function Home() {
