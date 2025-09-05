@@ -19,8 +19,6 @@ interface EstadoSistema {
   ultimoReinicio?: string
   tickets: TicketInfo[]
   lastSync?: number
-  nombreActual: string
-  totalTickets: number
 }
 
 interface Estadisticas {
@@ -43,8 +41,6 @@ const estadoInicial: EstadoSistema = {
   ultimoReinicio: new Date().toISOString(),
   tickets: [],
   lastSync: Date.now(),
-  nombreActual: "",
-  totalTickets: 0,
 }
 
 // Configuración de intervalos optimizada por página
@@ -268,13 +264,13 @@ export function useSistemaEstado(pagina: keyof typeof INTERVALOS_ACTUALIZACION =
 
   // Función optimizada para guardar estado
   const guardarEstado = useCallback(
-    async (nuevoEstado: Partial<EstadoSistema>, reintentos = 2) => {
+    async (nuevoEstado: EstadoSistema, reintentos = 2) => {
       if (!isClient) return
 
-      setEstado((prev) => ({ ...prev, ...nuevoEstado })) // Actualizar UI inmediatamente
+      setEstado(nuevoEstado) // Actualizar UI inmediatamente
 
       // Actualizar cache inmediatamente
-      cacheUtils.setEstadoSistema({ ...estado, ...nuevoEstado })
+      cacheUtils.setEstadoSistema(nuevoEstado)
 
       for (let intento = 1; intento <= reintentos; intento++) {
         try {
@@ -288,7 +284,7 @@ export function useSistemaEstado(pagina: keyof typeof INTERVALOS_ACTUALIZACION =
               Pragma: "no-cache",
               Expires: "0",
             },
-            body: JSON.stringify({ ...estado, ...nuevoEstado }),
+            body: JSON.stringify(nuevoEstado),
           })
 
           if (response.status === 503) {
@@ -330,7 +326,7 @@ export function useSistemaEstado(pagina: keyof typeof INTERVALOS_ACTUALIZACION =
         }
       }
     },
-    [isClient, estado],
+    [isClient],
   )
 
   // Función optimizada para generar ticket

@@ -21,6 +21,11 @@ const frases = [
   "Su tiempo es valioso, pronto será atendido.",
   "Bienvenido a ZOCO, donde su satisfacción es nuestra prioridad.",
   "Gracias por elegirnos, será atendido en breve.",
+  "Su número será llamado pronto, gracias por esperar.",
+  "Apreciamos su visita y su paciencia.",
+  "En ZOCO valoramos su tiempo y confianza.",
+  "Será atendido por nuestro equipo especializado.",
+  "Gracias por ser parte de la familia ZOCO.",
 ]
 
 export default function Home() {
@@ -31,7 +36,7 @@ export default function Home() {
   const [mounted, setMounted] = useState(false)
   const [conectado, setConectado] = useState(true)
 
-  const { estado, actualizarEstado } = useSistemaEstado()
+  const { estado, guardarEstado, generarTicket: generarTicketAPI } = useSistemaEstado("principal")
 
   useEffect(() => {
     setMounted(true)
@@ -68,36 +73,36 @@ export default function Home() {
     setGenerandoTicket(true)
 
     try {
-      // Simular delay de red
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      console.log("🎫 Iniciando generación de ticket para:", nombre)
 
-      const nuevoNumero = estado.ultimoNumero + 1
-      const fraseAleatoria = frases[Math.floor(Math.random() * frases.length)]
-      const fechaActual = new Date().toLocaleString("es-ES", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
+      // Usar la función del hook que maneja la API
+      const ticketGenerado = await generarTicketAPI(nombre)
 
-      const nuevoTicket: TicketInfo = {
-        numero: nuevoNumero,
-        nombre: nombre,
-        frase: fraseAleatoria,
-        fecha: fechaActual,
+      if (ticketGenerado) {
+        const fraseAleatoria = frases[Math.floor(Math.random() * frases.length)]
+        const fechaActual = new Date().toLocaleString("es-ES", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+
+        const nuevoTicket: TicketInfo = {
+          numero: ticketGenerado.numero,
+          nombre: ticketGenerado.nombre,
+          frase: fraseAleatoria,
+          fecha: fechaActual,
+        }
+
+        setTicketInfo(nuevoTicket)
+        setMostrarModal(false)
+        console.log("✅ Ticket generado exitosamente:", nuevoTicket)
+      } else {
+        throw new Error("No se pudo generar el ticket")
       }
-
-      // Actualizar el estado del sistema
-      await actualizarEstado({
-        ultimoNumero: nuevoNumero,
-        totalTickets: estado.totalTickets + 1,
-      })
-
-      setTicketInfo(nuevoTicket)
-      setMostrarModal(false)
     } catch (error) {
-      console.error("Error al generar ticket:", error)
+      console.error("❌ Error al generar ticket:", error)
       alert("Error al generar el ticket. Por favor, intente nuevamente.")
     } finally {
       setGenerandoTicket(false)
@@ -239,7 +244,7 @@ export default function Home() {
                     <div className="text-sm text-gray-600">Último Número</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-3xl font-bold text-green-600">{estado.totalTickets}</div>
+                    <div className="text-3xl font-bold text-green-600">{estado.totalAtendidos}</div>
                     <div className="text-sm text-gray-600">Total Tickets</div>
                   </div>
                 </div>
