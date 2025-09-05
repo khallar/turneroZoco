@@ -45,10 +45,10 @@ const estadoInicial: EstadoSistema = {
 
 // Configuración de intervalos optimizada por página
 const INTERVALOS_ACTUALIZACION = {
-  principal: 90000, // 90 segundos
-  empleados: 30000, // 30 segundos
-  proximos: 60000, // 60 segundos
-  admin: 120000, // 120 segundos
+  principal: 90000, // 90 segundos (era 60)
+  empleados: 30000, // 30 segundos (era 15)
+  proximos: 60000, // 60 segundos (era 30)
+  admin: 120000, // 120 segundos (era variable)
 } as const
 
 export function useSistemaEstado(pagina: keyof typeof INTERVALOS_ACTUALIZACION = "principal") {
@@ -331,7 +331,8 @@ export function useSistemaEstado(pagina: keyof typeof INTERVALOS_ACTUALIZACION =
 
   // Función optimizada para generar ticket
   const generarTicket = useCallback(
-    async (nombre: string, reintentos = 2) => {
+    async (nombre: string, reintentos = 1) => {
+      // Reducir reintentos de 2 a 1
       if (!isClient) return null
 
       for (let intento = 1; intento <= reintentos; intento++) {
@@ -398,7 +399,7 @@ export function useSistemaEstado(pagina: keyof typeof INTERVALOS_ACTUALIZACION =
 
       return null
     },
-    [isClient],
+    [isClient], // Remover cargarDebugInfo de las dependencias
   )
 
   // Función para obtener backups (con cache)

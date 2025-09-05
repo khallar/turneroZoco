@@ -2,16 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Download, Printer } from "lucide-react"
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { X, Share2, Download } from "lucide-react"
 
 interface TicketDisplayProps {
   numero: number
@@ -22,7 +14,7 @@ interface TicketDisplayProps {
   esMobile: boolean
 }
 
-export default function TicketDisplay({ numero, nombre, frase, fecha, esMobile, onClose }: TicketDisplayProps) {
+export default function TicketDisplay({ numero, nombre, frase, fecha, onClose, esMobile }: TicketDisplayProps) {
   const [mostrarTicket, setMostrarTicket] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -381,41 +373,55 @@ export default function TicketDisplay({ numero, nombre, frase, fecha, esMobile, 
     }
   }
 
-  const handlePrint = () => {
-    window.print()
-  }
-
   if (!mostrarTicket || !mounted) return null
 
   return (
-    <AlertDialog open={!!numero} onOpenChange={onClose}>
-      <AlertDialogContent className="max-w-sm">
-        <AlertDialogHeader>
-          <AlertDialogTitle>¡Ticket Generado!</AlertDialogTitle>
-          <AlertDialogDescription>
-            <div className="flex flex-col items-center justify-center">
-              <div className="text-4xl font-bold text-blue-600">#{numero.toString().padStart(3, "0")}</div>
-              <div className="text-lg text-gray-700">Nombre: {nombre}</div>
-              <div className="text-sm text-gray-500">Fecha: {fecha}</div>
-              <div className="text-center mt-4 text-gray-800 italic">"{frase}"</div>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-sm bg-white">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-lg">Ticket Generado</CardTitle>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div className="bg-white border-2 border-dashed border-gray-400 p-6 text-center font-mono mb-4">
+            <h3 className="text-lg font-bold mb-4">NÚMERO DE ATENCIÓN</h3>
+            <div className="text-6xl font-bold text-blue-600 border-2 border-blue-600 rounded-lg py-4 mb-4">
+              {numero.toString().padStart(3, "0")}
             </div>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <Button
-            onClick={esMobile ? guardarTicketMobile : generarImagenTicket}
-            className="bg-green-600 hover:bg-green-700 text-white"
-          >
-            <Download className="mr-2 h-4 w-4" />
-            {esMobile ? "Guardar Imagen" : "Descargar Ticket"}
-          </Button>
-          <Button onClick={handlePrint} className="bg-green-600 hover:bg-green-700 text-white">
-            <Printer className="mr-2 h-4 w-4" />
-            Imprimir
-          </Button>
-          <AlertDialogCancel onClick={onClose}>Cerrar</AlertDialogCancel>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+            <div className="text-lg font-bold text-green-600 bg-green-50 p-2 rounded mb-4">{nombre}</div>
+            <p className="text-sm italic mb-2">{frase}</p>
+            <hr className="border-dashed border-gray-400 my-3" />
+            <p className="text-xs">Fecha: {fecha}</p>
+            <p className="text-xs">Conserve este ticket</p>
+            <p className="text-xs">Será llamado por su número o nombre</p>
+          </div>
+
+          <div className="flex gap-2 justify-center">
+            <Button
+              onClick={esMobile ? guardarTicketMobile : generarImagenTicket}
+              className="flex-1 bg-green-600 hover:bg-green-700"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              {esMobile ? "Guardar Imagen" : "Descargar Ticket"}
+            </Button>
+            <Button onClick={compartirTicket} variant="outline">
+              <Share2 className="mr-2 h-4 w-4" />
+              Compartir
+            </Button>
+          </div>
+
+          {esMobile && (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-xs text-yellow-800">
+                💡 <strong>Tip:</strong> Después de presionar "Guardar Imagen", mantenga presionada la imagen del ticket
+                y seleccione "Guardar imagen" para guardarlo en su galería.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   )
 }

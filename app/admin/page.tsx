@@ -51,8 +51,6 @@ export default function PaginaAdmin() {
   const [horaActual, setHoraActual] = useState(new Date())
   const [mostrarMetricasAvanzadas, setMostrarMetricasAvanzadas] = useState(false)
   const [descargandoTodos, setDescargandoTodos] = useState(false)
-  const [errorBackups, setErrorBackups] = useState<string | null>(null)
-  const [cargandoBackups, setCargandoBackups] = useState(false)
 
   useEffect(() => {
     if (isClient) {
@@ -82,28 +80,11 @@ export default function PaginaAdmin() {
   }
 
   const cargarBackups = async () => {
-    if (!isClient) return
-
-    setCargandoBackups(true)
-    setErrorBackups(null)
-
     try {
-      console.log("🔄 Cargando backups desde API...")
       const backupsData = await obtenerBackups()
-
-      if (Array.isArray(backupsData)) {
-        setBackups(backupsData)
-        console.log(`✅ Cargados ${backupsData.length} backups`)
-      } else {
-        console.warn("⚠️ Los datos de backups no son un array:", backupsData)
-        setBackups([])
-      }
+      setBackups(backupsData)
     } catch (error) {
-      console.error("❌ Error al cargar backups:", error)
-      setErrorBackups(error instanceof Error ? error.message : "Error desconocido al cargar backups")
-      setBackups([])
-    } finally {
-      setCargandoBackups(false)
+      console.error("Error al cargar backups:", error)
     }
   }
 
@@ -113,7 +94,6 @@ export default function PaginaAdmin() {
       setBackupSeleccionado(backup)
     } catch (error) {
       console.error("Error al obtener backup:", error)
-      alert("Error al obtener los detalles del backup")
     }
   }
 
@@ -469,7 +449,7 @@ export default function PaginaAdmin() {
         // METADATOS DE DESCARGA
         metadatos: {
           fechaDescarga: new Date().toISOString(),
-          version: "5.3",
+          version: "5.1",
           sistema: "TURNOS_ZOCO",
           generadoPor: "Panel de Administración",
         },
@@ -597,7 +577,7 @@ export default function PaginaAdmin() {
         // METADATOS
         metadatos: {
           fechaDescarga: new Date().toISOString(),
-          version: "5.3",
+          version: "5.2",
           sistema: "TURNOS_ZOCO",
           tipoDescarga: "Backup Completo JSON",
           generadoPor: "Panel de Administración",
@@ -842,7 +822,7 @@ export default function PaginaAdmin() {
         // METADATOS
         metadatos: {
           fechaDescarga: new Date().toISOString(),
-          version: "5.3",
+          version: "5.1",
           sistema: "TURNOS_ZOCO",
           generadoPor: "Panel de Administración - Descarga Completa",
           totalDiasIncluidos: backupsCompletos.length,
@@ -1121,13 +1101,6 @@ export default function PaginaAdmin() {
             >
               <Eye className="mr-2 h-4 w-4" />
               Ver Próximos
-            </a>
-            <a
-              href="/resumen"
-              className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-            >
-              <BarChart3 className="mr-2 h-4 w-4" />
-              Resumen Histórico
             </a>
           </div>
         </div>
@@ -1672,9 +1645,9 @@ export default function PaginaAdmin() {
                 Historial de Días Anteriores
               </div>
               <div className="flex gap-2">
-                <Button onClick={cargarBackups} variant="outline" size="sm" disabled={cargandoBackups}>
-                  <RefreshCw className={`mr-2 h-4 w-4 ${cargandoBackups ? "animate-spin" : ""}`} />
-                  {cargandoBackups ? "Cargando..." : "Actualizar"}
+                <Button onClick={cargarBackups} variant="outline" size="sm">
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Actualizar
                 </Button>
                 {backups.length > 0 && (
                   <Button
@@ -1700,26 +1673,6 @@ export default function PaginaAdmin() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Mostrar error de backups si existe */}
-            {errorBackups && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                <div className="flex items-center gap-2 text-red-800 mb-2">
-                  <AlertTriangle className="h-5 w-5" />
-                  <span className="font-semibold">Error al cargar backups</span>
-                </div>
-                <p className="text-red-700 text-sm">{errorBackups}</p>
-                <Button
-                  onClick={cargarBackups}
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 bg-transparent"
-                  disabled={cargandoBackups}
-                >
-                  Reintentar
-                </Button>
-              </div>
-            )}
-
             {backups.length > 0 ? (
               <div className="space-y-4">
                 {/* Resumen del historial */}
@@ -1996,52 +1949,10 @@ export default function PaginaAdmin() {
             ) : (
               <div className="text-center py-12">
                 <div className="text-6xl mb-4">📊</div>
-                <p className="text-xl text-gray-500 mb-2">
-                  {cargandoBackups ? "Cargando historial..." : "No hay historial disponible"}
-                </p>
-                <p className="text-gray-400">
-                  {cargandoBackups
-                    ? "Obteniendo datos de backups..."
-                    : "Los backups aparecerán aquí después del primer día de operación"}
-                </p>
+                <p className="text-xl text-gray-500 mb-2">No hay historial disponible</p>
+                <p className="text-gray-400">Los backups aparecerán aquí después del primer día de operación</p>
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        {/* Acciones Administrativas */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2 text-red-800">
-              <AlertTriangle className="h-6 w-6" />
-              Acciones Administrativas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Button
-                onClick={() => setMostrarConfirmacionReinicio(true)}
-                className="bg-orange-600 hover:bg-orange-700 text-white"
-                disabled={procesandoAccion}
-              >
-                <RotateCcw className="mr-2 h-4 w-4" />
-                Reiniciar Contador Diario
-              </Button>
-
-              <Button onClick={exportarDatos} className="bg-blue-600 hover:bg-blue-700 text-white">
-                <Download className="mr-2 h-4 w-4" />
-                Exportar Datos Actuales
-              </Button>
-
-              <Button
-                onClick={() => setMostrarConfirmacionEliminar(true)}
-                className="bg-red-600 hover:bg-red-700 text-white"
-                disabled={procesandoAccion}
-              >
-                <AlertTriangle className="mr-2 h-4 w-4" />
-                Eliminar Todos los Registros
-              </Button>
-            </div>
           </CardContent>
         </Card>
 
@@ -2160,7 +2071,7 @@ export default function PaginaAdmin() {
         {/* Footer */}
         <footer className="text-center mt-8 pt-4 border-t border-gray-200">
           <div className="text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 5.3 | Historial Consolidado + Descarga Masiva</p>
+            <p>Develop by: Karim :) | Versión 5. | Historial Consolidado + Descarga Masiva</p>
             <p>Actualización inteligente cada 120s | Cache compartido entre páginas</p>
           </div>
         </footer>
