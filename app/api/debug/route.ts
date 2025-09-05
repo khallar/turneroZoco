@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { verificarConexionDB, leerEstadoSistema, getTodayDateString } from "@/lib/database"
+import { verificarConexionDB, leerEstadoSistema, getTodayDateString, checkUpstashHealth } from "@/lib/database"
 
 export async function GET() {
   try {
@@ -81,6 +81,16 @@ export async function GET() {
           transaccionesAtomicas: "Pipeline y MULTI/EXEC",
           compresion: "Automática",
           ssl: "TLS 1.2+",
+        }
+
+        // Health check for Upstash
+        const health = await checkUpstashHealth()
+        debug.redis = health
+        debug.availableEnvVars = {
+          UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL ? "✓ Set" : "✗ Not set",
+          UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN ? "✓ Set" : "✗ Not set",
+          KV_REST_API_URL: process.env.KV_REST_API_URL ? "✓ Set" : "✗ Not set",
+          KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Set" : "✗ Not set",
         }
       } else {
         debug.upstash.estadoActual = "No se pudo conectar"

@@ -1,22 +1,21 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { X, Share2, Download } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
+import { useRouter } from "next/navigation"
 
 interface TicketDisplayProps {
   numero: number
   nombre: string
   frase: string
   fecha: string
-  onClose: () => void
-  esMobile: boolean
+  onClose?: () => void
 }
 
-export default function TicketDisplay({ numero, nombre, frase, fecha, onClose, esMobile }: TicketDisplayProps) {
+export default function TicketDisplay({ numero, nombre, frase, fecha, onClose }: TicketDisplayProps) {
   const [mostrarTicket, setMostrarTicket] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const router = useRouter()
 
   useEffect(() => {
     setMounted(true)
@@ -232,8 +231,9 @@ export default function TicketDisplay({ numero, nombre, frase, fecha, onClose, e
           </head>
           <body>
             <div class="ticket" id="ticket">
-              <h2>NÚMERO DE ATENCIÓN</h2>
-              <div class="numero">${numero.toString().padStart(3, "0")}</div>
+              <img src="/logo-rojo.png" alt="Logo ZOCO" class="h-16 mx-auto mb-4" style="filter: brightness(0) saturate(100%) invert(11%) sepia(100%) saturate(7500%) hue-rotate(0deg) brightness(100%) contrast(120%);">
+              <h2 class="text-2xl font-bold text-gray-800 mb-2">¡Ticket Generado!</h2>
+              <div class="numero">#{numero.toString().padStart(3, "0")}</div>
               <div class="nombre">${nombre}</div>
               <p class="frase">${frase}</p>
               <hr>
@@ -377,48 +377,40 @@ export default function TicketDisplay({ numero, nombre, frase, fecha, onClose, e
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-sm bg-white">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-lg">Ticket Generado</CardTitle>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <div className="bg-white border-2 border-dashed border-gray-400 p-6 text-center font-mono mb-4">
-            <h3 className="text-lg font-bold mb-4">NÚMERO DE ATENCIÓN</h3>
-            <div className="text-6xl font-bold text-blue-600 border-2 border-blue-600 rounded-lg py-4 mb-4">
-              {numero.toString().padStart(3, "0")}
-            </div>
-            <div className="text-lg font-bold text-green-600 bg-green-50 p-2 rounded mb-4">{nombre}</div>
-            <p className="text-sm italic mb-2">{frase}</p>
-            <hr className="border-dashed border-gray-400 my-3" />
-            <p className="text-xs">Fecha: {fecha}</p>
-            <p className="text-xs">Conserve este ticket</p>
-            <p className="text-xs">Será llamado por su número o nombre</p>
+      <Card className="w-full max-w-md bg-white shadow-2xl">
+        <CardContent className="p-8 text-center">
+          <div className="mb-6">
+            <img
+              src="/logo-rojo.png"
+              alt="Logo ZOCO"
+              className="h-16 mx-auto mb-4"
+              style={{
+                filter:
+                  "brightness(0) saturate(100%) invert(11%) sepia(100%) saturate(7500%) hue-rotate(0deg) brightness(100%) contrast(120%)",
+              }}
+            />
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">¡Ticket Generado!</h2>
           </div>
 
-          <div className="flex gap-2 justify-center">
-            <Button
-              onClick={esMobile ? guardarTicketMobile : generarImagenTicket}
-              className="flex-1 bg-green-600 hover:bg-green-700"
+          <div className="bg-gradient-to-r from-purple-100 to-pink-100 border-4 border-purple-300 rounded-2xl p-6 mb-6">
+            <div className="text-6xl font-black text-purple-600 mb-4">#{numero.toString().padStart(3, "0")}</div>
+            <div className="text-xl font-bold text-gray-800 mb-2">{nombre}</div>
+            <div className="text-sm text-gray-600">{fecha}</div>
+          </div>
+
+          <div className="space-y-3 text-sm text-gray-600 mb-6">
+            <p>✅ Su ticket ha sido generado exitosamente</p>
+            <p>⏰ Mantenga este número visible</p>
+            <p>📢 Esté atento cuando sea llamado</p>
+          </div>
+
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
             >
-              <Download className="mr-2 h-4 w-4" />
-              {esMobile ? "Guardar Imagen" : "Descargar Ticket"}
-            </Button>
-            <Button onClick={compartirTicket} variant="outline">
-              <Share2 className="mr-2 h-4 w-4" />
-              Compartir
-            </Button>
-          </div>
-
-          {esMobile && (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-xs text-yellow-800">
-                💡 <strong>Tip:</strong> Después de presionar "Guardar Imagen", mantenga presionada la imagen del ticket
-                y seleccione "Guardar imagen" para guardarlo en su galería.
-              </p>
-            </div>
+              Cerrar
+            </button>
           )}
         </CardContent>
       </Card>

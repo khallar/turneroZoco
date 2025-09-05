@@ -81,16 +81,13 @@ try {
     url: redisConfig.url,
     token: redisConfig.token,
     retry: {
-      retries: 3,
-      backoff: (retryCount) => Math.exp(retryCount) * 50, // Exponential backoff
+      retries: 2,
+      backoff: (retryCount) => Math.exp(retryCount) * 100,
     },
-    automaticDeserialization: true,
+    automaticDeserialization: false, // Cambiar a false para manejar manualmente
   })
   console.log(`🔗 Cliente Upstash Redis inicializado exitosamente`)
   console.log(`📊 Configuración: ${redisConfig.name}`)
-  console.log(
-    `🌐 Región: ${redisConfig.url.includes("us1") ? "US East" : redisConfig.url.includes("eu1") ? "EU West" : "Global"}`,
-  )
 } catch (error) {
   console.error("❌ Error al inicializar cliente Upstash Redis:", error)
   // Crear un cliente mock para evitar errores de compilación
@@ -121,13 +118,24 @@ export function getTodayDateString(): string {
   return formatter.format(now)
 }
 
-// --- Core State Management ---
+// Función helper para parsear JSON de forma segura
+function safeJsonParse(data: any): any {
+  if (typeof data === "string") {
+    try {
+      return JSON.parse(data)
+    } catch (error) {
+      console.error("Error parsing JSON:", error, "Data:", data)
+      return null
+    }
+  }
+  return data
+}
 
 // Función helper para retry con backoff exponencial
 async function retryOperation<T>(
   operation: () => Promise<T>,
-  maxRetries = 3,
-  baseDelay = 1000,
+  maxRetries = 2,
+  baseDelay = 500,
   operationName = "operación",
 ): Promise<T> {
   let lastError: Error
@@ -150,7 +158,7 @@ async function retryOperation<T>(
       }
 
       // Backoff exponencial con jitter
-      const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000
+      const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 500
       console.log(`⏳ Esperando ${Math.round(delay)}ms antes del siguiente intento...`)
       await new Promise((resolve) => setTimeout(resolve, delay))
     }
@@ -169,27 +177,47 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
       const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
       const counterKey = COUNTER_KEY_PREFIX + fechaHoy
 
-      // Pipeline optimizado para reducir latencia
-      const pipeline = redis.pipeline()
-      pipeline.get(estadoKey)
-      pipeline.lrange(ticketsListKey, 0, -1)
-      pipeline.get(counterKey)
-      pipeline.exists(estadoKey)
-      pipeline.exists(ticketsListKey)
+      // Operaciones individuales para mejor control de errores
+      let estadoRaw: any = null
+      let ticketsRaw: any[] = []
+      let contadorActual = 0
 
-      const results = await pipeline.exec()
-
-      if (!Array.isArray(results) || results.length !== 5) {
-        throw new Error("Respuesta inesperada de Upstash Redis pipeline")
+      try {
+        estadoRaw = await redis.get(estadoKey)
+        estadoRaw = safeJsonParse(estadoRaw)
+      } catch (error) {
+        console.warn("Error leyendo estado:", error)
       }
 
-      const [estadoRaw, ticketsRaw, contadorActual, estadoExists, ticketsExists] = results
-      let estado: EstadoSistema
-      const tickets: TicketInfo[] = Array.isArray(ticketsRaw) ? ticketsRaw : []
-      const contador = typeof contadorActual === "number" ? contadorActual : 0
+      try {
+        ticketsRaw = await redis.lrange(ticketsListKey, 0, -1)
+        if (Array.isArray(ticketsRaw)) {
+          ticketsRaw = ticketsRaw.map((ticket) => safeJsonParse(ticket)).filter(Boolean)
+        } else {
+          ticketsRaw = []
+        }
+      } catch (error) {
+        console.warn("Error leyendo tickets:", error)
+        ticketsRaw = []
+      }
 
-      console.log(`🔍 Datos leídos: ${tickets.length} tickets, contador: ${contador}`)
-      console.log(`📊 Existencia: Estado: ${estadoExists ? "✓" : "✗"}, Tickets: ${ticketsExists ? "✓" : "✗"}`)
+      try {
+        const counterResult = await redis.get(counterKey)
+        contadorActual =
+          typeof counterResult === "number"
+            ? counterResult
+            : typeof counterResult === "string"
+              ? Number.parseInt(counterResult) || 0
+              : 0
+      } catch (error) {
+        console.warn("Error leyendo contador:", error)
+      }
+
+      const tickets: TicketInfo[] = Array.isArray(ticketsRaw) ? ticketsRaw : []
+
+      console.log(`🔍 Datos leídos: ${tickets.length} tickets, contador: ${contadorActual}`)
+
+      let estado: EstadoSistema
 
       if (estadoRaw && typeof estadoRaw === "object") {
         estado = estadoRaw
@@ -209,21 +237,17 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
             estado.numeroActual = ultimoTicketReal.numero + 1
           }
 
-          // Actualizar el estado corregido en Redis con persistencia extendida
+          // Actualizar el estado corregido en Redis
           estado.lastSync = Date.now()
-          await redis.set(estadoKey, estado, { ex: 48 * 60 * 60 }) // 48 horas de persistencia
-          console.log("✅ Estado corregido y guardado con persistencia extendida")
+          try {
+            await redis.set(estadoKey, JSON.stringify(estado), { ex: 48 * 60 * 60 })
+            console.log("✅ Estado corregido y guardado")
+          } catch (error) {
+            console.warn("Error guardando estado corregido:", error)
+          }
         }
 
-        // Asegurar persistencia de datos existentes
-        if (ticketsExists && tickets.length > 0) {
-          await redis.expire(ticketsListKey, 48 * 60 * 60) // 48 horas
-        }
-        if (contador > 0) {
-          await redis.expire(counterKey, 48 * 60 * 60) // 48 horas
-        }
-
-        console.log("✅ Estado y tickets cargados desde TURNOS_ZOCO (Upstash Redis) con persistencia verificada.")
+        console.log("✅ Estado y tickets cargados desde TURNOS_ZOCO (Upstash Redis)")
       } else {
         // Crear estado inicial para el día si no existe
         console.log("⚠️ No se encontró estado para hoy, creando inicial en TURNOS_ZOCO (Upstash Redis)...")
@@ -239,15 +263,19 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
           numeroActual: ultimoNumero + 1,
           ultimoNumero: ultimoNumero,
           totalAtendidos: tickets.length,
-          numerosLlamados: 0, // Esto se debe calcular o mantener por separado
+          numerosLlamados: 0,
           fechaInicio: fechaHoy,
           ultimoReinicio: new Date().toISOString(),
           lastSync: Date.now(),
         }
 
-        // Guardar el estado inicial con persistencia extendida
-        await redis.set(estadoKey, estado, { ex: 48 * 60 * 60 }) // 48 horas
-        console.log("✅ Estado inicial creado con persistencia extendida")
+        // Guardar el estado inicial
+        try {
+          await redis.set(estadoKey, JSON.stringify(estado), { ex: 48 * 60 * 60 })
+          console.log("✅ Estado inicial creado")
+        } catch (error) {
+          console.warn("Error guardando estado inicial:", error)
+        }
       }
 
       console.log(
@@ -255,8 +283,8 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
       )
       return { ...estado, tickets }
     },
-    3,
-    1000,
+    2,
+    500,
     "Lectura de estado",
   )
 }
@@ -264,19 +292,17 @@ export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: Ti
 // escribirEstadoSistema ahora solo escribe la metadata del estado
 export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void> {
   try {
-    console.log("💾 Escribiendo estado (metadata) a TURNOS_ZOCO (Upstash Redis) con persistencia mejorada...")
+    console.log("💾 Escribiendo estado (metadata) a TURNOS_ZOCO (Upstash Redis)...")
     const estadoKey = STATE_KEY_PREFIX + estado.fechaInicio
-    estado.lastSync = Date.now() // Actualizar timestamp de sincronización
+    estado.lastSync = Date.now()
 
-    // OPTIMIZACIÓN: SET con persistencia extendida y backup automático
-    // Establecer una expiración más larga para mayor persistencia (48 horas)
-    await redis.set(estadoKey, estado, { ex: 48 * 60 * 60 }) // 48 horas
+    await redis.set(estadoKey, JSON.stringify(estado), { ex: 48 * 60 * 60 })
 
-    // Crear una copia de respaldo con clave diferente para mayor seguridad
+    // Crear una copia de respaldo
     const backupKey = `${estadoKey}:backup`
-    await redis.set(backupKey, estado, { ex: 72 * 60 * 60 }) // 72 horas para backup
+    await redis.set(backupKey, JSON.stringify(estado), { ex: 72 * 60 * 60 })
 
-    console.log("✅ Estado (metadata) guardado exitosamente en TURNOS_ZOCO (Upstash Redis) con persistencia mejorada")
+    console.log("✅ Estado (metadata) guardado exitosamente en TURNOS_ZOCO (Upstash Redis)")
   } catch (error) {
     console.error("❌ Error al escribir estado en TURNOS_ZOCO (Upstash Redis):", error)
     throw error
@@ -293,21 +319,18 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
       const ticketsListKey = TICKETS_LIST_KEY_PREFIX + fechaHoy
       const counterKey = COUNTER_KEY_PREFIX + fechaHoy
 
-      // OPTIMIZACIÓN: Una sola transacción más simple y rápida
-      const results = await redis
-        .multi()
-        .incr(counterKey) // Incrementa el contador diario de tickets (atómico)
-        .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado actual
-        .exec()
-
-      if (!Array.isArray(results) || results.length !== 2) {
-        throw new Error("Respuesta inesperada de Redis MULTI/EXEC en generarTicketAtomico")
-      }
-
-      const [numeroAsignadoRaw, estadoRaw] = results
-      const numeroAsignado = typeof numeroAsignadoRaw === "number" ? numeroAsignadoRaw : 1
-
+      // Incrementar contador atómicamente
+      const numeroAsignado = await redis.incr(counterKey)
       console.log(`🔍 Número asignado: ${numeroAsignado}`)
+
+      // Obtener estado actual
+      let estadoRaw: any = null
+      try {
+        estadoRaw = await redis.get(estadoKey)
+        estadoRaw = safeJsonParse(estadoRaw)
+      } catch (error) {
+        console.warn("Error leyendo estado durante generación:", error)
+      }
 
       let estadoActual: EstadoSistema
       if (estadoRaw && typeof estadoRaw === "object") {
@@ -323,8 +346,13 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
           ultimoReinicio: new Date().toISOString(),
           lastSync: Date.now(),
         }
-        // Establecer expiración para la clave del contador si es nueva
-        await redis.expire(counterKey, 48 * 60 * 60) // 48 horas
+
+        // Establecer expiración para la clave del contador
+        try {
+          await redis.expire(counterKey, 48 * 60 * 60)
+        } catch (error) {
+          console.warn("Error estableciendo expiración del contador:", error)
+        }
       }
 
       const fecha = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
@@ -340,39 +368,36 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
       // Actualizar la metadata del estado
       estadoActual.numeroActual = numeroAsignado + 1
       estadoActual.ultimoNumero = numeroAsignado
-      estadoActual.totalAtendidos = numeroAsignado // Usar el contador como fuente de verdad
+      estadoActual.totalAtendidos = numeroAsignado
       estadoActual.lastSync = Date.now()
 
-      // OPTIMIZACIÓN: Transacción más simple - solo lo esencial
-      await redis
-        .multi()
-        .set(estadoKey, estadoActual, { ex: 48 * 60 * 60 }) // Estado actualizado
-        .rpush(ticketsListKey, nuevoTicket) // Añadir ticket a la lista
-        .expire(ticketsListKey, 48 * 60 * 60) // Asegurar persistencia
-        .expire(counterKey, 48 * 60 * 60) // Asegurar persistencia del contador
-        .exec()
+      // Guardar estado y ticket
+      try {
+        await redis.set(estadoKey, JSON.stringify(estadoActual), { ex: 48 * 60 * 60 })
+        await redis.rpush(ticketsListKey, JSON.stringify(nuevoTicket))
+        await redis.expire(ticketsListKey, 48 * 60 * 60)
+        await redis.expire(counterKey, 48 * 60 * 60)
+      } catch (error) {
+        console.error("Error guardando ticket:", error)
+        throw error
+      }
 
       console.log("✅ Ticket generado exitosamente:", nuevoTicket)
       return nuevoTicket
     },
-    2, // Reducir reintentos de 3 a 2
-    500, // Reducir delay inicial de 1000ms a 500ms
+    2,
+    500,
     "Generación de ticket",
   )
 }
 
-// --- Backup & Admin Functions ---
-
-// crearBackupDiario ahora espera el estado completo (metadata + tickets)
+// Resto de las funciones con manejo mejorado de errores...
 export async function crearBackupDiario(estado: EstadoSistema & { tickets: TicketInfo[] }): Promise<void> {
   try {
-    console.log("📦 Creando backup diario mejorado en TURNOS_ZOCO (Upstash Redis)...")
+    console.log("📦 Creando backup diario en TURNOS_ZOCO (Upstash Redis)...")
 
     const fecha = estado.fechaInicio
     const backupKey = BACKUP_KEY_PREFIX + fecha
-
-    // Calcular métricas avanzadas para el backup
-    const metricas = calcularMetricasParaBackup(estado)
 
     const backupData = {
       fecha,
@@ -393,199 +418,14 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
         ultimoTicket: estado.ultimoNumero,
         horaInicio: estado.fechaInicio,
         horaBackup: new Date().toISOString(),
-        // NUEVAS MÉTRICAS SOLICITADAS
-        tiempoPromedioEsperaReal: metricas.tiempoEsperaReal,
-        horaPico: metricas.horaPico,
-        distribucionPorHora: metricas.distribucionPorHora,
-        velocidadAtencion: metricas.velocidadAtencion,
-        tiempoEntreTickets: metricas.tiempoEntreTickets,
-        eficienciaDiaria:
-          estado.totalAtendidos > 0 ? Math.round((estado.numerosLlamados / estado.totalAtendidos) * 100) : 0,
-        proyeccionCumplida: metricas.proyeccionCumplida,
-        nombresComunes: metricas.nombresComunes,
       },
-      tickets: estado.tickets, // Incluye el array completo de tickets en el backup
-      // DATOS DETALLADOS PARA DESCARGA
-      datosDetallados: {
-        ticketsPorHora: metricas.distribucionPorHora,
-        analisisTemporal: {
-          inicioOperaciones: estado.fechaInicio,
-          finOperaciones: new Date().toISOString(),
-          duracionTotal: metricas.duracionOperaciones,
-          horasPico: metricas.horasPico,
-          horasMinimas: metricas.horasMinimas,
-        },
-        estadisticasClientes: {
-          nombresUnicos: metricas.nombresUnicos,
-          clientesRecurrentes: metricas.clientesRecurrentes,
-          promedioCaracteresPorNombre: metricas.promedioCaracteresPorNombre,
-        },
-        rendimiento: {
-          tiempoPromedioEsperaReal: metricas.tiempoEsperaReal,
-          velocidadAtencion: metricas.velocidadAtencion,
-          eficienciaOperativa: metricas.eficienciaOperativa,
-          tiempoEntreTickets: metricas.tiempoEntreTickets,
-        },
-      },
+      tickets: estado.tickets,
     }
 
-    // OPTIMIZACIÓN: SET con expiración para el backup.
-    await redis.set(backupKey, backupData, { ex: 60 * 24 * 60 * 60 }) // 60 días de expiración para los backups
-    console.log("✅ Backup diario mejorado creado exitosamente en TURNOS_ZOCO (Upstash Redis)")
+    await redis.set(backupKey, JSON.stringify(backupData), { ex: 60 * 24 * 60 * 60 })
+    console.log("✅ Backup diario creado exitosamente en TURNOS_ZOCO (Upstash Redis)")
   } catch (error) {
     console.error("❌ Error al crear backup diario en TURNOS_ZOCO (Upstash Redis):", error)
-    // No lanzar error para no bloquear otras operaciones
-  }
-}
-
-// Nueva función para calcular métricas específicas para el backup
-function calcularMetricasParaBackup(estado: EstadoSistema & { tickets: TicketInfo[] }) {
-  if (!estado.tickets || estado.tickets.length === 0) {
-    return {
-      tiempoEsperaReal: 0,
-      horaPico: { hora: 0, cantidad: 0, porcentaje: 0 },
-      distribucionPorHora: {},
-      velocidadAtencion: 0,
-      tiempoEntreTickets: 0,
-      proyeccionCumplida: 0,
-      nombresComunes: [],
-      duracionOperaciones: 0,
-      horasPico: [],
-      horasMinimas: [],
-      nombresUnicos: 0,
-      clientesRecurrentes: 0,
-      promedioCaracteresPorNombre: 0,
-      eficienciaOperativa: 0,
-    }
-  }
-
-  const tickets = estado.tickets
-  const ahora = new Date()
-  const inicioOperaciones = new Date(estado.fechaInicio)
-  const duracionOperaciones = (ahora.getTime() - inicioOperaciones.getTime()) / (1000 * 60 * 60) // en horas
-
-  // 1. Distribución de tickets por hora del día
-  const distribucionPorHora = {}
-  tickets.forEach((ticket) => {
-    const fecha = ticket.timestamp ? new Date(ticket.timestamp) : new Date(ticket.fecha)
-    const hora = fecha.getHours()
-    distribucionPorHora[hora] = (distribucionPorHora[hora] || 0) + 1
-  })
-
-  // 2. Hora pico con más detalles
-  const horaPico = Object.entries(distribucionPorHora).reduce(
-    (max, [hora, cantidad]) => {
-      const porcentaje = Math.round((cantidad / estado.totalAtendidos) * 100)
-      return cantidad > max.cantidad ? { hora: Number.parseInt(hora), cantidad, porcentaje } : max
-    },
-    { hora: 0, cantidad: 0, porcentaje: 0 },
-  )
-
-  // 3. Tiempo de espera real promedio mejorado
-  let tiempoEsperaReal = 0
-  if (estado.numerosLlamados > 0 && tickets.length > 0) {
-    const ticketsAtendidos = tickets.slice(0, estado.numerosLlamados)
-    const tiemposEspera = []
-
-    ticketsAtendidos.forEach((ticket, index) => {
-      const tiempoEmision = ticket.timestamp || new Date(ticket.fecha).getTime()
-      const tiempoEstimadoLlamada =
-        inicioOperaciones.getTime() + (index + 1) * (duracionOperaciones / estado.numerosLlamados) * 60 * 60 * 1000
-      const espera = (tiempoEstimadoLlamada - tiempoEmision) / 1000 / 60 // en minutos
-      if (espera > 0) tiemposEspera.push(espera)
-    })
-
-    if (tiemposEspera.length > 0) {
-      tiempoEsperaReal = tiemposEspera.reduce((a, b) => a + b, 0) / tiemposEspera.length
-    }
-  }
-
-  // 4. Velocidad de atención
-  const tiempoOperacionMinutos = duracionOperaciones * 60
-  const velocidadAtencion = tiempoOperacionMinutos > 0 ? estado.numerosLlamados / tiempoOperacionMinutos : 0
-
-  // 5. Tiempo entre tickets
-  let tiempoEntreTickets = 0
-  if (tickets.length > 1) {
-    const tiempos = []
-    for (let i = 1; i < tickets.length; i++) {
-      const timestamp1 = tickets[i - 1].timestamp || new Date(tickets[i - 1].fecha).getTime()
-      const timestamp2 = tickets[i].timestamp || new Date(tickets[i].fecha).getTime()
-      const diff = timestamp2 - timestamp1
-      if (diff > 0) tiempos.push(diff)
-    }
-    if (tiempos.length > 0) {
-      tiempoEntreTickets = tiempos.reduce((a, b) => a + b, 0) / tiempos.length / 1000 / 60 // en minutos
-    }
-  }
-
-  // 6. Análisis de nombres
-  const nombresMap = {}
-  let totalCaracteres = 0
-  tickets.forEach((ticket) => {
-    const nombre = ticket.nombre.toLowerCase().trim()
-    if (nombre !== "cliente zoco") {
-      nombresMap[nombre] = (nombresMap[nombre] || 0) + 1
-      totalCaracteres += ticket.nombre.length
-    }
-  })
-
-  const nombresComunes = Object.entries(nombresMap)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 10)
-    .map(([nombre, cantidad]) => ({
-      nombre,
-      cantidad,
-      porcentaje: Math.round((cantidad / estado.totalAtendidos) * 100),
-    }))
-
-  const nombresUnicos = Object.keys(nombresMap).length
-  const clientesRecurrentes = Object.values(nombresMap).filter((count) => count > 1).length
-  const promedioCaracteresPorNombre = tickets.length > 0 ? Math.round(totalCaracteres / tickets.length) : 0
-
-  // 7. Horas pico y mínimas
-  const horasOrdenadas = Object.entries(distribucionPorHora).sort(([, a], [, b]) => b - a)
-
-  const horasPico = horasOrdenadas.slice(0, 3).map(([hora, cantidad]) => ({
-    hora: Number.parseInt(hora),
-    cantidad,
-    porcentaje: Math.round((cantidad / estado.totalAtendidos) * 100),
-  }))
-
-  const horasMinimas = horasOrdenadas.slice(-3).map(([hora, cantidad]) => ({
-    hora: Number.parseInt(hora),
-    cantidad,
-    porcentaje: Math.round((cantidad / estado.totalAtendidos) * 100),
-  }))
-
-  // 8. Proyección cumplida
-  const horaActual = ahora.getHours()
-  const minutosTranscurridos = ahora.getHours() * 60 + ahora.getMinutes()
-  const proyeccionDiaria =
-    minutosTranscurridos > 0
-      ? Math.round((estado.totalAtendidos / minutosTranscurridos) * (24 * 60))
-      : estado.totalAtendidos
-  const proyeccionCumplida = proyeccionDiaria > 0 ? Math.round((estado.totalAtendidos / proyeccionDiaria) * 100) : 100
-
-  // 9. Eficiencia operativa
-  const eficienciaOperativa =
-    estado.totalAtendidos > 0 ? Math.round((estado.numerosLlamados / estado.totalAtendidos) * 100) : 0
-
-  return {
-    tiempoEsperaReal: Math.round(tiempoEsperaReal * 10) / 10,
-    horaPico,
-    distribucionPorHora,
-    velocidadAtencion: Math.round(velocidadAtencion * 100) / 100,
-    tiempoEntreTickets: Math.round(tiempoEntreTickets * 10) / 10,
-    proyeccionCumplida,
-    nombresComunes,
-    duracionOperaciones: Math.round(duracionOperaciones * 10) / 10,
-    horasPico,
-    horasMinimas,
-    nombresUnicos,
-    clientesRecurrentes,
-    promedioCaracteresPorNombre,
-    eficienciaOperativa,
   }
 }
 
@@ -593,41 +433,32 @@ export async function obtenerBackups(): Promise<any[]> {
   try {
     console.log("📋 Obteniendo lista de backups desde TURNOS_ZOCO (Upstash Redis)...")
 
-    // NOTA: KEYS puede ser lento en bases de datos muy grandes.
-    // Para un número limitado de backups (ej. 30-60 días), es aceptable.
     const allKeys = await redis.keys(BACKUP_KEY_PREFIX + "*")
     const backups: any[] = []
 
     console.log(`🔍 Encontradas ${allKeys.length} claves de backup`)
 
-    // OPTIMIZACIÓN: Obtener todos los backups en una sola operación MULTI/EXEC si es posible
-    if (allKeys.length > 0) {
-      const multi = redis.multi()
-      for (const key of allKeys) {
-        multi.get(key)
-      }
-      const results = await multi.exec()
+    for (const key of allKeys) {
+      try {
+        const backup = await redis.get(key)
+        const parsedBackup = safeJsonParse(backup)
 
-      if (Array.isArray(results)) {
-        results.forEach((backup: any, index: number) => {
-          if (backup && typeof backup === "object" && "resumen" in backup) {
-            backups.push({
-              fecha: backup.fecha,
-              resumen: backup.resumen,
-              createdAt: backup.resumen?.horaBackup || backup.fecha, // Usar la hora de backup como created_at
-            })
-          } else {
-            console.warn(`⚠️ Backup inválido en clave ${allKeys[index]}:`, backup)
-          }
-        })
+        if (parsedBackup && typeof parsedBackup === "object" && "resumen" in parsedBackup) {
+          backups.push({
+            fecha: parsedBackup.fecha,
+            resumen: parsedBackup.resumen,
+            createdAt: parsedBackup.resumen?.horaBackup || parsedBackup.fecha,
+          })
+        }
+      } catch (error) {
+        console.warn(`⚠️ Error procesando backup ${key}:`, error)
       }
     }
 
-    // Ordenar por fecha descendente
     backups.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
 
     console.log(`✅ Obtenidos ${backups.length} backups válidos`)
-    return backups.slice(0, 30) // Limitar a los últimos 30
+    return backups.slice(0, 30)
   } catch (error) {
     console.error("❌ Error al obtener backups desde TURNOS_ZOCO (Upstash Redis):", error)
     return []
@@ -639,23 +470,22 @@ export async function obtenerBackup(fecha: string): Promise<any | null> {
     console.log(`📋 Obteniendo backup para fecha: ${fecha}`)
 
     const backupKey = BACKUP_KEY_PREFIX + fecha
-    // OPTIMIZACIÓN: GET es una operación de lectura directa y eficiente.
     const backup = await redis.get(backupKey)
+    const parsedBackup = safeJsonParse(backup)
 
-    if (backup) {
+    if (parsedBackup) {
       console.log(`✅ Backup encontrado para ${fecha}`)
     } else {
       console.log(`⚠️ No se encontró backup para ${fecha}`)
     }
 
-    return backup || null
+    return parsedBackup || null
   } catch (error) {
     console.error("❌ Error al obtener backup desde TURNOS_ZOCO (Upstash Redis):", error)
     return null
   }
 }
 
-// Nueva función para obtener resumen de días anteriores
 export async function obtenerResumenDiasAnteriores(dias = 7): Promise<any[]> {
   try {
     console.log(`📊 Obteniendo resumen de los últimos ${dias} días...`)
@@ -666,7 +496,7 @@ export async function obtenerResumenDiasAnteriores(dias = 7): Promise<any[]> {
     for (let i = 1; i <= dias; i++) {
       const fecha = new Date(hoy)
       fecha.setDate(hoy.getDate() - i)
-      const fechaStr = fecha.toISOString().split("T")[0] // YYYY-MM-DD
+      const fechaStr = fecha.toISOString().split("T")[0]
 
       const backup = await obtenerBackup(fechaStr)
       if (backup && backup.resumen) {
@@ -691,24 +521,20 @@ export async function obtenerResumenDiasAnteriores(dias = 7): Promise<any[]> {
   }
 }
 
-// Función para limpiar datos antiguos (estados diarios, listas de tickets y backups)
 export async function limpiarDatosAntiguos(): Promise<void> {
   try {
     console.log("🧹 Limpiando datos antiguos en TURNOS_ZOCO (Upstash Redis)...")
     const now = Date.now()
-    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000 // 30 días en milisegundos
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000
 
-    // NOTA: KEYS puede ser lento en bases de datos muy grandes.
-    // Para la limpieza periódica de datos con prefijos específicos, es manejable.
     const dailyStateKeys = await redis.keys(STATE_KEY_PREFIX + "*")
     const dailyTicketsKeys = await redis.keys(TICKETS_LIST_KEY_PREFIX + "*")
     const dailyCounterKeys = await redis.keys(COUNTER_KEY_PREFIX + "*")
     const allDailyKeys = [...dailyStateKeys, ...dailyTicketsKeys, ...dailyCounterKeys]
 
-    // OPTIMIZACIÓN: Usar DEL para eliminar múltiples claves.
     const keysToDelete = []
     for (const key of allDailyKeys) {
-      const datePart = key.split(":").pop() // Extraer YYYY-MM-DD de la clave
+      const datePart = key.split(":").pop()
       if (datePart) {
         const keyDate = new Date(datePart).getTime()
         if (keyDate < thirtyDaysAgo) {
@@ -716,12 +542,12 @@ export async function limpiarDatosAntiguos(): Promise<void> {
         }
       }
     }
+
     if (keysToDelete.length > 0) {
       await redis.del(...keysToDelete)
       console.log(`🗑️ Eliminados ${keysToDelete.length} datos diarios antiguos.`)
     }
 
-    // Limpiar backups antiguos
     const allBackupKeys = await redis.keys(BACKUP_KEY_PREFIX + "*")
     const backupKeysToDelete = []
     for (const key of allBackupKeys) {
@@ -731,15 +557,14 @@ export async function limpiarDatosAntiguos(): Promise<void> {
         backupKeysToDelete.push(key)
       }
     }
+
     if (backupKeysToDelete.length > 0) {
       await redis.del(...backupKeysToDelete)
       console.log(`🗑️ Eliminados ${backupKeysToDelete.length} backups antiguos.`)
     }
 
-    // OPTIMIZACIÓN: LTRIM para recortar la lista de logs de forma eficiente.
     await redis.ltrim(LOGS_KEY, 0, 999)
 
-    // Registrar la acción de limpieza
     await redis.lpush(
       LOGS_KEY,
       JSON.stringify({
@@ -757,8 +582,6 @@ export async function limpiarDatosAntiguos(): Promise<void> {
 
 export async function obtenerEstadisticas(estado: EstadoSistema & { tickets: TicketInfo[] }) {
   try {
-    // Esta función procesa datos ya obtenidos de Redis, por lo que su eficiencia
-    // depende de la eficiencia de 'leerEstadoSistema'.
     const estadisticas = {
       totalTicketsHoy: estado.totalAtendidos,
       ticketsAtendidos: estado.numerosLlamados,
@@ -793,7 +616,6 @@ export async function verificarConexionDB(): Promise<{ connected: boolean; detai
 
     const startTime = Date.now()
 
-    // Verificar configuración primero
     if (!redisConfig || redisConfig.name === "Mock (Error de configuración)") {
       return {
         connected: false,
@@ -805,33 +627,20 @@ export async function verificarConexionDB(): Promise<{ connected: boolean; detai
       }
     }
 
-    // Test básico con manejo de errores mejorado
     try {
       const testKey = "TURNOS_ZOCO:health_check:" + Date.now()
       const testValue = "health_check_" + Math.random().toString(36).substring(7)
 
       console.log("🧪 Ejecutando test de conexión básico...")
 
-      // Intentar operación SET con timeout
-      await Promise.race([
-        redis.set(testKey, testValue, { ex: 30 }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout en SET")), 10000)),
-      ])
-
+      await redis.set(testKey, testValue, { ex: 30 })
       console.log("✅ SET exitoso")
 
-      // Esperar un momento para asegurar consistencia
       await new Promise((resolve) => setTimeout(resolve, 100))
 
-      // Intentar operación GET con timeout
-      const result = await Promise.race([
-        redis.get(testKey),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout en GET")), 10000)),
-      ])
-
+      const result = await redis.get(testKey)
       console.log("✅ GET exitoso, resultado:", result)
 
-      // Limpiar
       try {
         await redis.del(testKey)
         console.log("✅ DEL exitoso")
@@ -847,7 +656,6 @@ export async function verificarConexionDB(): Promise<{ connected: boolean; detai
         responseTime: responseTime + "ms",
         config: redisConfig.name,
         endpoint: redisConfig.url.substring(0, 50) + "...",
-        region: redisConfig.url.includes("us1") ? "US East" : redisConfig.url.includes("eu1") ? "EU West" : "Global",
         testResult: result === testValue ? "✅ Exitoso" : "❌ Fallido",
         testValue: testValue,
         receivedValue: result,
@@ -861,7 +669,6 @@ export async function verificarConexionDB(): Promise<{ connected: boolean; detai
         console.error("❌ Fallo en la verificación de conexión - valores no coinciden")
         console.error(`Esperado: ${testValue}, Recibido: ${result}`)
 
-        // Si falla la verificación de valores, intentar con ping como alternativa
         try {
           const pingResult = await redis.ping()
           if (pingResult === "PONG") {
@@ -885,13 +692,9 @@ export async function verificarConexionDB(): Promise<{ connected: boolean; detai
     } catch (operationError) {
       console.error("❌ Error en operaciones de Redis:", operationError)
 
-      // Intentar ping como fallback
       try {
         console.log("🔄 Intentando ping como fallback...")
-        const pingResult = await Promise.race([
-          redis.ping(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout en PING")), 5000)),
-        ])
+        const pingResult = await redis.ping()
 
         console.log("✅ Ping exitoso:", pingResult)
 
@@ -943,7 +746,6 @@ export async function cerrarConexiones(): Promise<void> {
   console.log("🔌 No es necesario cerrar conexiones para TURNOS_ZOCO (Upstash Redis - HTTP)")
 }
 
-// Nueva función para recuperar datos en caso de pérdida
 export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSistema & { tickets: TicketInfo[] }> {
   try {
     console.log("🔧 Intentando recuperar datos perdidos para:", fecha)
@@ -953,65 +755,35 @@ export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSiste
     const counterKey = COUNTER_KEY_PREFIX + fecha
     const backupKey = `${estadoKey}:backup`
 
-    // Intentar recuperar desde backup
-    const [estadoBackup, ticketsOriginales, contador] = await redis
-      .multi()
-      .get<EstadoSistema>(backupKey)
-      .lrange<TicketInfo>(ticketsListKey, 0, -1)
-      .get(counterKey)
-      .exec()
+    let estadoBackup: any = null
+    let ticketsOriginales: any[] = []
+
+    try {
+      estadoBackup = await redis.get(backupKey)
+      estadoBackup = safeJsonParse(estadoBackup)
+    } catch (error) {
+      console.warn("Error leyendo backup de estado:", error)
+    }
+
+    try {
+      ticketsOriginales = await redis.lrange(ticketsListKey, 0, -1)
+      if (Array.isArray(ticketsOriginales)) {
+        ticketsOriginales = ticketsOriginales.map((ticket) => safeJsonParse(ticket)).filter(Boolean)
+      } else {
+        ticketsOriginales = []
+      }
+    } catch (error) {
+      console.warn("Error leyendo tickets originales:", error)
+      ticketsOriginales = []
+    }
 
     if (estadoBackup && typeof estadoBackup === "object") {
       console.log("✅ Datos recuperados desde backup")
       const tickets = Array.isArray(ticketsOriginales) ? ticketsOriginales : []
 
-      // Restaurar datos principales desde backup
-      await redis.set(estadoKey, estadoBackup, { ex: 48 * 60 * 60 })
+      await redis.set(estadoKey, JSON.stringify(estadoBackup), { ex: 48 * 60 * 60 })
 
       return { ...estadoBackup, tickets }
-    }
-
-    // Si no hay backup, intentar reconstruir desde tickets individuales
-    const ticketKeys = await redis.keys(`${ticketsListKey}:backup:*`)
-    if (ticketKeys.length > 0) {
-      console.log("🔧 Reconstruyendo desde tickets individuales...")
-
-      const multi = redis.multi()
-      for (const key of ticketKeys) {
-        multi.get(key)
-      }
-      const ticketsIndividuales = await multi.exec()
-
-      const ticketsRecuperados: TicketInfo[] = ticketsIndividuales
-        .filter((ticket): ticket is TicketInfo => ticket && typeof ticket === "object")
-        .sort((a, b) => a.numero - b.numero)
-
-      if (ticketsRecuperados.length > 0) {
-        const ultimoNumero = Math.max(...ticketsRecuperados.map((t) => t.numero))
-        const estadoReconstruido: EstadoSistema = {
-          numeroActual: ultimoNumero + 1,
-          ultimoNumero: ultimoNumero,
-          totalAtendidos: ticketsRecuperados.length,
-          numerosLlamados: 0,
-          fechaInicio: fecha,
-          ultimoReinicio: new Date().toISOString(),
-          lastSync: Date.now(),
-        }
-
-        // Restaurar lista de tickets
-        await redis.del(ticketsListKey)
-        if (ticketsRecuperados.length > 0) {
-          await redis.rpush(ticketsListKey, ...ticketsRecuperados)
-          await redis.expire(ticketsListKey, 48 * 60 * 60)
-        }
-
-        // Restaurar estado
-        await redis.set(estadoKey, estadoReconstruido, { ex: 48 * 60 * 60 })
-        await redis.set(counterKey, ultimoNumero, { ex: 48 * 60 * 60 })
-
-        console.log("✅ Datos reconstruidos exitosamente")
-        return { ...estadoReconstruido, tickets: ticketsRecuperados }
-      }
     }
 
     throw new Error("No se pudieron recuperar los datos")
