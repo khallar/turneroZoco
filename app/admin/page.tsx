@@ -3,13 +3,36 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Shield,
+  RotateCcw,
+  BarChart3,
+  Calendar,
+  Users,
+  Clock,
+  TrendingUp,
+  AlertTriangle,
+  Database,
+  RefreshCw,
+  ArrowLeft,
+  Activity,
+  Timer,
+  CheckCircle,
+  Eye,
+  PieChart,
+  Target,
+  Zap,
+  Download,
+  FileText,
+  Archive,
+} from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
-import { ArrowLeft, RefreshCw, Download, Upload, Trash2, Database } from "lucide-react"
 import Link from "next/link"
 
 interface Backup {
   fecha: string
   timestamp: number
+  resumen?: any
 }
 
 export default function AdminPage() {
@@ -227,7 +250,7 @@ export default function AdminPage() {
 
   // Calcular estadísticas administrativas
   const calcularEstadisticasAdmin = () => {
-    if (!estado.tickets || estado.tickets.length === 0) {
+    if (!estado?.tickets || estado?.tickets.length === 0) {
       return {
         totalTicketsHistorico: 0,
         promedioTicketsPorDia: 0,
@@ -267,7 +290,7 @@ export default function AdminPage() {
 
   // MÉTRICAS AVANZADAS MEJORADAS
   const calcularMetricasAvanzadas = () => {
-    if (!estado.tickets || estado.tickets.length === 0) {
+    if (!estado?.tickets || estado?.tickets.length === 0) {
       return {
         distribucionPorHora: {},
         nombresComunes: {},
@@ -498,7 +521,7 @@ export default function AdminPage() {
         // METADATOS DE DESCARGA
         metadatos: {
           fechaDescarga: new Date().toISOString(),
-          version: "5.1",
+          version: "5.3",
           sistema: "TURNOS_ZOCO",
           generadoPor: "Panel de Administración",
         },
@@ -724,14 +747,14 @@ export default function AdminPage() {
       const csvContent = csvData.map((row) => (Array.isArray(row) ? row.join(",") : row)).join("\n")
 
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `ZOCO-Resumen-${backup.fecha}.csv`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
+      const csvUrl = URL.createObjectURL(csvBlob)
+      const csvLink = document.createElement("a")
+      csvLink.href = csvUrl
+      csvLink.download = `ZOCO-Resumen-${backup.fecha}.csv`
+      document.body.appendChild(csvLink)
+      csvLink.click()
+      document.body.removeChild(csvLink)
+      URL.revokeObjectURL(csvUrl)
 
       alert(`✅ Resumen CSV descargado: ${backup.fecha}`)
     } catch (error) {
@@ -772,7 +795,7 @@ export default function AdminPage() {
 
   // NUEVA FUNCIÓN: Calcular totales históricos de todos los backups
   const calcularTotalesHistoricos = () => {
-    if (backups.length === 0) {
+    if (!backups.length) {
       return {
         totalDias: 0,
         totalTicketsEmitidos: 0,
@@ -845,231 +868,29 @@ export default function AdminPage() {
     }
   }
 
-  // NUEVA FUNCIÓN: Descargar todos los datos históricos
+  const totalesHistoricos = calcularTotalesHistoricos()
+
   const descargarTodosLosDatos = async () => {
     setDescargandoTodos(true)
     try {
-      console.log("🔄 Iniciando descarga de todos los datos históricos...")
+      // Descargar datos del día actual
+      exportarDatos()
 
-      // Obtener todos los backups completos
-      const backupsCompletos = []
+      // Descargar cada backup
       for (const backup of backups) {
-        try {
-          const backupCompleto = await obtenerBackup(backup.fecha)
-          if (backupCompleto) {
-            backupsCompletos.push(backupCompleto)
-          }
-        } catch (error) {
-          console.error(`Error al obtener backup de ${backup.fecha}:`, error)
-        }
+        await descargarBackupCompleto(backup)
+        await descargarBackupCSV(backup)
+        await descargarBackupRaw(backup)
       }
 
-      const totalesHistoricos = calcularTotalesHistoricos()
-
-      // Preparar datos consolidados
-      const datosConsolidados = {
-        // METADATOS
-        metadatos: {
-          fechaDescarga: new Date().toISOString(),
-          version: "5.1",
-          sistema: "TURNOS_ZOCO",
-          generadoPor: "Panel de Administración - Descarga Completa",
-          totalDiasIncluidos: backupsCompletos.length,
-          rangoFechas: {
-            desde: backups[backups.length - 1]?.fecha || "N/A",
-            hasta: backups[0]?.fecha || "N/A",
-          },
-        },
-
-        // TOTALES HISTÓRICOS CONSOLIDADOS
-        totalesHistoricos: {
-          resumenGeneral: {
-            totalDiasOperativos: totalesHistoricos.totalDias,
-            totalTicketsEmitidos: totalesHistoricos.totalTicketsEmitidos,
-            totalTicketsAtendidos: totalesHistoricos.totalTicketsAtendidos,
-            totalTicketsPendientes: totalesHistoricos.totalTicketsPendientes,
-            promedioTicketsPorDia: totalesHistoricos.promedioTicketsPorDia,
-            promedioAtendidosPorDia: totalesHistoricos.promedioAtendidosPorDia,
-            eficienciaPromedioGeneral: totalesHistoricos.eficienciaPromedio,
-            tendenciaGeneral: totalesHistoricos.tendenciaGeneral,
-          },
-          recordsYExtremos: {
-            mejorDia: {
-              fecha: totalesHistoricos.mejorDia?.fecha || "N/A",
-              ticketsEmitidos: totalesHistoricos.mejorDia?.resumen?.totalTicketsEmitidos || 0,
-              eficiencia: totalesHistoricos.mejorDia?.resumen?.eficienciaDiaria || 0,
-            },
-            peorDia: {
-              fecha: totalesHistoricos.peorDia?.fecha || "N/A",
-              ticketsEmitidos: totalesHistoricos.peorDia?.resumen?.totalTicketsEmitidos || 0,
-              eficiencia: totalesHistoricos.peorDia?.resumen?.eficienciaDiaria || 0,
-            },
-            top5DiasActividad: totalesHistoricos.diasConMasActividad.map((dia) => ({
-              fecha: dia.fecha,
-              ticketsEmitidos: dia.resumen?.totalTicketsEmitidos || 0,
-              ticketsAtendidos: dia.resumen?.totalTicketsAtendidos || 0,
-              eficiencia: dia.resumen?.eficienciaDiaria || 0,
-            })),
-          },
-        },
-
-        // ANÁLISIS TEMPORAL CONSOLIDADO
-        analisisTemporalConsolidado: {
-          distribucionPorDiaSemana: {},
-          horasPicoGlobales: {},
-          tendenciasMensuales: {},
-          patronesEstacionales: {},
-        },
-
-        // DATOS DETALLADOS POR DÍA
-        datosPorDia: backupsCompletos.map((backup) => ({
-          fecha: backup.fecha,
-          fechaFormateada: new Date(backup.fecha).toLocaleDateString("es-AR", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          }),
-          resumen: backup.resumen || {},
-          analisisTemporal: backup.datosDetallados?.analisisTemporal || {},
-          estadisticasClientes: backup.datosDetallados?.estadisticasClientes || {},
-          rendimiento: backup.datosDetallados?.rendimiento || {},
-          ticketsCompletos: backup.tickets || [],
-        })),
-
-        // ESTADO ACTUAL (HOY)
-        estadoActual: {
-          fecha: new Date().toISOString().split("T")[0],
-          estado: estado,
-          estadisticas: estadisticas,
-          metricasAvanzadas: calcularMetricasAvanzadas(),
-        },
-      }
-
-      // Calcular análisis temporal consolidado
-      backupsCompletos.forEach((backup) => {
-        const fecha = new Date(backup.fecha)
-        const diaSemana = fecha.toLocaleDateString("es-AR", { weekday: "long" })
-        const mes = fecha.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
-
-        // Distribución por día de la semana
-        if (!datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[diaSemana]) {
-          datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[diaSemana] = {
-            totalTickets: 0,
-            totalDias: 0,
-            promedio: 0,
-          }
-        }
-        datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[diaSemana].totalTickets +=
-          backup.resumen?.totalTicketsEmitidos || 0
-        datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[diaSemana].totalDias += 1
-
-        // Tendencias mensuales
-        if (!datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes]) {
-          datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes] = {
-            totalTickets: 0,
-            totalDias: 0,
-            promedio: 0,
-          }
-        }
-        datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes].totalTickets +=
-          backup.resumen?.totalTicketsEmitidos || 0
-        datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes].totalDias += 1
-
-        // Horas pico globales
-        if (backup.resumen?.distribucionPorHora) {
-          Object.entries(backup.resumen.distribucionPorHora).forEach(([hora, cantidad]) => {
-            if (!datosConsolidados.analisisTemporalConsolidado.horasPicoGlobales[hora]) {
-              datosConsolidados.analisisTemporalConsolidado.horasPicoGlobales[hora] = 0
-            }
-            datosConsolidados.analisisTemporalConsolidado.horasPicoGlobales[hora] += cantidad
-          })
-        }
-      })
-
-      // Calcular promedios
-      Object.keys(datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana).forEach((dia) => {
-        const data = datosConsolidados.analisisTemporalConsolidado.distribucionPorDiaSemana[dia]
-        data.promedio = Math.round(data.totalTickets / data.totalDias)
-      })
-
-      Object.keys(datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales).forEach((mes) => {
-        const data = datosConsolidados.analisisTemporalConsolidado.tendenciasMensuales[mes]
-        data.promedio = Math.round(data.totalTickets / data.totalDias)
-      })
-
-      // Crear archivo JSON completo
-      const jsonBlob = new Blob([JSON.stringify(datosConsolidados, null, 2)], {
-        type: "application/json",
-      })
-      const jsonUrl = URL.createObjectURL(jsonBlob)
-      const jsonLink = document.createElement("a")
-      jsonLink.href = jsonUrl
-      jsonLink.download = `ZOCO-HistorialCompleto-${new Date().toISOString().split("T")[0]}.json`
-      document.body.appendChild(jsonLink)
-      jsonLink.click()
-      document.body.removeChild(jsonLink)
-      URL.revokeObjectURL(jsonUrl)
-
-      // Crear archivo CSV consolidado
-      const csvData = [
-        // Encabezados
-        [
-          "Fecha",
-          "Día Semana",
-          "Tickets Emitidos",
-          "Tickets Atendidos",
-          "Tickets Pendientes",
-          "Eficiencia (%)",
-          "Tiempo Promedio Espera (min)",
-          "Hora Pico",
-          "Tickets en Hora Pico",
-          "Velocidad Atención",
-          "Tiempo Entre Tickets",
-          "Nombres Únicos",
-          "Clientes Recurrentes",
-        ],
-        // Datos de cada día
-        ...datosConsolidados.datosPorDia.map((dia) => [
-          dia.fecha,
-          new Date(dia.fecha).toLocaleDateString("es-AR", { weekday: "long" }),
-          dia.resumen.totalTicketsEmitidos || 0,
-          dia.resumen.totalTicketsAtendidos || 0,
-          dia.resumen.ticketsPendientes || 0,
-          dia.resumen.eficienciaDiaria || 0,
-          dia.resumen.tiempoPromedioEsperaReal || 0,
-          dia.resumen.horaPico?.hora || 0,
-          dia.resumen.horaPico?.cantidad || 0,
-          dia.resumen.velocidadAtencion || 0,
-          dia.resumen.tiempoEntreTickets || 0,
-          dia.estadisticasClientes.nombresUnicos || 0,
-          dia.estadisticasClientes.clientesRecurrentes || 0,
-        ]),
-      ]
-
-      const csvContent = csvData.map((row) => row.join(",")).join("\n")
-      const csvBlob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
-      const csvUrl = URL.createObjectURL(csvBlob)
-      const csvLink = document.createElement("a")
-      csvLink.href = csvUrl
-      csvLink.download = `ZOCO-HistorialConsolidado-${new Date().toISOString().split("T")[0]}.csv`
-      document.body.appendChild(csvLink)
-      csvLink.click()
-      document.body.removeChild(csvLink)
-      URL.revokeObjectURL(csvUrl)
-
-      alert(
-        `✅ Descarga completa exitosa!\n\n📊 Datos incluidos:\n- ${backupsCompletos.length} días de historial\n- ${totalesHistoricos.totalTicketsEmitidos} tickets totales\n- Análisis temporal consolidado\n- Tendencias y patrones\n\n📁 Archivos generados:\n- JSON completo con todos los detalles\n- CSV consolidado para análisis`,
-      )
+      alert("Todos los datos han sido descargados exitosamente")
     } catch (error) {
       console.error("Error al descargar todos los datos:", error)
-      alert("❌ Error al descargar los datos históricos completos")
+      alert("Error al descargar todos los datos")
     } finally {
       setDescargandoTodos(false)
     }
   }
-
-  const totalesHistoricos = calcularTotalesHistoricos()
 
   if (loading || !isClient) {
     return (
@@ -1083,124 +904,921 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b-2 border-red-600">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-4">
-              <Link href="/">
-                <Button variant="ghost" size="sm">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Volver
-                </Button>
-              </Link>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">Panel de Administración</h1>
-                <p className="text-sm text-gray-600">ZOCO - Versión 5.3</p>
+      <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 p-4">
+        <div className="max-w-6xl mx-auto">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <div className="mb-6">
+              <img
+                src="/logo-rojo.png"
+                alt="Logo Sistema de Atención"
+                className="h-24 md:h-32 mx-auto"
+                style={{
+                  filter:
+                    "brightness(0) saturate(100%) invert(15%) sepia(95%) saturate(6932%) hue-rotate(359deg) brightness(94%) contrast(112%)",
+                }}
+              />
+            </div>
+            <h1 className="text-3xl md:text-5xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-3">
+              <Shield className="h-8 w-8 md:h-12 md:w-12 text-red-600" />
+              Panel de Administración
+            </h1>
+            <p className="text-lg text-gray-600 mb-4">Control total del sistema de atención (Cache Optimizado)</p>
+
+            {/* Información de estado optimizada */}
+            <div className="flex justify-center items-center gap-4 text-sm text-gray-500 mb-6">
+              <div className="flex items-center gap-1">
+                <Clock className="h-4 w-4" />
+                <span>{horaActual.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}</span>
               </div>
+              <div className="flex items-center gap-1">
+                <Database className="h-4 w-4" />
+                <span>
+                  Última sync:{" "}
+                  {ultimaSincronizacion
+                    ? ultimaSincronizacion.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
+                    : "Nunca"}
+                </span>
+              </div>
+              {cacheStats.totalEntries > 0 && (
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                    📦 Cache: {cacheStats.totalEntries} entradas
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Botones de navegación - AGREGADO BOTÓN PRÓXIMOS */}
+            <div className="flex justify-center gap-4">
+              <Link
+                href="/"
+                className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Volver a Tickets
+              </Link>
+              <Link
+                href="/empleados"
+                className="inline-flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                <Users className="mr-2 h-4 w-4" />
+                Panel Empleados
+              </Link>
+              <Link
+                href="/proximos"
+                className="inline-flex items-center justify-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                <Eye className="mr-2 h-4 w-4" />
+                Ver Próximos
+              </Link>
+              <Link
+                href="/resumen"
+                className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                <BarChart3 className="mr-2 h-4 w-4" />
+                Resumen Histórico
+              </Link>
             </div>
           </div>
-        </div>
-      </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {error && <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded">Error: {error}</div>}
+          {/* Estadísticas de Cache - MINIMIZADO */}
+          {cacheStats.totalEntries > 0 && (
+            <div className="mb-6 flex justify-center">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <Database className="h-4 w-4 text-blue-600" />
+                  <span className="text-blue-800 font-medium">Cache:</span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="text-blue-700">{cacheStats.totalEntries} entradas</span>
+                  <span className="text-green-700">{cacheStats.entries.filter((e) => e.fresh).length} frescas</span>
+                  <span className="text-purple-700">{cacheStats.subscribers} suscriptores</span>
+                  <Button
+                    onClick={invalidateCache}
+                    size="sm"
+                    variant="outline"
+                    className="text-xs px-2 py-1 h-6 bg-transparent"
+                  >
+                    Limpiar
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Estadísticas del Sistema */}
-          <Card>
+          {/* Estadísticas Principales del Día */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Tickets Hoy</CardTitle>
+                <Users className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{estado?.totalAtendidos}</div>
+                <p className="text-xs opacity-80">Emitidos en el día</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Atendidos</CardTitle>
+                <CheckCircle className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{estado?.numerosLlamados}</div>
+                <p className="text-xs opacity-80">Tickets procesados</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">En Espera</CardTitle>
+                <Clock className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{estado?.totalAtendidos - estado?.numerosLlamados}</div>
+                <p className="text-xs opacity-80">Pendientes</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Eficiencia</CardTitle>
+                <TrendingUp className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">{estadisticasAdminCalculadas.eficienciaGeneral}%</div>
+                <p className="text-xs opacity-80">Tasa de atención</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* MÉTRICAS AVANZADAS MEJORADAS */}
+          <Card className="mb-8 bg-gradient-to-r from-cyan-50 to-blue-50 border-cyan-200">
             <CardHeader>
-              <CardTitle className="flex items-center">
-                <Database className="w-5 h-5 mr-2 text-red-600" />
-                Estado del Sistema
+              <CardTitle className="text-xl flex items-center justify-between text-cyan-800">
+                <div className="flex items-center gap-2">
+                  <PieChart className="h-6 w-6" />
+                  Métricas Avanzadas de Análisis
+                </div>
+                <Button
+                  onClick={() => setMostrarMetricasAvanzadas(!mostrarMetricasAvanzadas)}
+                  variant="outline"
+                  size="sm"
+                >
+                  {mostrarMetricasAvanzadas ? "Ocultar" : "Mostrar"} Detalles
+                </Button>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <h3 className="text-2xl font-bold text-blue-600">{estado?.tickets.length || 0}</h3>
-                  <p className="text-sm text-gray-600">Total Tickets</p>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                {/* Velocidad de Atención */}
+                <div className="bg-white p-4 rounded-lg border-l-4 border-cyan-500">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Zap className="h-4 w-4 text-cyan-600" />
+                    <span className="text-sm font-medium text-gray-600">Velocidad Atención</span>
+                  </div>
+                  <div className="text-2xl font-bold text-cyan-600">{metricasAvanzadas.velocidadAtencion}</div>
+                  <p className="text-xs text-gray-500">Tickets/minuto</p>
                 </div>
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <h3 className="text-2xl font-bold text-green-600">
-                    {estado?.tickets.filter((t) => t.atendido).length || 0}
-                  </h3>
-                  <p className="text-sm text-gray-600">Atendidos</p>
+
+                {/* Tiempo Entre Tickets */}
+                <div className="bg-white p-4 rounded-lg border-l-4 border-teal-500">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Timer className="h-4 w-4 text-teal-600" />
+                    <span className="text-sm font-medium text-gray-600">Intervalo Promedio</span>
+                  </div>
+                  <div className="text-2xl font-bold text-teal-600">{metricasAvanzadas.tiempoEntreTickets}</div>
+                  <p className="text-xs text-gray-500">Min entre tickets</p>
                 </div>
-                <div className="text-center p-4 bg-orange-50 rounded-lg">
-                  <h3 className="text-2xl font-bold text-orange-600">
-                    {estado?.tickets.filter((t) => !t.atendido).length || 0}
-                  </h3>
-                  <p className="text-sm text-gray-600">Pendientes</p>
+
+                {/* NUEVO: Tiempo de Espera Real */}
+                <div className="bg-white p-4 rounded-lg border-l-4 border-red-500">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="h-4 w-4 text-red-600" />
+                    <span className="text-sm font-medium text-gray-600">Espera Real</span>
+                  </div>
+                  <div className="text-2xl font-bold text-red-600">{metricasAvanzadas.tiempoEsperaReal}</div>
+                  <p className="text-xs text-gray-500">Min promedio espera</p>
                 </div>
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <h3 className="text-2xl font-bold text-purple-600">{estado?.empleados.length || 0}</h3>
-                  <p className="text-sm text-gray-600">Empleados</p>
+
+                {/* Hora Pico Mejorada */}
+                <div className="bg-white p-4 rounded-lg border-l-4 border-amber-500">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp className="h-4 w-4 text-amber-600" />
+                    <span className="text-sm font-medium text-gray-600">Hora Pico</span>
+                  </div>
+                  <div className="text-2xl font-bold text-amber-600">{metricasAvanzadas.horaPico.hora}:00</div>
+                  <p className="text-xs text-gray-500">{metricasAvanzadas.horaPico.cantidad} tickets</p>
+                </div>
+
+                {/* Proyección Diaria Mejorada */}
+                <div className="bg-white p-4 rounded-lg border-l-4 border-indigo-500">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Target className="h-4 w-4 text-indigo-600" />
+                    <span className="text-sm font-medium text-gray-600">Proyección Diaria</span>
+                  </div>
+                  <div className="text-2xl font-bold text-indigo-600">{metricasAvanzadas.proyeccionDiaria}</div>
+                  <p className="text-xs text-gray-500">Tickets estimados hoy</p>
                 </div>
               </div>
 
-              <div className="pt-4 border-t">
-                <Button onClick={handleReiniciarSistema} variant="destructive" className="w-full">
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Reiniciar Sistema
-                </Button>
-              </div>
+              {/* Detalles expandidos mejorados */}
+              {mostrarMetricasAvanzadas && (
+                <div className="space-y-6">
+                  {/* Distribución por Hora MEJORADA */}
+                  <div className="bg-white p-6 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5" />📊 Distribución de Tickets por Hora del Día
+                    </h4>
+                    <div className="mb-4">
+                      <div className="grid grid-cols-6 md:grid-cols-12 gap-2 text-xs">
+                        {Array.from({ length: 24 }, (_, i) => {
+                          const tickets = metricasAvanzadas.distribucionPorHora[i] || 0
+                          const maxTickets = Math.max(...Object.values(metricasAvanzadas.distribucionPorHora), 1)
+                          const altura = (tickets / maxTickets) * 60 // Altura máxima 60px
+                          const esPico = i === metricasAvanzadas.horaPico.hora
+                          return (
+                            <div key={i} className="text-center">
+                              <div className={`text-xs font-bold mb-1 ${esPico ? "text-red-600" : "text-gray-700"}`}>
+                                {tickets}
+                              </div>
+                              <div
+                                className={`rounded-t transition-all duration-300 ${
+                                  esPico ? "bg-red-500 animate-pulse" : tickets > 0 ? "bg-blue-500" : "bg-gray-200"
+                                }`}
+                                style={{ height: `${Math.max(altura, 4)}px`, minHeight: "4px" }}
+                              ></div>
+                              <div className={`text-xs mt-1 ${esPico ? "font-bold text-red-600" : "text-gray-500"}`}>
+                                {i}h
+                              </div>
+                              {esPico && <div className="text-xs text-red-500 font-bold">PICO</div>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded text-sm">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <span className="font-semibold text-gray-700">Hora más activa:</span>
+                          <p className="text-blue-600 font-bold">
+                            {metricasAvanzadas.horaPico.hora}:00 ({metricasAvanzadas.horaPico.cantidad} tickets)
+                          </p>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-gray-700">Promedio por hora:</span>
+                          <p className="text-green-600 font-bold">
+                            {Math.round(metricasAvanzadas.patronesUso.promedioTicketsPorHora * 10) / 10}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-gray-700">Horas activas:</span>
+                          <p className="text-purple-600 font-bold">
+                            {Object.keys(metricasAvanzadas.distribucionPorHora).length}/24
+                          </p>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-gray-700">Concentración:</span>
+                          <p className="text-orange-600 font-bold">
+                            {Math.round((metricasAvanzadas.horaPico.cantidad / estado.totalAtendidos) * 100)}% en pico
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Nombres Más Comunes MEJORADO */}
+                  <div className="bg-white p-6 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                      <Users className="h-5 w-5" />👥 Top 10 Nombres Más Frecuentes
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {metricasAvanzadas.nombresComunes.slice(0, 10).map(([nombre, cantidad], index) => {
+                        const porcentaje = Math.round((cantidad / estado.totalAtendidos) * 100)
+                        const isTop3 = index < 3
+                        return (
+                          <div
+                            key={nombre}
+                            className={`p-3 rounded-lg border-l-4 ${
+                              isTop3 ? "bg-yellow-50 border-yellow-400" : "bg-gray-50 border-gray-300"
+                            }`}
+                          >
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`text-lg font-bold ${
+                                    index === 0
+                                      ? "text-yellow-600"
+                                      : index === 1
+                                        ? "text-gray-500"
+                                        : index === 2
+                                          ? "text-orange-600"
+                                          : "text-gray-700"
+                                  }`}
+                                >
+                                  #{index + 1}
+                                </span>
+                                <div>
+                                  <div className="font-semibold text-gray-800 capitalize" title={nombre}>
+                                    {nombre.length > 20 ? nombre.substring(0, 20) + "..." : nombre}
+                                  </div>
+                                  <div className="text-sm text-gray-500">{porcentaje}% del total</div>
+                                </div>
+                              </div>
+                              <div className={`text-2xl font-bold ${isTop3 ? "text-blue-600" : "text-gray-600"}`}>
+                                {cantidad}
+                              </div>
+                            </div>
+                            {isTop3 && (
+                              <div className="mt-2">
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                  <div
+                                    className={`h-2 rounded-full transition-all duration-500 ${
+                                      porcentaje >= 10 ? "bg-green-500" : porcentaje >= 5 ? "bg-yellow-500" : "bg-red-500"
+                                    }`}
+                                    style={{ width: `${Math.min(porcentaje * 2, 100)}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {metricasAvanzadas.nombresComunes.length === 0 && (
+                      <p className="text-gray-500 text-center py-4">
+                        No hay datos suficientes para mostrar nombres frecuentes
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Métricas de Tiempo Detalladas */}
+                  <div className="bg-white p-6 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                      <Clock className="h-5 w-5" />
+                      ⏱️ Análisis Temporal Detallado
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-500">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Timer className="h-5 w-5 text-blue-600" />
+                          <span className="font-semibold text-blue-800">Tiempo de Espera Real</span>
+                        </div>
+                        <div className="text-3xl font-bold text-blue-600 mb-2">
+                          {metricasAvanzadas.tiempoEsperaReal} min
+                        </div>
+                        <p className="text-sm text-blue-700">Promedio desde emisión hasta llamada</p>
+                        <div className="mt-2 text-xs text-blue-600">
+                          Basado en {estado.numerosLlamados} tickets atendidos
+                        </div>
+                      </div>
+
+                      <div className="bg-green-50 p-4 rounded-lg border-l-4 border-green-500">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Activity className="h-5 w-5 text-green-600" />
+                          <span className="font-semibold text-green-800">Velocidad de Atención</span>
+                        </div>
+                        <div className="text-3xl font-bold text-green-600 mb-2">
+                          {metricasAvanzadas.velocidadAtencion}/min
+                        </div>
+                        <p className="text-sm text-green-700">Tickets procesados por minuto</p>
+                        <div className="mt-2 text-xs text-green-600">
+                          {Math.round(metricasAvanzadas.velocidadAtencion * 60 * 10) / 10} tickets/hora
+                        </div>
+                      </div>
+
+                      <div className="bg-purple-50 p-4 rounded-lg border-l-4 border-purple-500">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Clock className="h-5 w-5 text-purple-600" />
+                          <span className="font-semibold text-purple-800">Intervalo Entre Tickets</span>
+                        </div>
+                        <div className="text-3xl font-bold text-purple-600 mb-2">
+                          {metricasAvanzadas.tiempoEntreTickets} min
+                        </div>
+                        <p className="text-sm text-purple-700">Tiempo promedio entre emisiones</p>
+                        <div className="mt-2 text-xs text-purple-600">
+                          {Math.round((60 / Math.max(metricasAvanzadas.tiempoEntreTickets, 1)) * 10) / 10} tickets/hora
+                          estimados
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Proyección y Tendencias */}
+                  <div className="bg-white p-6 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                      <Target className="h-5 w-5" />🎯 Proyecciones y Tendencias
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="bg-indigo-50 p-4 rounded-lg text-center">
+                        <div className="text-3xl font-bold text-indigo-600 mb-2">
+                          {metricasAvanzadas.proyeccionDiaria}
+                        </div>
+                        <p className="text-sm font-semibold text-indigo-800">Proyección Total Día</p>
+                        <p className="text-xs text-indigo-600 mt-1">
+                          Faltan: {Math.max(0, metricasAvanzadas.proyeccionDiaria - estado.totalAtendidos)} tickets
+                        </p>
+                      </div>
+                      <div className="bg-orange-50 p-4 rounded-lg text-center">
+                        <div className="text-3xl font-bold text-orange-600 mb-2">
+                          {Math.round(metricasAvanzadas.analisisTendencias.tendenciaEficiencia * 100)}%
+                        </div>
+                        <p className="text-sm font-semibold text-orange-800">Eficiencia Actual</p>
+                        <p className="text-xs text-orange-600 mt-1">Tickets atendidos vs emitidos</p>
+                      </div>
+                      <div className="bg-teal-50 p-4 rounded-lg text-center">
+                        <div className="text-3xl font-bold text-teal-600 mb-2">
+                          {Math.round(metricasAvanzadas.analisisTendencias.crecimientoDiario)}
+                        </div>
+                        <p className="text-sm font-semibold text-teal-800">Promedio Diario</p>
+                        <p className="text-xs text-teal-600 mt-1">Tickets por día operativo</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* Gestión de Backups */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center">
-                  <Download className="w-5 h-5 mr-2 text-red-600" />
-                  Gestión de Backups
-                </span>
-                <Button onClick={cargarBackupsFn} variant="outline" size="sm">
-                  <RefreshCw className="w-4 h-4" />
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button onClick={crearBackup} className="w-full">
-                <Download className="w-4 h-4 mr-2" />
-                Crear Backup
-              </Button>
+          {/* NUEVA SECCIÓN: Totales Históricos Consolidados */}
+          {backups.length > 0 && (
+            <Card className="mb-8 bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200">
+              <CardHeader>
+                <CardTitle className="text-xl flex items-center justify-between text-emerald-800">
+                  <div className="flex items-center gap-2">
+                    <Archive className="h-6 w-6" />📊 Totales Históricos Consolidados
+                  </div>
+                  <Button
+                    onClick={descargarTodosLosDatos}
+                    disabled={descargandoTodos}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    {descargandoTodos ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Descargando...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="mr-2 h-4 w-4" />
+                        Descargar Todo el Historial
+                      </>
+                    )}
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Resumen de totales históricos */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-white p-4 rounded-lg border-l-4 border-blue-500 text-center">
+                    <div className="text-3xl font-bold text-blue-600 mb-2">{totalesHistoricos.totalDias}</div>
+                    <p className="text-sm font-semibold text-blue-800">Días Operativos</p>
+                    <p className="text-xs text-blue-600">Registrados en historial</p>
+                  </div>
 
-              {backupError && (
-                <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded text-sm">
-                  ❌ Error al obtener backups: {backupError}
+                  <div className="bg-white p-4 rounded-lg border-l-4 border-green-500 text-center">
+                    <div className="text-3xl font-bold text-green-600 mb-2">
+                      {totalesHistoricos.totalTicketsEmitidos.toLocaleString()}
+                    </div>
+                    <p className="text-sm font-semibold text-green-800">Total Tickets Emitidos</p>
+                    <p className="text-xs text-green-600">En todo el historial</p>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-lg border-l-4 border-orange-500 text-center">
+                    <div className="text-3xl font-bold text-orange-600 mb-2">
+                      {totalesHistoricos.totalTicketsAtendidos.toLocaleString()}
+                    </div>
+                    <p className="text-sm font-semibold text-orange-800">Total Tickets Atendidos</p>
+                    <p className="text-xs text-orange-600">Procesados históricamente</p>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-lg border-l-4 border-purple-500 text-center">
+                    <div className="text-3xl font-bold text-purple-600 mb-2">{totalesHistoricos.eficienciaPromedio}%</div>
+                    <p className="text-sm font-semibold text-purple-800">Eficiencia Promedio</p>
+                    <p className="text-xs text-purple-600">Histórica general</p>
+                  </div>
                 </div>
-              )}
 
-              <div>
-                <h4 className="font-semibold mb-2">Backups Disponibles</h4>
-                {loadingBackups ? (
-                  <p className="text-gray-500 text-center py-4">Cargando backups...</p>
-                ) : backups.length === 0 ? (
-                  <p className="text-gray-500 text-center py-4">No hay backups disponibles</p>
-                ) : (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {backups.map((backup) => (
-                      <div key={backup.fecha} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                        <div>
-                          <p className="font-medium">{backup.fecha}</p>
-                          <p className="text-sm text-gray-500">{new Date(backup.timestamp).toLocaleString()}</p>
+                {/* Promedios y tendencias */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="bg-gradient-to-r from-cyan-50 to-blue-50 p-4 rounded-lg border border-cyan-200">
+                    <h4 className="font-semibold text-cyan-800 mb-3 flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5" />
+                      Promedios Diarios
+                    </h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-sm text-cyan-700">Tickets emitidos:</span>
+                        <span className="font-bold text-cyan-800">{totalesHistoricos.promedioTicketsPorDia}/día</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-cyan-700">Tickets atendidos:</span>
+                        <span className="font-bold text-cyan-800">{totalesHistoricos.promedioAtendidosPorDia}/día</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-r from-yellow-50 to-orange-50 p-4 rounded-lg border border-yellow-200">
+                    <h4 className="font-semibold text-yellow-800 mb-3 flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5" />
+                      Records Históricos
+                    </h4>
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-sm text-yellow-700">Mejor día:</span>
+                        <p className="font-bold text-yellow-800">
+                          {totalesHistoricos.mejorDia?.fecha || "N/A"} (
+                          {totalesHistoricos.mejorDia?.resumen?.totalTicketsEmitidos || 0} tickets)
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-sm text-yellow-700">Tendencia:</span>
+                        <p className="font-bold text-yellow-800 capitalize">
+                          {totalesHistoricos.tendenciaGeneral === "creciente" && "📈 Creciente"}
+                          {totalesHistoricos.tendenciaGeneral === "decreciente" && "📉 Decreciente"}
+                          {totalesHistoricos.tendenciaGeneral === "estable" && "📊 Estable"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-lg border border-indigo-200">
+                    <h4 className="font-semibold text-indigo-800 mb-3 flex items-center gap-2">
+                      <Target className="h-5 w-5" />
+                      Comparativa Hoy
+                    </h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-sm text-indigo-700">vs Promedio:</span>
+                        <span
+                          className={`font-bold ${
+                            estado?.totalAtendidos > totalesHistoricos.promedioTicketsPorDia
+                              ? "text-green-600"
+                              : "text-red-600"
+                          }`}
+                        >
+                          {estado?.totalAtendidos > totalesHistoricos.promedioTicketsPorDia ? "↗️ Mejor" : "↘️ Menor"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-indigo-700">Diferencia:</span>
+                        <span className="font-bold text-indigo-800">
+                          {Math.abs((estado?.totalAtendidos || 0) - totalesHistoricos.promedioTicketsPorDia)} tickets
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Top 5 días más activos */}
+                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                  <h4 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <Calendar className="h-5 w-5" />🏆 Top 5 Días Más Activos
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                    {totalesHistoricos.diasConMasActividad.map((dia, index) => (
+                      <div
+                        key={dia.fecha}
+                        className={`p-3 rounded-lg text-center border-2 ${
+                          index === 0
+                            ? "bg-yellow-50 border-yellow-300"
+                            : index === 1
+                              ? "bg-gray-50 border-gray-300"
+                              : index === 2
+                                ? "bg-orange-50 border-orange-300"
+                                : "bg-blue-50 border-blue-300"
+                        }`}
+                      >
+                        <div className="text-lg font-bold mb-1">
+                          {index === 0 && "🥇"}
+                          {index === 1 && "🥈"}
+                          {index === 2 && "🥉"}
+                          {index > 2 && `#${index + 1}`}
                         </div>
-                        <Button onClick={() => restaurarBackup(backup.fecha)} variant="outline" size="sm">
-                          <Upload className="w-4 h-4 mr-1" />
-                          Restaurar
-                        </Button>
+                        <div className="text-sm font-semibold text-gray-800">{dia.fecha}</div>
+                        <div className="text-2xl font-bold text-blue-600 my-1">
+                          {dia.resumen?.totalTicketsEmitidos || 0}
+                        </div>
+                        <div className="text-xs text-gray-600">tickets</div>
+                        <div className="text-xs text-green-600 mt-1">
+                          {dia.resumen?.eficienciaDiaria || 0}% eficiencia
+                        </div>
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Historial de Días Anteriores MEJORADO */}
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  Historial de Días Anteriores
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={cargarBackupsFn} variant="outline" size="sm">
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Actualizar
+                  </Button>
+                  {backups.length > 0 && (
+                    <Button
+                      onClick={descargarTodosLosDatos}
+                      disabled={descargandoTodos}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      size="sm"
+                    >
+                      {descargandoTodos ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Descargando...
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="mr-2 h-4 w-4" />
+                          Descargar Todos
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {backups.length > 0 ? (
+                <div className="space-y-4">
+                  {/* Resumen del historial */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+                    <h4 className="font-semibold text-blue-800 mb-3">📊 Resumen del Historial</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-600">{backups.length}</div>
+                        <p className="text-blue-700">Días registrados</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">
+                          {Math.round(
+                            backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) /
+                              backups.length,
+                          )}
+                        </div>
+                        <p className="text-green-700">Promedio tickets/día</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-orange-600">
+                          {Math.max(...backups.map((backup) => backup.resumen?.totalTicketsEmitidos || 0))}
+                        </div>
+                        <p className="text-orange-700">Día más activo</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-purple-600">
+                          {Math.round(
+                            backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0), 0) /
+                              backups.length,
+                          )}
+                        </div>
+                        <p className="text-purple-700">Promedio atendidos/día</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Lista de días con métricas MEJORADA */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {backups.map((backup, index) => {
+                      const emitidos = backup.resumen?.totalTicketsEmitidos || 0
+                      const atendidos = backup.resumen?.totalTicketsAtendidos || 0
+                      const eficiencia = emitidos > 0 ? Math.round((atendidos / emitidos) * 100) : 0
+                      const pendientes = emitidos - atendidos
+                      const esReciente = index < 3
+                      const esMejorDia =
+                        emitidos === Math.max(...backups.map((b) => b.resumen?.totalTicketsEmitidos || 0))
+
+                      return (
+                        <div
+                          key={index}
+                          className={`p-4 rounded-lg border-2 transition-all duration-200 hover:shadow-lg ${
+                            esMejorDia
+                              ? "bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-300"
+                              : esReciente
+                                ? "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300"
+                                : "bg-gray-50 border-gray-300"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <h4
+                                className={`font-bold text-lg ${
+                                  esMejorDia ? "text-yellow-800" : esReciente ? "text-blue-800" : "text-gray-800"
+                                }`}
+                              >
+                                📅 {backup.fecha}
+                              </h4>
+                              <p className="text-xs text-gray-500">
+                                {new Date(backup.fecha).toLocaleDateString("es-AR", {
+                                  weekday: "long",
+                                  year: "numeric",
+                                  month: "long",
+                                  day: "numeric",
+                                })}
+                              </p>
+                            </div>
+                            {esMejorDia && (
+                              <div className="bg-yellow-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                                🏆 RÉCORD
+                              </div>
+                            )}
+                            {esReciente && !esMejorDia && (
+                              <div className="bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                                RECIENTE
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Métricas principales del día */}
+                          <div className="space-y-2 mb-4">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">📊 Tickets emitidos:</span>
+                              <span className="font-bold text-blue-600">{emitidos}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">✅ Atendidos:</span>
+                              <span className="font-bold text-green-600">{atendidos}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">⏳ Pendientes:</span>
+                              <span className="font-bold text-orange-600">{pendientes}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">📈 Eficiencia:</span>
+                              <span
+                                className={`font-bold ${
+                                  eficiencia >= 90
+                                    ? "text-green-600"
+                                    : eficiencia >= 70
+                                      ? "text-yellow-600"
+                                      : "text-red-600"
+                                }`}
+                              >
+                                {eficiencia}%
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Botones de acción mejorados */}
+                          <div className="space-y-2">
+                            <Button
+                              onClick={() => verBackup(backup.fecha)}
+                              variant="outline"
+                              size="sm"
+                              className="w-full hover:bg-blue-50"
+                            >
+                              👁️ Ver Detalles
+                            </Button>
+                            <Button onClick={() => restaurarBackup(backup.fecha)} className="w-full">
+                              Restaurar
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">📊</div>
+                  <p className="text-xl text-gray-500 mb-2">No hay historial disponible</p>
+                  <p className="text-gray-400">Los backups aparecerán aquí después del primer día de operación</p>
+                </div>
+              )}
             </CardContent>
           </Card>
+
+          {/* Modales existentes... */}
+          {mostrarConfirmacionEliminar && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <Card className="w-full max-w-md bg-white">
+                <CardHeader>
+                  <CardTitle className="text-red-800 flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5" />
+                    Confirmar Eliminación
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-700 mb-4">
+                    ¿Está seguro de que desea eliminar TODOS los registros del sistema? Esta acción es permanente y no se
+                    puede deshacer.
+                  </p>
+                  <div className="flex gap-4">
+                    <Button
+                      onClick={() => setMostrarConfirmacionEliminar(false)}
+                      variant="outline"
+                      className="flex-1"
+                      disabled={procesandoAccion}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={eliminarTodosLosRegistros}
+                      className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                      disabled={procesandoAccion}
+                    >
+                      {procesandoAccion ? "Eliminando..." : "Eliminar Todo"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {mostrarConfirmacionReinicio && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <Card className="w-full max-w-md bg-white">
+                <CardHeader>
+                  <CardTitle className="text-orange-800 flex items-center gap-2">
+                    <RotateCcw className="h-5 w-5" />
+                    Confirmar Reinicio
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-700 mb-4">
+                    ¿Está seguro de que desea reiniciar el contador diario? Los datos actuales se respaldarán
+                    automáticamente.
+                  </p>
+                  <div className="flex gap-4">
+                    <Button
+                      onClick={() => setMostrarConfirmacionReinicio(false)}
+                      variant="outline"
+                      className="flex-1"
+                      disabled={procesandoAccion}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={reiniciarContadorDiario}
+                      className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
+                      disabled={procesandoAccion}
+                    >
+                      {procesandoAccion ? "Reiniciando..." : "Reiniciar"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {backupSeleccionado && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <Card className="w-full max-w-2xl bg-white max-h-96 overflow-y-auto">
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Backup del {backupSeleccionado.fecha}</span>
+                    <Button onClick={() => setBackupSeleccionado(null)} variant="ghost" size="sm">
+                      ✕
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {backupSeleccionado.resumen && (
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="font-semibold">Tickets emitidos:</span>
+                          <p>{backupSeleccionado.resumen.totalTicketsEmitidos}</p>
+                        </div>
+                        <div>
+                          <span className="font-semibold">Tickets atendidos:</span>
+                          <p>{backupSeleccionado.resumen.totalTicketsAtendidos}</p>
+                        </div>
+                        <div>
+                          <span className="font-semibold">Primer ticket:</span>
+                          <p>#{backupSeleccionado.resumen.primerTicket}</p>
+                        </div>
+                        <div>
+                          <span className="font-semibold">Último ticket:</span>
+                          <p>#{backupSeleccionado.resumen.ultimoTicket}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Footer */}
+          <footer className="text-center mt-8 pt-4 border-t border-gray-200">
+            <div className="text-xs text-gray-400">
+              <p>Develop by: Karim :) | Versión 5.3 | Historial Consolidado + Descarga Masiva</p>
+              <p>Actualización inteligente cada 120s | Cache compartido entre páginas</p>
+            </div>
+          </footer>
         </div>
-      </main>
-    </div>
+      </div>
+  </div>
   )
 }
