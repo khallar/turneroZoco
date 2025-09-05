@@ -2071,7 +2071,7 @@ export default function PaginaAdmin() {
         {/* Footer */}
         <footer className="text-center mt-8 pt-4 border-t border-gray-200">
           <div className="text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 5. | Historial Consolidado + Descarga Masiva</p>
+            <p>Develop by: Karim :) | Versión 5. 3| Historial Consolidado + Descarga Masiva</p>
             <p>Actualización inteligente cada 120s | Cache compartido entre páginas</p>
           </div>
         </footer>
