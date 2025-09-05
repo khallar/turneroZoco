@@ -400,7 +400,7 @@ export default function SistemaAtencion() {
         </button>
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="text-center text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 5.1 | Cache Optimizado - Menos consultas DB</p>
+            <p>Develop by: Karim :) | Versión 5.3 | Cache Optimizado - Menos consultas DB</p>
             <p>Actualización inteligente cada 90s | Cache compartido entre páginas</p>
           </div>
         </div>
