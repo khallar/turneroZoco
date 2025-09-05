@@ -1,4 +1,8 @@
 import { Redis } from "@upstash/redis"
+import type { NeonHttpDatabase } from "drizzle-orm/neon-http"
+import { drizzle } from "drizzle-orm/neon-http"
+import { integer, serial, text, timestamp } from "drizzle-orm/pg-core"
+import { pgTable } from "drizzle-orm/pg-core"
 
 // Interfaces
 interface TicketInfo {
@@ -18,6 +22,14 @@ interface EstadoSistema {
   tickets: TicketInfo[]
   lastSync?: number
 }
+
+// Define your database schema
+export const ticketsTable = pgTable("tickets", {
+  id: serial("id").primaryKey(),
+  numero: integer("numero").notNull(),
+  nombre: text("nombre").notNull(),
+  fecha: timestamp("fecha").defaultNow(),
+})
 
 // Función para obtener las variables de entorno correctas
 function getRedisConfig() {
@@ -64,6 +76,19 @@ try {
 } catch (error) {
   console.error("❌ Error al inicializar Redis:", error)
   throw error
+}
+
+// Función para establecer una conexión a la base de datos
+export const connectToDatabase = () => {
+  const databaseUrl = process.env.DATABASE_URL!
+  console.log("Connecting to database with URL:", databaseUrl)
+
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is not set")
+  }
+
+  const db: NeonHttpDatabase = drizzle(databaseUrl)
+  return db
 }
 
 // Constantes
