@@ -373,7 +373,7 @@ export default function PaginaProximos() {
         {/* Footer */}
         <footer className="text-center mt-8 pt-4 border-t border-gray-200">
           <div className="text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 5.1 | Cache Optimizado - Menos consultas DB</p>
+            <p>Develop by: Karim :) | Versión 5.3 | Cache Optimizado - Menos consultas DB</p>
             <p className="mt-1">Actualización inteligente cada 60s | Cache compartido entre páginas</p>
           </div>
         </footer>

@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
     try {
       const conexionOK = await verificarConexionDB()
       if (!conexionOK) {
-        console.log("⚠️ Advertencia: Problema de conexión detectado, pero continuando...")
+        console.log("⚠��� Advertencia: Problema de conexión detectado, pero continuando...")
       }
     } catch (connectionError) {
       console.error("❌ Error al verificar conexión, pero continuando:", connectionError)
