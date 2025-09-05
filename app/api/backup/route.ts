@@ -1,71 +1,53 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { obtenerBackups, obtenerBackup, limpiarDatosAntiguos } from "@/lib/database"
+import { crearBackup, obtenerBackups, obtenerBackup, guardarEstadoSistema } from "@/lib/database"
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const fecha = searchParams.get("fecha") // YYYY-MM-DD
-    const accion = searchParams.get("accion") // 'listar' o 'obtener'
+    const accion = searchParams.get("accion")
 
     if (accion === "listar") {
-      // Listar todos los backups disponibles
-      try {
-        const backups = await obtenerBackups()
-
-        console.log("📦 Backups encontrados en TURNOS_ZOCO (Upstash Redis):", backups.length)
-        return NextResponse.json({ backups })
-      } catch (error) {
-        console.error("❌ Error al listar backups (TURNOS_ZOCO):", error)
-        return NextResponse.json({ backups: [] })
-      }
+      const backups = await obtenerBackups()
+      return NextResponse.json({ backups })
     }
 
-    if (fecha) {
-      // Obtener backup específico
-      try {
-        const backup = await obtenerBackup(fecha)
-
-        if (backup) {
-          return NextResponse.json(backup)
-        } else {
-          return NextResponse.json({ error: "Backup no encontrado" }, { status: 404 })
-        }
-      } catch (error) {
-        console.error("❌ Error al obtener backup (TURNOS_ZOCO):", error)
-        return NextResponse.json({ error: "Backup no encontrado" }, { status: 404 })
-      }
-    }
-
-    return NextResponse.json({ error: "Parámetros inválidos" }, { status: 400 })
+    return NextResponse.json({ error: "Acción no válida" }, { status: 400 })
   } catch (error) {
-    console.error("❌ Error en API de backup (TURNOS_ZOCO):", error)
-    return NextResponse.json({ error: "Error interno del servidor - TURNOS_ZOCO (Upstash Redis)" }, { status: 500 })
+    console.error("Error en GET /api/backup:", error)
+    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { accion } = body
+    const { accion, fecha } = body
 
-    if (accion === "limpiar_antiguos") {
-      // Limpiar backups antiguos (más de 30 días)
-      try {
-        await limpiarDatosAntiguos()
+    if (accion === "crear") {
+      const fechaBackup = await crearBackup()
+      return NextResponse.json({
+        success: true,
+        fecha: fechaBackup,
+        message: "Backup creado exitosamente",
+      })
+    }
 
-        console.log("🧹 Datos antiguos limpiados en TURNOS_ZOCO (Upstash Redis)")
-        return NextResponse.json({
-          mensaje: "Datos antiguos limpiados exitosamente",
-        })
-      } catch (error) {
-        console.error("❌ Error al limpiar backups (TURNOS_ZOCO):", error)
-        return NextResponse.json({ error: "Error al limpiar backups" }, { status: 500 })
+    if (accion === "restaurar" && fecha) {
+      const estadoBackup = await obtenerBackup(fecha)
+      if (!estadoBackup) {
+        return NextResponse.json({ error: "Backup no encontrado" }, { status: 404 })
       }
+
+      await guardarEstadoSistema(estadoBackup)
+      return NextResponse.json({
+        success: true,
+        message: "Backup restaurado exitosamente",
+      })
     }
 
     return NextResponse.json({ error: "Acción no válida" }, { status: 400 })
   } catch (error) {
-    console.error("❌ Error en POST de backup (TURNOS_ZOCO):", error)
-    return NextResponse.json({ error: "Error interno del servidor - TURNOS_ZOCO (Upstash Redis)" }, { status: 500 })
+    console.error("Error en POST /api/backup:", error)
+    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })
   }
 }

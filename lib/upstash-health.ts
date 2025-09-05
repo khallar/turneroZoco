@@ -1,4 +1,5 @@
 import type { Redis } from "@upstash/redis"
+import { Redis as UpstashRedis } from "@upstash/redis"
 
 interface HealthCheckResult {
   status: "healthy" | "degraded" | "unhealthy"
@@ -15,7 +16,37 @@ interface HealthCheckResult {
   errors: string[]
 }
 
-export async function performHealthCheck(redis: Redis): Promise<HealthCheckResult> {
+export interface UpstashHealth {
+  connected: boolean
+  latency?: number
+  error?: string
+}
+
+const redis = new UpstashRedis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+})
+
+export async function checkUpstashHealth(): Promise<UpstashHealth> {
+  try {
+    const start = Date.now()
+    await redis.ping()
+    const latency = Date.now() - start
+
+    return {
+      connected: true,
+      latency,
+    }
+  } catch (error) {
+    console.error("Upstash health check failed:", error)
+    return {
+      connected: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}
+
+export async function performHealthCheck(redisClient: Redis): Promise<HealthCheckResult> {
   const startTime = Date.now()
   const errors: string[] = []
   const details = {
@@ -30,7 +61,7 @@ export async function performHealthCheck(redis: Redis): Promise<HealthCheckResul
   try {
     // Test 1: Ping
     try {
-      await redis.ping()
+      await redisClient.ping()
       details.ping = true
       console.log("✅ Upstash Ping: OK")
     } catch (error) {
@@ -43,7 +74,7 @@ export async function performHealthCheck(redis: Redis): Promise<HealthCheckResul
     const testValue = `health_${Math.random()}`
 
     try {
-      await redis.set(testKey, testValue, { ex: 60 })
+      await redisClient.set(testKey, testValue, { ex: 60 })
       details.write = true
       console.log("✅ Upstash Write: OK")
     } catch (error) {
@@ -53,7 +84,7 @@ export async function performHealthCheck(redis: Redis): Promise<HealthCheckResul
 
     // Test 3: Read operation
     try {
-      const result = await redis.get(testKey)
+      const result = await redisClient.get(testKey)
       if (result === testValue) {
         details.read = true
         console.log("✅ Upstash Read: OK")
@@ -68,7 +99,7 @@ export async function performHealthCheck(redis: Redis): Promise<HealthCheckResul
 
     // Test 4: Delete operation
     try {
-      await redis.del(testKey)
+      await redisClient.del(testKey)
       details.delete = true
       console.log("✅ Upstash Delete: OK")
     } catch (error) {
@@ -78,7 +109,7 @@ export async function performHealthCheck(redis: Redis): Promise<HealthCheckResul
 
     // Test 5: Pipeline operation
     try {
-      const pipeline = redis.pipeline()
+      const pipeline = redisClient.pipeline()
       pipeline.set(`${testKey}:pipeline`, "test")
       pipeline.get(`${testKey}:pipeline`)
       pipeline.del(`${testKey}:pipeline`)
