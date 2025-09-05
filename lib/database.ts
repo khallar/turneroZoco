@@ -591,10 +591,14 @@ function calcularMetricasParaBackup(estado: EstadoSistema & { tickets: TicketInf
 
 export async function obtenerBackups(): Promise<any[]> {
   try {
+    console.log("📋 Obteniendo lista de backups desde TURNOS_ZOCO (Upstash Redis)...")
+
     // NOTA: KEYS puede ser lento en bases de datos muy grandes.
     // Para un número limitado de backups (ej. 30-60 días), es aceptable.
     const allKeys = await redis.keys(BACKUP_KEY_PREFIX + "*")
     const backups: any[] = []
+
+    console.log(`🔍 Encontradas ${allKeys.length} claves de backup`)
 
     // OPTIMIZACIÓN: Obtener todos los backups en una sola operación MULTI/EXEC si es posible
     if (allKeys.length > 0) {
@@ -605,20 +609,24 @@ export async function obtenerBackups(): Promise<any[]> {
       const results = await multi.exec()
 
       if (Array.isArray(results)) {
-        results.forEach((backup: any) => {
+        results.forEach((backup: any, index: number) => {
           if (backup && typeof backup === "object" && "resumen" in backup) {
             backups.push({
               fecha: backup.fecha,
               resumen: backup.resumen,
-              createdAt: backup.horaBackup, // Usar la hora de backup como created_at
+              createdAt: backup.resumen?.horaBackup || backup.fecha, // Usar la hora de backup como created_at
             })
+          } else {
+            console.warn(`⚠️ Backup inválido en clave ${allKeys[index]}:`, backup)
           }
         })
       }
     }
 
+    // Ordenar por fecha descendente
     backups.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
 
+    console.log(`✅ Obtenidos ${backups.length} backups válidos`)
     return backups.slice(0, 30) // Limitar a los últimos 30
   } catch (error) {
     console.error("❌ Error al obtener backups desde TURNOS_ZOCO (Upstash Redis):", error)
@@ -628,13 +636,58 @@ export async function obtenerBackups(): Promise<any[]> {
 
 export async function obtenerBackup(fecha: string): Promise<any | null> {
   try {
+    console.log(`📋 Obteniendo backup para fecha: ${fecha}`)
+
     const backupKey = BACKUP_KEY_PREFIX + fecha
     // OPTIMIZACIÓN: GET es una operación de lectura directa y eficiente.
     const backup = await redis.get(backupKey)
+
+    if (backup) {
+      console.log(`✅ Backup encontrado para ${fecha}`)
+    } else {
+      console.log(`⚠️ No se encontró backup para ${fecha}`)
+    }
+
     return backup || null
   } catch (error) {
     console.error("❌ Error al obtener backup desde TURNOS_ZOCO (Upstash Redis):", error)
     return null
+  }
+}
+
+// Nueva función para obtener resumen de días anteriores
+export async function obtenerResumenDiasAnteriores(dias = 7): Promise<any[]> {
+  try {
+    console.log(`📊 Obteniendo resumen de los últimos ${dias} días...`)
+
+    const resumenes: any[] = []
+    const hoy = new Date()
+
+    for (let i = 1; i <= dias; i++) {
+      const fecha = new Date(hoy)
+      fecha.setDate(hoy.getDate() - i)
+      const fechaStr = fecha.toISOString().split("T")[0] // YYYY-MM-DD
+
+      const backup = await obtenerBackup(fechaStr)
+      if (backup && backup.resumen) {
+        resumenes.push({
+          fecha: fechaStr,
+          ...backup.resumen,
+          fechaFormateada: fecha.toLocaleDateString("es-AR", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          }),
+        })
+      }
+    }
+
+    console.log(`✅ Obtenidos ${resumenes.length} resúmenes de días anteriores`)
+    return resumenes
+  } catch (error) {
+    console.error("❌ Error al obtener resumen de días anteriores:", error)
+    return []
   }
 }
 
