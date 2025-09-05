@@ -1,194 +1,410 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { TicketDisplay } from "@/components/TicketDisplay"
-import { NombreModal } from "@/components/NombreModal"
+import { Printer, Bug, Wifi, WifiOff } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
-import { Users, Clock, Ticket, Settings } from "lucide-react"
-import Link from "next/link"
+import TicketDisplay from "@/components/TicketDisplay"
+import NombreModal from "@/components/NombreModal"
 
-export default function Home() {
-  const { estado, generarTicket, loading, error } = useSistemaEstado()
+const FRASES_ALEATORIAS = [
+  "¡Gracias por visitarnos!",
+  "Su paciencia es muy apreciada",
+  "Estamos aquí para servirle",
+  "¡Bienvenido a nuestro local!",
+  "Pronto será atendido",
+  "Gracias por elegirnos",
+  "Su satisfacción es nuestra prioridad",
+  "¡Que tenga un excelente día!",
+  "Apreciamos su visita",
+  "Estamos para ayudarle",
+  "¡Hoy puede ser un gran día para decorar una torta o una fiesta! 🎉🍰 ",
+  "Mientras esperás tu turno, pensá qué excusa vas a dar para llevarte todo.😉🛍️",
+  "Decorá tu día con colores, glaseado… y un poco de ZOCO. 🌈✨",
+  "Respirá hondo… estás en el lugar donde empiezan las fiestas.🎈💃",
+  "No sos vos, es tu casa que necesita más cotillón 🏡🎊",
+  "Tranquilo… en ZOCO los turnos son rápidos y las ideas, infinitas 🧠⚡",
+  "¡ZOCOnsejo del día! Nunca subestimes el poder de una buena servilleta temática. 🍽️🎁",
+  "Quedate tranquilo, ya te toca. Y sí, podés llevarte ese globo gigante. 🎈🛒",
+  "Un turno en ZOCO vale más que mil excusas para no festejar. 🥳💬",
+  "Estás a un paso de que tu casa parezca una fiesta sorpresa permanente. 🎁🎊",
+  "¡Ya casi es tu turno! Prepará la sonrisa 😁",
+  "Turno en mano, paciencia en el corazón 🧘‍♂️",
+  "¿Ansias? Tranqui, lo bueno se hace esperar ⏳",
+  "¡Gracias por venir! Ya te atendemos 💕",
+  "Turnito sacado, ahora a mirar memes 😜",
+  "¡Sos el próximo protagonista! 🎬",
+  "Mientras esperás… pensá en algo rico 🍫",
+  "Tu número tiene suerte, lo presiento 🍀",
+  "Esto no es el bingo… ¡pero podés ganar buena onda! 🎟️",
+  "Estamos a full, pero ya te toca 💪",
+  "Gracias por bancarnos con onda 🙌",
+  "¡Zoco no se toma vacaciones! Vos tampoco del buen humor 😄",
+  "Te prometemos atención con una sonrisa 😃",
+  "Mientras esperás, pensá qué más te podés llevar 👀",
+  "Esto es más rápido que sacar una selfie 📸",
+]
 
-  const [mostrarModal, setMostrarModal] = useState(false)
-  const [nombre, setNombre] = useState("")
+export default function SistemaAtencion() {
+  const {
+    estado,
+    estadisticas,
+    loading,
+    error,
+    ultimaSincronizacion,
+    debugInfo,
+    generarTicket,
+    verificarIntegridad,
+    cargarEstado,
+    isClient,
+    cacheStats, // Nueva utilidad de cache
+  } = useSistemaEstado("principal") // Especificar que es la página principal
 
-  const handleGenerarTicket = async () => {
-    if (nombre.trim()) {
-      await generarTicket(nombre.trim())
-      setNombre("")
-      setMostrarModal(false)
+  const [horaActual, setHoraActual] = useState<Date | null>(null)
+  const [tiempoHastaReinicio, setTiempoHastaReinicio] = useState("")
+  const [ticketGenerado, setTicketGenerado] = useState<{
+    numero: number
+    nombre: string
+    frase: string
+    fecha: string
+  } | null>(null)
+  const [esMobile, setEsMobile] = useState(false)
+  const [mostrarModalNombre, setMostrarModalNombre] = useState(false)
+  const [generandoTicket, setGenerandoTicket] = useState(false)
+  const [integridad, setIntegridad] = useState<any>(null)
+  const [mostrarDebug, setMostrarDebug] = useState(false)
+  const [fraseAleatoria, setFraseAleatoria] = useState("")
+  const [isOnline, setIsOnline] = useState(true)
+
+  // Seleccionar frase aleatoria al cargar
+  useEffect(() => {
+    if (isClient) {
+      const fraseSeleccionada = FRASES_ALEATORIAS[Math.floor(Math.random() * FRASES_ALEATORIAS.length)]
+      setFraseAleatoria(fraseSeleccionada)
+    }
+  }, [isClient])
+
+  // Detectar si es móvil - solo en cliente
+  useEffect(() => {
+    if (!isClient) return
+
+    const checkMobile = () => {
+      setEsMobile(
+        window.innerWidth <= 768 ||
+          /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+      )
+    }
+
+    checkMobile()
+    window.addEventListener("resize", checkMobile)
+    return () => window.removeEventListener("resize", checkMobile)
+  }, [isClient])
+
+  // Verificar conexión
+  useEffect(() => {
+    if (!isClient) return
+
+    setIsOnline(typeof navigator !== "undefined" ? navigator.onLine : true)
+
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline)
+      window.addEventListener("offline", handleOffline)
+    }
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", handleOnline)
+        window.removeEventListener("offline", handleOffline)
+      }
+    }
+  }, [isClient])
+
+  // Actualizar hora cada minuto - solo en cliente
+  useEffect(() => {
+    if (!isClient) return
+
+    const actualizarHora = () => {
+      const ahora = new Date()
+      setHoraActual(ahora)
+
+      // Calcular tiempo hasta las 12:00 AM del día siguiente
+      const mañana = new Date(ahora)
+      mañana.setDate(mañana.getDate() + 1)
+      mañana.setHours(0, 0, 0, 0) // Exactamente medianoche
+
+      const diferencia = mañana.getTime() - ahora.getTime()
+      const horas = Math.floor(diferencia / (1000 * 60 * 60))
+      const minutos = Math.floor((diferencia % (1000 * 60 * 60)) / (1000 * 60))
+
+      setTiempoHastaReinicio(`${horas.toString().padStart(2, "0")}:${minutos.toString().padStart(2, "0")}`)
+    }
+
+    // Ejecutar inmediatamente
+    actualizarHora()
+
+    // Configurar intervalo
+    const interval = setInterval(actualizarHora, 60000)
+    return () => clearInterval(interval)
+  }, [isClient])
+
+  // Verificar integridad de la numeración
+  useEffect(() => {
+    if (isClient && estado.tickets && estado.tickets.length > 0) {
+      const resultado = verificarIntegridad()
+      setIntegridad(resultado)
+    }
+  }, [estado.tickets, verificarIntegridad, isClient])
+
+  const iniciarGeneracionTicket = () => {
+    // Solo abrir el modal, no asignar número todavía
+    setMostrarModalNombre(true)
+  }
+
+  const confirmarTicket = async (nombre: string) => {
+    try {
+      setGenerandoTicket(true)
+
+      console.log("=== GENERANDO TICKET ===")
+      console.log("Nombre:", nombre)
+
+      // Generar ticket de forma atómica en el servidor
+      const ticketCreado = await generarTicket(nombre)
+
+      if (ticketCreado) {
+        console.log("Ticket creado exitosamente:", ticketCreado)
+
+        const fraseAleatoria = FRASES_ALEATORIAS[Math.floor(Math.random() * FRASES_ALEATORIAS.length)]
+
+        // Cerrar modal y mostrar ticket inmediatamente
+        setMostrarModalNombre(false)
+        setTicketGenerado({
+          numero: ticketCreado.numero,
+          nombre: ticketCreado.nombre,
+          frase: fraseAleatoria,
+          fecha: ticketCreado.fecha,
+        })
+      } else {
+        console.error("No se pudo crear el ticket")
+        alert("Error: No se pudo generar el ticket. Por favor, intente nuevamente.")
+      }
+    } catch (error) {
+      console.error("Error al generar ticket:", error)
+
+      // Mensaje de error más amigable
+      const errorMessage = error instanceof Error ? error.message : "Error desconocido"
+
+      if (errorMessage.includes("503") || errorMessage.includes("ocupado")) {
+        alert("El sistema está ocupado en este momento. Por favor, espere unos segundos e intente nuevamente.")
+      } else if (errorMessage.includes("timeout") || errorMessage.includes("Timeout")) {
+        alert("La conexión está lenta. Por favor, verifique su conexión a internet e intente nuevamente.")
+      } else {
+        alert(`Error al generar el ticket: ${errorMessage}\n\nPor favor, intente nuevamente.`)
+      }
+    } finally {
+      setGenerandoTicket(false)
     }
   }
 
-  const ticketsPendientes = estado?.tickets.filter((t) => !t.atendido) || []
-  const ticketsAtendidos = estado?.tickets.filter((t) => t.atendido) || []
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-red-600 mx-auto"></div>
-          <p className="mt-4 text-lg">Cargando sistema...</p>
-        </div>
-      </div>
-    )
+  const cancelarTicket = () => {
+    setMostrarModalNombre(false)
   }
 
-  if (error) {
+  if (loading || !isClient) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center text-red-600">
-          <p className="text-lg">Error: {error}</p>
-          <Button onClick={() => window.location.reload()} className="mt-4">
-            Reintentar
-          </Button>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-lg text-gray-600">Cargando sistema...</p>
+          <p className="text-sm text-gray-500 mt-2">Conectando con TURNOS_ZOCO (Upstash Redis)...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b-2 border-red-600">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-4">
-              <img src="/logo-rojo.png" alt="ZOCO Logo" className="h-10 w-auto" />
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">Sistema de Turnos</h1>
-                <p className="text-sm text-gray-600">ZOCO - Versión 5.3</p>
-              </div>
-            </div>
-            <nav className="flex space-x-4">
-              <Link href="/empleados">
-                <Button variant="outline" size="sm">
-                  <Users className="w-4 h-4 mr-2" />
-                  Empleados
-                </Button>
-              </Link>
-              <Link href="/proximos">
-                <Button variant="outline" size="sm">
-                  <Clock className="w-4 h-4 mr-2" />
-                  Próximos
-                </Button>
-              </Link>
-              <Link href="/admin">
-                <Button variant="outline" size="sm">
-                  <Settings className="w-4 h-4 mr-2" />
-                  Admin
-                </Button>
-              </Link>
-            </nav>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <div className="max-w-4xl mx-auto">
+        {/* Header con hora actual */}
+        <div className="text-center mb-8">
+          <div className="mb-6">
+            <img
+              src="/logo-rojo.png"
+              alt="Logo ZOCO"
+              className="h-32 md:h-40 mx-auto"
+              style={{
+                filter:
+                  "brightness(0) saturate(100%) invert(11%) sepia(100%) saturate(7500%) hue-rotate(0deg) brightness(100%) contrast(120%)",
+              }}
+            />
+          </div>
+          <h1 className="text-4xl font-bold text-gray-800 mb-4">{fraseAleatoria || "¡Bienvenido a nuestro local!"}</h1>
+
+          {/* Botón principal */}
+          <div className="mb-6">
+            <Button
+              onClick={iniciarGeneracionTicket}
+              size="lg"
+              className="text-2xl px-16 py-8 h-auto bg-blue-600 hover:bg-blue-700 shadow-lg transform transition-transform hover:scale-105"
+              disabled={generandoTicket}
+            >
+              <Printer className="mr-4 h-8 w-8" />
+              {generandoTicket ? "GENERANDO..." : "SACAR NÚMERO"}
+            </Button>
           </div>
         </div>
-      </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Panel Principal */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Ticket Display */}
-            <TicketDisplay
-              ticketLlamando={estado?.ticketLlamando}
-              ultimoTicketAtendido={estado?.ultimoTicketAtendido}
-            />
-
-            {/* Generar Ticket */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Ticket className="w-5 h-5 mr-2 text-red-600" />
-                  Generar Nuevo Ticket
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="nombre">Nombre del Cliente</Label>
-                    <Input
-                      id="nombre"
-                      value={nombre}
-                      onChange={(e) => setNombre(e.target.value)}
-                      placeholder="Ingrese su nombre"
-                      onKeyPress={(e) => e.key === "Enter" && nombre.trim() && handleGenerarTicket()}
-                    />
-                  </div>
-                  <Button
-                    onClick={handleGenerarTicket}
-                    disabled={!nombre.trim()}
-                    className="w-full bg-red-600 hover:bg-red-700"
-                  >
-                    Generar Ticket #{(estado?.ticketActual || 0) + 1}
-                  </Button>
+        {/* Panel de debug optimizado */}
+        {mostrarDebug && debugInfo && (
+          <Card className="mb-6 bg-gray-50 border-gray-300">
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Bug className="h-4 w-4" />
+                Información de Debug - TURNOS_ZOCO (Cache Optimizado)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xs space-y-2">
+                <div>
+                  <strong>Entorno:</strong> {debugInfo.environment?.NODE_ENV || "N/A"} (
+                  {debugInfo.environment?.VERCEL_ENV || "local"})
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Panel Lateral */}
-          <div className="space-y-6">
-            {/* Estadísticas */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Estadísticas del Día</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex justify-between">
-                  <span>Tickets Generados:</span>
-                  <span className="font-bold">{estado?.tickets.length || 0}</span>
+                <div>
+                  <strong>Cache Stats:</strong> {cacheStats.totalEntries} entradas, {cacheStats.subscribers}{" "}
+                  suscriptores
                 </div>
-                <div className="flex justify-between">
-                  <span>Tickets Atendidos:</span>
-                  <span className="font-bold text-green-600">{ticketsAtendidos.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>En Espera:</span>
-                  <span className="font-bold text-orange-600">{ticketsPendientes.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Empleados Activos:</span>
-                  <span className="font-bold">{estado?.empleados.length || 0}</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Tickets Pendientes */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Próximos en Cola</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {ticketsPendientes.length === 0 ? (
-                  <p className="text-gray-500 text-center py-4">No hay tickets pendientes</p>
-                ) : (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {ticketsPendientes.slice(0, 10).map((ticket) => (
-                      <div key={ticket.numero} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                        <span className="font-medium">#{ticket.numero}</span>
-                        <span className="text-sm text-gray-600">{ticket.nombre}</span>
-                      </div>
+                <div>
+                  <strong>Cache Entries:</strong>
+                  <ul className="ml-4 mt-1">
+                    {cacheStats.entries.map((entry) => (
+                      <li key={entry.key} className={entry.fresh ? "text-green-600" : "text-orange-600"}>
+                        {entry.key}: {entry.age}s/{entry.ttl}s {entry.fresh ? "✓" : "⚠️"}
+                      </li>
                     ))}
+                  </ul>
+                </div>
+                <div>
+                  <strong>DB Conexión:</strong>
+                  <span
+                    className={debugInfo.upstash?.connection?.status === "healthy" ? "text-green-600" : "text-red-600"}
+                  >
+                    {debugInfo.upstash?.connection?.status || "Desconocido"}
+                  </span>
+                </div>
+                {error && (
+                  <div className="text-red-600">
+                    <strong>Error actual:</strong> {error}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Instrucciones */}
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Instrucciones de Uso</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <p className="font-bold text-lg text-blue-600 mb-2">
+                📱 <strong>Paso 1: Sacar Número</strong>
+              </p>
+              <p className="ml-4 mb-1">• Presione el botón azul "SACAR NÚMERO"</p>
+              <p className="ml-4 text-sm bg-blue-50 p-2 rounded border-l-4 border-blue-400">
+                ↳ <strong>Ingrese su nombre:</strong> Aparecerá una ventana para escribir su nombre completo
+              </p>
+            </div>
+
+            <div>
+              <p className="font-bold text-lg text-green-600 mb-2">
+                🏢 <strong>Paso 2: Dirigirse al Centro del Salón</strong>
+              </p>
+              <p className="ml-4">• Vaya al centro del salón y espere a ser llamado por su nombre o número</p>
+            </div>
+
+            <div>
+              <p className="font-bold text-lg text-purple-600 mb-2">
+                👀 <strong>Paso 3: Ver Próximos Turnos</strong>
+              </p>
+              <p className="ml-4 mb-2">• Puede ver los próximos turnos en la nueva página dedicada</p>
+              <a
+                href="/proximos"
+                className="ml-4 inline-block bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                Ver Próximos Turnos
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Modal de nombre */}
+      {isClient && mostrarModalNombre && (
+        <NombreModal
+          isOpen={mostrarModalNombre}
+          onConfirm={confirmarTicket}
+          onCancel={cancelarTicket}
+          generandoTicket={generandoTicket}
+        />
+      )}
+
+      {/* Modal de ticket */}
+      {isClient && ticketGenerado && (
+        <TicketDisplay
+          numero={ticketGenerado.numero}
+          nombre={ticketGenerado.nombre}
+          frase={ticketGenerado.frase}
+          fecha={ticketGenerado.fecha}
+          esMobile={esMobile}
+          onClose={() => setTicketGenerado(null)}
+        />
+      )}
+
+      {/* Footer con información adicional optimizada */}
+      <footer className="text-center mt-8 text-gray-500 text-sm">
+        <div className="flex justify-center items-center gap-4 mb-2">
+          <div>
+            Hora actual:{" "}
+            {horaActual
+              ? horaActual.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
+              : "Cargando..."}
+          </div>
+          <div>Reinicio del sistema en: {tiempoHastaReinicio}</div>
+          {ultimaSincronizacion && (
+            <div>
+              Última sincronización:{" "}
+              {ultimaSincronizacion.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}
+            </div>
+          )}
+          <div className="flex items-center gap-1">
+            {isOnline && !error ? (
+              <>
+                <Wifi className="h-4 w-4 text-green-500" />
+                <span className="text-green-500">Online</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="h-4 w-4 text-red-500" />
+                <span className="text-red-500">Offline</span>
+              </>
+            )}
           </div>
         </div>
-      </main>
-
-      <NombreModal
-        isOpen={mostrarModal}
-        onClose={() => setMostrarModal(false)}
-        onSubmit={handleGenerarTicket}
-        nombre={nombre}
-        setNombre={setNombre}
-      />
+        <button onClick={() => setMostrarDebug(!mostrarDebug)} className="hover:text-gray-700">
+          Mostrar Debug & Cache Stats
+        </button>
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <div className="text-center text-xs text-gray-400">
+            <p>Develop by: Karim :) | Versión 5.3 | Cache Optimizado - Menos consultas DB</p>
+            <p>Actualización inteligente cada 90s | Cache compartido entre páginas</p>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }

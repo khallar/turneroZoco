@@ -7,24 +7,8 @@ interface TicketInfo {
   timestamp: number
 }
 
-export interface Ticket {
-  numero: number
-  nombre: string
-  timestamp: number
-  atendido: boolean
-  empleado?: string
-  tiempoAtencion?: number
-}
-
-interface TicketInfoOld {
-  numero: number
-  nombre: string
-  fecha: string
-  timestamp: number
-}
-
 // EstadoSistema ahora NO contendrá el array 'tickets' directamente
-interface EstadoSistemaOld {
+interface EstadoSistema {
   numeroActual: number
   ultimoNumero: number
   totalAtendidos: number
@@ -32,14 +16,6 @@ interface EstadoSistemaOld {
   fechaInicio: string // YYYY-MM-DD
   ultimoReinicio: string // ISO string
   lastSync?: number
-}
-
-export interface SistemaEstado {
-  ticketActual: number
-  tickets: Ticket[]
-  empleados: string[]
-  ticketLlamando?: number
-  ultimoTicketAtendido?: number
 }
 
 // Función para obtener las variables de entorno correctas
@@ -134,8 +110,15 @@ const COUNTER_KEY_PREFIX = "TURNOS_ZOCO:counter:" // Para el contador atómico d
 
 // Función auxiliar para obtener la fecha actual en formato YYYY-MM-DD (Argentina)
 export function getTodayDateString(): string {
-  const today = new Date()
-  return today.toISOString().split("T")[0]
+  const now = new Date()
+  const options: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "America/Argentina/Buenos_Aires",
+  }
+  const formatter = new Intl.DateTimeFormat("en-CA", options) // en-CA para YYYY-MM-DD
+  return formatter.format(now)
 }
 
 // --- Core State Management ---
@@ -177,7 +160,7 @@ async function retryOperation<T>(
 }
 
 // leerEstadoSistema ahora devuelve el estado (metadata) Y los tickets
-export async function leerEstadoSistema(): Promise<EstadoSistemaOld & { tickets: TicketInfoOld[] }> {
+export async function leerEstadoSistema(): Promise<EstadoSistema & { tickets: TicketInfo[] }> {
   return retryOperation(
     async () => {
       console.log("📖 Leyendo estado y tickets desde TURNOS_ZOCO (Upstash Redis)...")
@@ -201,8 +184,8 @@ export async function leerEstadoSistema(): Promise<EstadoSistemaOld & { tickets:
       }
 
       const [estadoRaw, ticketsRaw, contadorActual, estadoExists, ticketsExists] = results
-      let estado: EstadoSistemaOld
-      const tickets: TicketInfoOld[] = Array.isArray(ticketsRaw) ? ticketsRaw : []
+      let estado: EstadoSistema
+      const tickets: TicketInfo[] = Array.isArray(ticketsRaw) ? ticketsRaw : []
       const contador = typeof contadorActual === "number" ? contadorActual : 0
 
       console.log(`🔍 Datos leídos: ${tickets.length} tickets, contador: ${contador}`)
@@ -279,7 +262,7 @@ export async function leerEstadoSistema(): Promise<EstadoSistemaOld & { tickets:
 }
 
 // escribirEstadoSistema ahora solo escribe la metadata del estado
-export async function escribirEstadoSistema(estado: EstadoSistemaOld): Promise<void> {
+export async function escribirEstadoSistema(estado: EstadoSistema): Promise<void> {
   try {
     console.log("💾 Escribiendo estado (metadata) a TURNOS_ZOCO (Upstash Redis) con persistencia mejorada...")
     const estadoKey = STATE_KEY_PREFIX + estado.fechaInicio
@@ -301,7 +284,7 @@ export async function escribirEstadoSistema(estado: EstadoSistemaOld): Promise<v
 }
 
 // Función para generar un nuevo ticket de forma atómica
-export async function generarTicketAtomico(nombre: string): Promise<TicketInfoOld> {
+export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> {
   return retryOperation(
     async () => {
       console.log("🎫 Generando ticket atómico para:", nombre, "en TURNOS_ZOCO (Upstash Redis)...")
@@ -314,7 +297,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfoOl
       const results = await redis
         .multi()
         .incr(counterKey) // Incrementa el contador diario de tickets (atómico)
-        .get<EstadoSistemaOld>(estadoKey) // Obtiene la metadata del estado actual
+        .get<EstadoSistema>(estadoKey) // Obtiene la metadata del estado actual
         .exec()
 
       if (!Array.isArray(results) || results.length !== 2) {
@@ -326,7 +309,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfoOl
 
       console.log(`🔍 Número asignado: ${numeroAsignado}`)
 
-      let estadoActual: EstadoSistemaOld
+      let estadoActual: EstadoSistema
       if (estadoRaw && typeof estadoRaw === "object") {
         estadoActual = estadoRaw
       } else {
@@ -347,7 +330,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfoOl
       const fecha = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
       const timestamp = Date.now()
 
-      const nuevoTicket: TicketInfoOld = {
+      const nuevoTicket: TicketInfo = {
         numero: numeroAsignado,
         nombre: nombre.trim(),
         fecha,
@@ -381,7 +364,7 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfoOl
 // --- Backup & Admin Functions ---
 
 // crearBackupDiario ahora espera el estado completo (metadata + tickets)
-export async function crearBackupDiario(estado: EstadoSistemaOld & { tickets: TicketInfoOld[] }): Promise<void> {
+export async function crearBackupDiario(estado: EstadoSistema & { tickets: TicketInfo[] }): Promise<void> {
   try {
     console.log("📦 Creando backup diario mejorado en TURNOS_ZOCO (Upstash Redis)...")
 
@@ -456,7 +439,7 @@ export async function crearBackupDiario(estado: EstadoSistemaOld & { tickets: Ti
 }
 
 // Nueva función para calcular métricas específicas para el backup
-function calcularMetricasParaBackup(estado: EstadoSistemaOld & { tickets: TicketInfoOld[] }) {
+function calcularMetricasParaBackup(estado: EstadoSistema & { tickets: TicketInfo[] }) {
   if (!estado.tickets || estado.tickets.length === 0) {
     return {
       tiempoEsperaReal: 0,
@@ -606,7 +589,7 @@ function calcularMetricasParaBackup(estado: EstadoSistemaOld & { tickets: Ticket
   }
 }
 
-export async function obtenerBackupsOld(): Promise<any[]> {
+export async function obtenerBackups(): Promise<any[]> {
   try {
     console.log("📋 Obteniendo lista de backups desde TURNOS_ZOCO (Upstash Redis)...")
 
@@ -651,7 +634,7 @@ export async function obtenerBackupsOld(): Promise<any[]> {
   }
 }
 
-export async function obtenerBackupOld(fecha: string): Promise<any | null> {
+export async function obtenerBackup(fecha: string): Promise<any | null> {
   try {
     console.log(`📋 Obteniendo backup para fecha: ${fecha}`)
 
@@ -673,7 +656,7 @@ export async function obtenerBackupOld(fecha: string): Promise<any | null> {
 }
 
 // Nueva función para obtener resumen de días anteriores
-export async function obtenerResumenDiasAnterioresOld(dias = 7): Promise<any[]> {
+export async function obtenerResumenDiasAnteriores(dias = 7): Promise<any[]> {
   try {
     console.log(`📊 Obteniendo resumen de los últimos ${dias} días...`)
 
@@ -685,7 +668,7 @@ export async function obtenerResumenDiasAnterioresOld(dias = 7): Promise<any[]> 
       fecha.setDate(hoy.getDate() - i)
       const fechaStr = fecha.toISOString().split("T")[0] // YYYY-MM-DD
 
-      const backup = await obtenerBackupOld(fechaStr)
+      const backup = await obtenerBackup(fechaStr)
       if (backup && backup.resumen) {
         resumenes.push({
           fecha: fechaStr,
@@ -772,7 +755,7 @@ export async function limpiarDatosAntiguos(): Promise<void> {
   }
 }
 
-export async function obtenerEstadisticas(estado: EstadoSistemaOld & { tickets: TicketInfoOld[] }) {
+export async function obtenerEstadisticas(estado: EstadoSistema & { tickets: TicketInfo[] }) {
   try {
     // Esta función procesa datos ya obtenidos de Redis, por lo que su eficiencia
     // depende de la eficiencia de 'leerEstadoSistema'.
@@ -939,7 +922,7 @@ export async function cerrarConexiones(): Promise<void> {
 }
 
 // Nueva función para recuperar datos en caso de pérdida
-export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSistemaOld & { tickets: TicketInfoOld[] }> {
+export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSistema & { tickets: TicketInfo[] }> {
   try {
     console.log("🔧 Intentando recuperar datos perdidos para:", fecha)
 
@@ -951,8 +934,8 @@ export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSiste
     // Intentar recuperar desde backup
     const [estadoBackup, ticketsOriginales, contador] = await redis
       .multi()
-      .get<EstadoSistemaOld>(backupKey)
-      .lrange<TicketInfoOld>(ticketsListKey, 0, -1)
+      .get<EstadoSistema>(backupKey)
+      .lrange<TicketInfo>(ticketsListKey, 0, -1)
       .get(counterKey)
       .exec()
 
@@ -977,13 +960,13 @@ export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSiste
       }
       const ticketsIndividuales = await multi.exec()
 
-      const ticketsRecuperados: TicketInfoOld[] = ticketsIndividuales
-        .filter((ticket): ticket is TicketInfoOld => ticket && typeof ticket === "object")
+      const ticketsRecuperados: TicketInfo[] = ticketsIndividuales
+        .filter((ticket): ticket is TicketInfo => ticket && typeof ticket === "object")
         .sort((a, b) => a.numero - b.numero)
 
       if (ticketsRecuperados.length > 0) {
         const ultimoNumero = Math.max(...ticketsRecuperados.map((t) => t.numero))
-        const estadoReconstruido: EstadoSistemaOld = {
+        const estadoReconstruido: EstadoSistema = {
           numeroActual: ultimoNumero + 1,
           ultimoNumero: ultimoNumero,
           totalAtendidos: ticketsRecuperados.length,
@@ -1012,215 +995,6 @@ export async function recuperarDatosPerdidos(fecha: string): Promise<EstadoSiste
     throw new Error("No se pudieron recuperar los datos")
   } catch (error) {
     console.error("❌ Error al recuperar datos perdidos:", error)
-    throw error
-  }
-}
-
-// Funciones nuevas para el nuevo sistema de tickets
-
-export async function obtenerEstadoSistema(): Promise<SistemaEstado> {
-  try {
-    const estado = await redis.get("sistema:estado")
-    if (!estado) {
-      const estadoInicial: SistemaEstado = {
-        ticketActual: 0,
-        tickets: [],
-        empleados: [],
-      }
-      await redis.set("sistema:estado", estadoInicial)
-      return estadoInicial
-    }
-    return estado as SistemaEstado
-  } catch (error) {
-    console.error("Error al obtener estado del sistema:", error)
-    throw error
-  }
-}
-
-export async function guardarEstadoSistema(estado: SistemaEstado): Promise<void> {
-  try {
-    await redis.set("sistema:estado", estado)
-  } catch (error) {
-    console.error("Error al guardar estado del sistema:", error)
-    throw error
-  }
-}
-
-export async function generarNuevoTicket(nombre: string): Promise<Ticket> {
-  try {
-    const estado = await obtenerEstadoSistema()
-    const nuevoNumero = estado.ticketActual + 1
-
-    const nuevoTicket: Ticket = {
-      numero: nuevoNumero,
-      nombre: nombre,
-      timestamp: Date.now(),
-      atendido: false,
-    }
-
-    estado.ticketActual = nuevoNumero
-    estado.tickets.push(nuevoTicket)
-
-    await guardarEstadoSistema(estado)
-    return nuevoTicket
-  } catch (error) {
-    console.error("Error al generar nuevo ticket:", error)
-    throw error
-  }
-}
-
-export async function llamarSiguienteTicket(empleado: string): Promise<Ticket | null> {
-  try {
-    const estado = await obtenerEstadoSistema()
-    const ticketPendiente = estado.tickets.find((t) => !t.atendido)
-
-    if (!ticketPendiente) {
-      return null
-    }
-
-    estado.ticketLlamando = ticketPendiente.numero
-    await guardarEstadoSistema(estado)
-
-    return ticketPendiente
-  } catch (error) {
-    console.error("Error al llamar siguiente ticket:", error)
-    throw error
-  }
-}
-
-export async function marcarTicketAtendido(numeroTicket: number, empleado: string): Promise<void> {
-  try {
-    const estado = await obtenerEstadoSistema()
-    const ticket = estado.tickets.find((t) => t.numero === numeroTicket)
-
-    if (ticket) {
-      ticket.atendido = true
-      ticket.empleado = empleado
-      ticket.tiempoAtencion = Date.now()
-      estado.ultimoTicketAtendido = numeroTicket
-      estado.ticketLlamando = undefined
-    }
-
-    await guardarEstadoSistema(estado)
-  } catch (error) {
-    console.error("Error al marcar ticket como atendido:", error)
-    throw error
-  }
-}
-
-export async function agregarEmpleado(nombre: string): Promise<void> {
-  try {
-    const estado = await obtenerEstadoSistema()
-    if (!estado.empleados.includes(nombre)) {
-      estado.empleados.push(nombre)
-      await guardarEstadoSistema(estado)
-    }
-  } catch (error) {
-    console.error("Error al agregar empleado:", error)
-    throw error
-  }
-}
-
-export async function eliminarEmpleado(nombre: string): Promise<void> {
-  try {
-    const estado = await obtenerEstadoSistema()
-    estado.empleados = estado.empleados.filter((e) => e !== nombre)
-    await guardarEstadoSistema(estado)
-  } catch (error) {
-    console.error("Error al eliminar empleado:", error)
-    throw error
-  }
-}
-
-export async function reiniciarSistema(): Promise<void> {
-  try {
-    const estadoInicial: SistemaEstado = {
-      ticketActual: 0,
-      tickets: [],
-      empleados: [],
-    }
-    await guardarEstadoSistema(estadoInicial)
-  } catch (error) {
-    console.error("Error al reiniciar sistema:", error)
-    throw error
-  }
-}
-
-export async function crearBackup(): Promise<string> {
-  try {
-    const estado = await obtenerEstadoSistema()
-    const fecha = getTodayDateString()
-    const backupKey = `backup:${fecha}`
-
-    await redis.set(backupKey, {
-      fecha,
-      estado,
-      timestamp: Date.now(),
-    })
-
-    return fecha
-  } catch (error) {
-    console.error("Error al crear backup:", error)
-    throw error
-  }
-}
-
-export async function obtenerBackups(): Promise<Array<{ fecha: string; timestamp: number }>> {
-  try {
-    const keys = await redis.keys("backup:*")
-    const backups = []
-
-    for (const key of keys) {
-      const backup = await redis.get(key)
-      if (backup && typeof backup === "object" && "fecha" in backup && "timestamp" in backup) {
-        backups.push({
-          fecha: backup.fecha as string,
-          timestamp: backup.timestamp as number,
-        })
-      }
-    }
-
-    return backups.sort((a, b) => b.timestamp - a.timestamp)
-  } catch (error) {
-    console.error("Error al obtener backups:", error)
-    throw error
-  }
-}
-
-export async function obtenerBackup(fecha: string): Promise<SistemaEstado | null> {
-  try {
-    const backup = await redis.get(`backup:${fecha}`)
-    if (backup && typeof backup === "object" && "estado" in backup) {
-      return backup.estado as SistemaEstado
-    }
-    return null
-  } catch (error) {
-    console.error("Error al obtener backup:", error)
-    throw error
-  }
-}
-
-export async function obtenerResumenDiasAnteriores(): Promise<
-  Array<{ fecha: string; totalTickets: number; ticketsAtendidos: number }>
-> {
-  try {
-    const backups = await obtenerBackups()
-    const resumen = []
-
-    for (const backup of backups) {
-      const estado = await obtenerBackup(backup.fecha)
-      if (estado) {
-        resumen.push({
-          fecha: backup.fecha,
-          totalTickets: estado.tickets.length,
-          ticketsAtendidos: estado.tickets.filter((t) => t.atendido).length,
-        })
-      }
-    }
-
-    return resumen
-  } catch (error) {
-    console.error("Error al obtener resumen de días anteriores:", error)
     throw error
   }
 }
