@@ -3,225 +3,356 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, UserCheck, Users, SkipForward, RotateCcw } from "lucide-react"
-import { TicketDisplay } from "@/components/TicketDisplay"
+import { Input } from "@/components/ui/input"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
-import Image from "next/image"
+import { Users, UserCheck, Clock, RotateCcw, Home, Wifi, WifiOff, Volume2, VolumeX, Search, Phone } from "lucide-react"
 
-export default function PanelEmpleados() {
-  const { obtenerProximoTicket, marcarTicketComoAtendido, obtenerTicketsEnEspera, obtenerTicketActual, saltarTicket } =
-    useSistemaEstado()
+export default function EmpleadosPage() {
+  const [numeroActual, setNumeroActual] = useState(1)
+  const [nombreActual, setNombreActual] = useState("")
+  const [busquedaNombre, setBusquedaNombre] = useState("")
+  const [mounted, setMounted] = useState(false)
+  const [conectado, setConectado] = useState(true)
+  const [sonidoActivado, setSonidoActivado] = useState(true)
+  const [ultimaLlamada, setUltimaLlamada] = useState<string>("")
 
-  const [ticketActual, setTicketActual] = useState<{ numero: number; nombre: string } | null>(null)
-  const [proximoTicket, setProximoTicket] = useState<{ numero: number; nombre: string } | null>(null)
-  const [ticketsEnEspera, setTicketsEnEspera] = useState(0)
-  const [loading, setLoading] = useState(false)
-
-  const cargarDatos = async () => {
-    try {
-      const [actual, proximo, enEspera] = await Promise.all([
-        obtenerTicketActual(),
-        obtenerProximoTicket(),
-        obtenerTicketsEnEspera(),
-      ])
-
-      setTicketActual(actual)
-      setProximoTicket(proximo)
-      setTicketsEnEspera(enEspera)
-    } catch (error) {
-      console.error("Error al cargar datos:", error)
-    }
-  }
+  const { estado, actualizarEstado } = useSistemaEstado()
 
   useEffect(() => {
-    cargarDatos()
-    const interval = setInterval(cargarDatos, 2000)
-    return () => clearInterval(interval)
+    setMounted(true)
+
+    // Verificar conectividad
+    const checkConnection = () => {
+      setConectado(navigator.onLine)
+    }
+
+    checkConnection()
+    window.addEventListener("online", checkConnection)
+    window.addEventListener("offline", checkConnection)
+
+    // Cargar configuración de sonido
+    const sonidoGuardado = localStorage.getItem("sonidoActivado")
+    if (sonidoGuardado !== null) {
+      setSonidoActivado(JSON.parse(sonidoGuardado))
+    }
+
+    return () => {
+      window.removeEventListener("online", checkConnection)
+      window.removeEventListener("offline", checkConnection)
+    }
   }, [])
 
-  const manejarLlamarSiguiente = async () => {
-    if (!proximoTicket) return
+  useEffect(() => {
+    if (mounted) {
+      localStorage.setItem("sonidoActivado", JSON.stringify(sonidoActivado))
+    }
+  }, [sonidoActivado, mounted])
 
-    setLoading(true)
+  const reproducirSonido = () => {
+    if (!sonidoActivado || typeof window === "undefined") return
+
     try {
-      await marcarTicketComoAtendido(proximoTicket.numero)
-      await cargarDatos()
+      // Crear un sonido simple usando Web Audio API
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime)
+      oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1)
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.2)
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
+
+      oscillator.start(audioContext.currentTime)
+      oscillator.stop(audioContext.currentTime + 0.3)
     } catch (error) {
-      console.error("Error al llamar siguiente:", error)
-    } finally {
-      setLoading(false)
+      console.log("Error al reproducir sonido:", error)
     }
   }
 
-  const manejarSaltarTicket = async () => {
-    if (!proximoTicket) return
+  const llamarNumero = async (numero: number, nombre?: string) => {
+    if (!mounted) return
 
-    setLoading(true)
     try {
-      await saltarTicket(proximoTicket.numero)
-      await cargarDatos()
+      setNumeroActual(numero)
+      setNombreActual(nombre || `Cliente ${numero.toString().padStart(3, "0")}`)
+
+      // Reproducir sonido de notificación
+      reproducirSonido()
+
+      // Registrar la llamada
+      const ahora = new Date().toLocaleString("es-ES", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+      setUltimaLlamada(`${numero.toString().padStart(3, "0")} - ${ahora}`)
+
+      // Actualizar estado del sistema
+      await actualizarEstado({
+        numeroActual: numero,
+        nombreActual: nombre || `Cliente ${numero.toString().padStart(3, "0")}`,
+      })
     } catch (error) {
-      console.error("Error al saltar ticket:", error)
-    } finally {
-      setLoading(false)
+      console.error("Error al llamar número:", error)
     }
   }
 
-  const manejarFinalizarAtencion = async () => {
-    if (!ticketActual) return
+  const llamarSiguiente = () => {
+    const siguiente = numeroActual + 1
+    llamarNumero(siguiente)
+  }
 
-    setLoading(true)
-    try {
-      // Marcar como completado y limpiar ticket actual
-      setTicketActual(null)
-      await cargarDatos()
-    } catch (error) {
-      console.error("Error al finalizar atención:", error)
-    } finally {
-      setLoading(false)
+  const llamarAnterior = () => {
+    if (numeroActual > 1) {
+      const anterior = numeroActual - 1
+      llamarNumero(anterior)
     }
+  }
+
+  const llamarPorNombre = () => {
+    if (busquedaNombre.trim()) {
+      llamarNumero(numeroActual, busquedaNombre.trim())
+      setBusquedaNombre("")
+    }
+  }
+
+  const reiniciarSistema = async () => {
+    if (confirm("¿Está seguro de que desea reiniciar el sistema? Esto restablecerá todos los números.")) {
+      try {
+        await actualizarEstado({
+          ultimoNumero: 0,
+          numeroActual: 1,
+          nombreActual: "",
+          totalTickets: 0,
+        })
+        setNumeroActual(1)
+        setNombreActual("")
+        setUltimaLlamada("")
+      } catch (error) {
+        console.error("Error al reiniciar sistema:", error)
+      }
+    }
+  }
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-green-600"></div>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 p-4">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex flex-col">
+      {/* Header */}
+      <div className="bg-white shadow-lg border-b-4 border-green-600 p-4">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="outline" asChild>
-              <a href="/" className="flex items-center gap-2">
-                <ArrowLeft className="h-4 w-4" />
-                Volver
-              </a>
-            </Button>
-            <div className="flex items-center gap-3">
-              <Image src="/logo-rojo.png" alt="Logo ZOCO" width={60} height={60} className="object-contain" />
-              <div>
-                <h1 className="text-3xl font-bold text-blue-800">Panel de Empleados</h1>
-                <p className="text-blue-600">Gestión de atención al cliente</p>
-              </div>
+            <img src="/logo-rojo.png" alt="ZOCO Logo" className="h-12 w-auto" />
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800">Panel de Empleados ZOCO</h1>
+              <p className="text-sm text-gray-600">Gestión de turnos y atención al cliente</p>
             </div>
           </div>
+          <div className="flex items-center gap-4">
+            {conectado ? (
+              <div className="flex items-center gap-2 text-green-600">
+                <Wifi className="h-5 w-5" />
+                <span className="text-sm font-medium">Conectado</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-red-600">
+                <WifiOff className="h-5 w-5" />
+                <span className="text-sm font-medium">Sin conexión</span>
+              </div>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => (window.location.href = "/")}
+              className="flex items-center gap-2"
+            >
+              <Home className="h-4 w-4" />
+              Inicio
+            </Button>
+          </div>
         </div>
+      </div>
 
-        {/* Estadísticas */}
-        <Card className="border-blue-200">
-          <CardHeader className="bg-blue-50">
-            <CardTitle className="flex items-center gap-2 text-blue-800">
-              <Users className="h-5 w-5" />
-              Estado de la Cola
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="text-center">
-                <Badge variant="default" className="mb-2 bg-blue-600">
-                  {ticketsEnEspera}
-                </Badge>
-                <p className="text-sm text-gray-600">Tickets en Espera</p>
-              </div>
-              <div className="text-center">
-                <Badge variant={ticketActual ? "default" : "secondary"} className="mb-2">
-                  {ticketActual ? `#${ticketActual.numero}` : "Ninguno"}
-                </Badge>
-                <p className="text-sm text-gray-600">Atendiendo Ahora</p>
-              </div>
-              <div className="text-center">
-                <Badge variant={proximoTicket ? "outline" : "secondary"} className="mb-2">
-                  {proximoTicket ? `#${proximoTicket.numero}` : "Ninguno"}
-                </Badge>
-                <p className="text-sm text-gray-600">Próximo Ticket</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Contenido principal */}
+      <div className="flex-1 p-6">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Panel de número actual */}
+          <div className="lg:col-span-2">
+            <Card className="bg-white shadow-2xl border-4 border-green-500 h-full">
+              <CardHeader className="bg-gradient-to-r from-green-500 to-green-600 text-white text-center py-8">
+                <CardTitle className="text-3xl font-black flex items-center justify-center gap-3">
+                  <UserCheck className="h-10 w-10" />
+                  NÚMERO ACTUAL
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-8 text-center">
+                <div className="space-y-8">
+                  {/* Número grande */}
+                  <div className="bg-gradient-to-r from-blue-100 to-green-100 border-4 border-blue-400 rounded-2xl p-8">
+                    <div className="text-8xl font-black text-blue-600 mb-4">
+                      {numeroActual.toString().padStart(3, "0")}
+                    </div>
+                    <div className="text-2xl font-bold text-green-700 bg-green-50 p-4 rounded-lg border-2 border-green-200">
+                      {nombreActual || `Cliente ${numeroActual.toString().padStart(3, "0")}`}
+                    </div>
+                  </div>
 
-        {/* Ticket Actual */}
-        {ticketActual && (
-          <div className="space-y-4">
-            <TicketDisplay numero={ticketActual.numero} nombre={ticketActual.nombre} tipo="actual" />
-            <Card className="border-green-200 bg-green-50">
-              <CardContent className="p-4">
+                  {/* Controles principales */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Button
+                      onClick={llamarAnterior}
+                      disabled={numeroActual <= 1 || !conectado}
+                      className="text-xl py-6 bg-orange-500 hover:bg-orange-600 text-white font-bold"
+                    >
+                      ← ANTERIOR ({(numeroActual - 1).toString().padStart(3, "0")})
+                    </Button>
+                    <Button
+                      onClick={llamarSiguiente}
+                      disabled={!conectado}
+                      className="text-xl py-6 bg-blue-500 hover:bg-blue-600 text-white font-bold"
+                    >
+                      SIGUIENTE ({(numeroActual + 1).toString().padStart(3, "0")}) →
+                    </Button>
+                  </div>
+
+                  {/* Búsqueda por nombre */}
+                  <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4">
+                    <h3 className="text-lg font-bold text-yellow-800 mb-3">Llamar por Nombre</h3>
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        placeholder="Escriba el nombre del cliente..."
+                        value={busquedaNombre}
+                        onChange={(e) => setBusquedaNombre(e.target.value)}
+                        onKeyPress={(e) => e.key === "Enter" && llamarPorNombre()}
+                        className="flex-1"
+                        disabled={!conectado}
+                      />
+                      <Button
+                        onClick={llamarPorNombre}
+                        disabled={!busquedaNombre.trim() || !conectado}
+                        className="bg-purple-500 hover:bg-purple-600 text-white"
+                      >
+                        <Search className="h-4 w-4 mr-2" />
+                        Llamar
+                      </Button>
+                    </div>
+                  </div>
+
+                  {ultimaLlamada && (
+                    <div className="bg-green-50 border-2 border-green-200 rounded-lg p-3">
+                      <div className="flex items-center gap-2 text-green-700">
+                        <Phone className="h-4 w-4" />
+                        <span className="font-bold text-sm">Última llamada: {ultimaLlamada}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Panel de controles y estadísticas */}
+          <div className="space-y-6">
+            {/* Estadísticas */}
+            <Card className="bg-white shadow-xl border-2 border-blue-300">
+              <CardHeader className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-6 w-6" />
+                  Estadísticas
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Último Ticket:</span>
+                    <span className="text-xl font-bold text-blue-600">
+                      {estado.ultimoNumero.toString().padStart(3, "0")}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Total Generados:</span>
+                    <span className="text-xl font-bold text-green-600">{estado.totalTickets}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">En Espera:</span>
+                    <span className="text-xl font-bold text-orange-600">
+                      {Math.max(0, estado.ultimoNumero - numeroActual)}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Configuración */}
+            <Card className="bg-white shadow-xl border-2 border-purple-300">
+              <CardHeader className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-6 w-6" />
+                  Configuración
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Sonido de notificación:</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSonidoActivado(!sonidoActivado)}
+                    className={sonidoActivado ? "text-green-600" : "text-red-600"}
+                  >
+                    {sonidoActivado ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                  </Button>
+                </div>
+
+                <Button onClick={reiniciarSistema} variant="destructive" className="w-full" disabled={!conectado}>
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Reiniciar Sistema
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Enlaces rápidos */}
+            <Card className="bg-white shadow-xl border-2 border-gray-300">
+              <CardHeader className="bg-gradient-to-r from-gray-500 to-gray-600 text-white">
+                <CardTitle className="text-lg">Enlaces Rápidos</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-2">
                 <Button
-                  onClick={manejarFinalizarAtencion}
-                  className="w-full bg-green-600 hover:bg-green-700"
-                  disabled={loading}
+                  variant="outline"
+                  className="w-full justify-start bg-transparent"
+                  onClick={() => window.open("/proximos", "_blank")}
                 >
-                  <UserCheck className="mr-2 h-4 w-4" />
-                  Finalizar Atención
+                  📺 Ver Próximos Turnos
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start bg-transparent"
+                  onClick={() => window.open("/admin", "_blank")}
+                >
+                  ⚙️ Panel de Administración
                 </Button>
               </CardContent>
             </Card>
           </div>
-        )}
-
-        {/* Próximo Ticket */}
-        {proximoTicket && (
-          <div className="space-y-4">
-            <TicketDisplay numero={proximoTicket.numero} nombre={proximoTicket.nombre} tipo="proximo" />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Button
-                onClick={manejarLlamarSiguiente}
-                className="bg-blue-600 hover:bg-blue-700"
-                disabled={loading || !!ticketActual}
-              >
-                <UserCheck className="mr-2 h-4 w-4" />
-                Llamar y Atender
-              </Button>
-              <Button
-                onClick={manejarSaltarTicket}
-                variant="outline"
-                className="border-orange-300 text-orange-700 hover:bg-orange-50 bg-transparent"
-                disabled={loading}
-              >
-                <SkipForward className="mr-2 h-4 w-4" />
-                Saltar Ticket
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Sin tickets */}
-        {!ticketActual && !proximoTicket && (
-          <Card className="border-gray-200">
-            <CardContent className="p-8 text-center">
-              <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-600 mb-2">No hay tickets en espera</h3>
-              <p className="text-gray-500">Los nuevos tickets aparecerán aquí automáticamente</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Acciones Rápidas */}
-        <Card className="border-blue-200">
-          <CardHeader className="bg-blue-50">
-            <CardTitle className="text-blue-800">Acciones Rápidas</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Button variant="outline" asChild>
-                <a href="/proximos" className="flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  Ver Todos los Próximos
-                </a>
-              </Button>
-              <Button variant="outline" asChild>
-                <a href="/admin" className="flex items-center gap-2">
-                  <RotateCcw className="h-4 w-4" />
-                  Panel de Administración
-                </a>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Footer */}
-        <footer className="text-center text-sm text-blue-600 py-4 border-t border-blue-200">
-          <p>Panel de Empleados ZOCO - Versión 5.3</p>
-          <p>© 2024 Todos los derechos reservados</p>
-        </footer>
+        </div>
       </div>
+
+      {/* Footer */}
+      <footer className="bg-gray-800 text-white p-4 text-center">
+        <p className="text-sm">© 2024 Panel de Empleados ZOCO - Versión 5.3 | Sistema de gestión de turnos</p>
+      </footer>
     </div>
   )
 }

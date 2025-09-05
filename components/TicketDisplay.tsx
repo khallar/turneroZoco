@@ -14,7 +14,7 @@ interface TicketDisplayProps {
   esMobile: boolean
 }
 
-export default function TicketDisplay({ numero, nombre, frase, fecha, onClose, esMobile }: TicketDisplayProps) {
+export function TicketDisplay({ numero, nombre, frase, fecha, onClose, esMobile }: TicketDisplayProps) {
   const [mostrarTicket, setMostrarTicket] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -425,3 +425,5 @@ export default function TicketDisplay({ numero, nombre, frase, fecha, onClose, e
     </div>
   )
 }
+
+export default TicketDisplay

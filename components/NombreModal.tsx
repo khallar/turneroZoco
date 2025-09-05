@@ -16,7 +16,7 @@ interface NombreModalProps {
   generandoTicket?: boolean
 }
 
-export default function NombreModal({ isOpen, onConfirm, onCancel, generandoTicket = false }: NombreModalProps) {
+export function NombreModal({ isOpen, onConfirm, onCancel, generandoTicket = false }: NombreModalProps) {
   const [nombre, setNombre] = useState("Cliente ZOCO")
   const [mounted, setMounted] = useState(false)
 
@@ -166,3 +166,5 @@ export default function NombreModal({ isOpen, onConfirm, onCancel, generandoTick
     </div>
   )
 }
+
+export default NombreModal
