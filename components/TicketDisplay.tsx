@@ -1,21 +1,29 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent } from "@/components/ui/card"
-import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { X, Share2, Download } from "lucide-react"
 
 interface TicketDisplayProps {
   numero: number
-  nombre: string
-  frase: string
-  fecha: string
+  nombre?: string
+  className?: string
+  fecha?: string
   onClose?: () => void
+  esMobile?: boolean
 }
 
-export default function TicketDisplay({ numero, nombre, frase, fecha, onClose }: TicketDisplayProps) {
+export default function TicketDisplay({
+  numero,
+  nombre,
+  className = "",
+  fecha,
+  onClose,
+  esMobile,
+}: TicketDisplayProps) {
   const [mostrarTicket, setMostrarTicket] = useState(false)
   const [mounted, setMounted] = useState(false)
-  const router = useRouter()
 
   useEffect(() => {
     setMounted(true)
@@ -63,54 +71,37 @@ export default function TicketDisplay({ numero, nombre, frase, fecha, onClose }:
     ctx.strokeRect(80, 120, 240, 80)
 
     // Nombre del cliente
-    ctx.fillStyle = "#16a34a"
-    ctx.font = "bold 20px Arial"
-    ctx.fillRect(60, 220, 280, 40) // Fondo verde claro
-    ctx.fillStyle = "#ffffff"
-    ctx.fillText(nombre, canvas.width / 2, 245)
-
-    // Frase
-    ctx.fillStyle = "#000000"
-    ctx.font = "italic 16px Arial"
-    const palabras = frase.split(" ")
-    let linea = ""
-    let y = 300
-
-    for (let i = 0; i < palabras.length; i++) {
-      const testLinea = linea + palabras[i] + " "
-      const medida = ctx.measureText(testLinea)
-
-      if (medida.width > 320 && i > 0) {
-        ctx.fillText(linea, canvas.width / 2, y)
-        linea = palabras[i] + " "
-        y += 25
-      } else {
-        linea = testLinea
-      }
+    if (nombre) {
+      ctx.fillStyle = "#16a34a"
+      ctx.font = "bold 20px Arial"
+      ctx.fillRect(60, 220, 280, 40) // Fondo verde claro
+      ctx.fillStyle = "#ffffff"
+      ctx.fillText(nombre, canvas.width / 2, 245)
     }
-    ctx.fillText(linea, canvas.width / 2, y)
 
     // Línea separadora
     ctx.strokeStyle = "#666666"
     ctx.lineWidth = 2
     ctx.setLineDash([8, 4])
     ctx.beginPath()
-    ctx.moveTo(60, y + 30)
-    ctx.lineTo(340, y + 30)
+    ctx.moveTo(60, 280)
+    ctx.lineTo(340, 280)
     ctx.stroke()
     ctx.setLineDash([])
 
     // Información adicional
     ctx.fillStyle = "#666666"
     ctx.font = "12px Arial"
-    ctx.fillText(`Fecha: ${fecha}`, canvas.width / 2, y + 60)
-    ctx.fillText("Conserve este ticket", canvas.width / 2, y + 80)
-    ctx.fillText("Será llamado por su número o nombre", canvas.width / 2, y + 100)
+    if (fecha) {
+      ctx.fillText(`Fecha: ${fecha}`, canvas.width / 2, 310)
+    }
+    ctx.fillText("Conserve este ticket", canvas.width / 2, 330)
+    ctx.fillText("Será llamado por su número o nombre", canvas.width / 2, 350)
 
     // Logo/marca (texto simple)
     ctx.fillStyle = "#dc2626"
     ctx.font = "bold 16px Arial"
-    ctx.fillText("ZOCO - Sistema de Atención", canvas.width / 2, y + 130)
+    ctx.fillText("ZOCO - Sistema de Atención", canvas.width / 2, 380)
 
     // Convertir canvas a blob y descargar
     canvas.toBlob((blob) => {
@@ -118,7 +109,7 @@ export default function TicketDisplay({ numero, nombre, frase, fecha, onClose }:
         const url = URL.createObjectURL(blob)
         const link = document.createElement("a")
         link.href = url
-        link.download = `ticket-${numero.toString().padStart(3, "0")}-${nombre.replace(/\s+/g, "-")}.png`
+        link.download = `ticket-${numero.toString().padStart(3, "0")}-${nombre ? nombre.replace(/\s+/g, "-") : ""}.png`
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
@@ -231,13 +222,11 @@ export default function TicketDisplay({ numero, nombre, frase, fecha, onClose }:
           </head>
           <body>
             <div class="ticket" id="ticket">
-              <img src="/logo-rojo.png" alt="Logo ZOCO" class="h-16 mx-auto mb-4" style="filter: brightness(0) saturate(100%) invert(11%) sepia(100%) saturate(7500%) hue-rotate(0deg) brightness(100%) contrast(120%);">
-              <h2 class="text-2xl font-bold text-gray-800 mb-2">¡Ticket Generado!</h2>
-              <div class="numero">#{numero.toString().padStart(3, "0")}</div>
-              <div class="nombre">${nombre}</div>
-              <p class="frase">${frase}</p>
+              <h2>NÚMERO DE ATENCIÓN</h2>
+              <div class="numero">${numero.toString().padStart(3, "0")}</div>
+              ${nombre ? `<div class="nombre">${nombre}</div>` : ""}
               <hr>
-              <p class="info">Fecha: ${fecha}</p>
+              ${fecha ? `<p class="info">Fecha: ${fecha}</p>` : ""}
               <p class="info">Conserve este ticket</p>
               <p class="info">Será llamado por su número o nombre</p>
               <p class="info">ZOCO - Sistema de Atención</p>
@@ -294,21 +283,22 @@ export default function TicketDisplay({ numero, nombre, frase, fecha, onClose }:
                 ctx.strokeRect(80, 120, 240, 80);
                 
                 // Nombre
+                ${
+                  nombre
+                    ? `
                 ctx.fillStyle = '#16a34a';
                 ctx.fillRect(60, 220, 280, 40);
                 ctx.fillStyle = '#ffffff';
                 ctx.font = 'bold 20px Arial';
                 ctx.fillText('${nombre}', canvas.width / 2, 245);
-                
-                // Frase
-                ctx.fillStyle = '#000000';
-                ctx.font = 'italic 16px Arial';
-                ctx.fillText('${frase}', canvas.width / 2, 300);
+                `
+                    : ""
+                }
                 
                 // Info
                 ctx.fillStyle = '#666666';
                 ctx.font = '12px Arial';
-                ctx.fillText('Fecha: ${fecha}', canvas.width / 2, 350);
+                ${fecha ? `ctx.fillText('Fecha: ${fecha}', canvas.width / 2, 350);` : ""}
                 ctx.fillText('Conserve este ticket', canvas.width / 2, 370);
                 ctx.fillText('Será llamado por su número o nombre', canvas.width / 2, 390);
                 ctx.fillText('ZOCO - Sistema de Atención', canvas.width / 2, 420);
@@ -318,7 +308,7 @@ export default function TicketDisplay({ numero, nombre, frase, fecha, onClose }:
                   const url = URL.createObjectURL(blob);
                   const link = document.createElement('a');
                   link.href = url;
-                  link.download = 'ticket-${numero.toString().padStart(3, "0")}-${nombre.replace(/\s+/g, "-")}.png';
+                  link.download = 'ticket-${numero.toString().padStart(3, "0")}-${nombre ? nombre.replace(/\s+/g, "-") : ""}.png';
                   link.click();
                   URL.revokeObjectURL(url);
                 });
@@ -328,11 +318,11 @@ export default function TicketDisplay({ numero, nombre, frase, fecha, onClose }:
                 if (navigator.share) {
                   navigator.share({
                     title: 'Ticket de Atención #${numero.toString().padStart(3, "0")}',
-                    text: 'Mi número de atención es: ${numero.toString().padStart(3, "0")}\\nNombre: ${nombre}\\n${frase}',
+                    text: 'Mi número de atención es: ${numero.toString().padStart(3, "0")}\\n${nombre ? `Nombre: ${nombre}\\n` : ""}',
                     url: window.location.href
                   });
                 } else {
-                  const texto = 'Mi número de atención es: ${numero.toString().padStart(3, "0")}\\nNombre: ${nombre}\\n${frase}';
+                  const texto = 'Mi número de atención es: ${numero.toString().padStart(3, "0")}\\n${nombre ? `Nombre: ${nombre}\\n` : ""}';
                   navigator.clipboard.writeText(texto).then(() => {
                     alert('Información copiada al portapapeles');
                   });
@@ -349,7 +339,7 @@ export default function TicketDisplay({ numero, nombre, frase, fecha, onClose }:
   const compartirTicket = async () => {
     if (typeof navigator === "undefined" || !mounted) return
 
-    const texto = `Mi número de atención es: ${numero.toString().padStart(3, "0")}\nNombre: ${nombre}\n${frase}`
+    const texto = `Mi número de atención es: ${numero.toString().padStart(3, "0")}\n${nombre ? `Nombre: ${nombre}\n` : ""}`
 
     if (navigator.share) {
       try {
@@ -376,41 +366,50 @@ export default function TicketDisplay({ numero, nombre, frase, fecha, onClose }:
   if (!mostrarTicket || !mounted) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-md bg-white shadow-2xl">
-        <CardContent className="p-8 text-center">
-          <div className="mb-6">
-            <img
-              src="/logo-rojo.png"
-              alt="Logo ZOCO"
-              className="h-16 mx-auto mb-4"
-              style={{
-                filter:
-                  "brightness(0) saturate(100%) invert(11%) sepia(100%) saturate(7500%) hue-rotate(0deg) brightness(100%) contrast(120%)",
-              }}
-            />
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">¡Ticket Generado!</h2>
-          </div>
-
-          <div className="bg-gradient-to-r from-purple-100 to-pink-100 border-4 border-purple-300 rounded-2xl p-6 mb-6">
-            <div className="text-6xl font-black text-purple-600 mb-4">#{numero.toString().padStart(3, "0")}</div>
-            <div className="text-xl font-bold text-gray-800 mb-2">{nombre}</div>
-            <div className="text-sm text-gray-600">{fecha}</div>
-          </div>
-
-          <div className="space-y-3 text-sm text-gray-600 mb-6">
-            <p>✅ Su ticket ha sido generado exitosamente</p>
-            <p>⏰ Mantenga este número visible</p>
-            <p>📢 Esté atento cuando sea llamado</p>
-          </div>
-
+    <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 ${className}`}>
+      <Card className="w-full max-w-sm bg-white">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-lg">Ticket Generado</CardTitle>
           {onClose && (
-            <button
-              onClick={onClose}
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          <div className="bg-white border-2 border-dashed border-gray-400 p-6 text-center font-mono mb-4">
+            <h3 className="text-lg font-bold mb-4">NÚMERO DE ATENCIÓN</h3>
+            <div className="text-6xl font-bold text-red-600 border-2 border-red-600 rounded-lg py-4 mb-4">
+              {numero.toString().padStart(3, "0")}
+            </div>
+            {nombre && <div className="text-2xl font-semibold text-gray-800">{nombre}</div>}
+            {fecha && <p className="text-sm italic mb-2">Fecha: {fecha}</p>}
+            <hr className="border-dashed border-gray-400 my-3" />
+            <p className="text-xs">Conserve este ticket</p>
+            <p className="text-xs">Será llamado por su número o nombre</p>
+          </div>
+
+          <div className="flex gap-2 justify-center">
+            <Button
+              onClick={esMobile ? guardarTicketMobile : generarImagenTicket}
+              className="flex-1 bg-green-600 hover:bg-green-700"
             >
-              Cerrar
-            </button>
+              <Download className="mr-2 h-4 w-4" />
+              {esMobile ? "Guardar Imagen" : "Descargar Ticket"}
+            </Button>
+            <Button onClick={compartirTicket} variant="outline">
+              <Share2 className="mr-2 h-4 w-4" />
+              Compartir
+            </Button>
+          </div>
+
+          {esMobile && (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-xs text-yellow-800">
+                💡 <strong>Tip:</strong> Después de presionar "Guardar Imagen", mantenga presionada la imagen del ticket
+                y seleccione "Guardar imagen" para guardarlo en su galería.
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>

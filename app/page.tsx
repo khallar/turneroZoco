@@ -1,384 +1,247 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { useSistemaEstado } from "@/hooks/useSistemaEstado"
-import NombreModal from "@/components/NombreModal"
 import TicketDisplay from "@/components/TicketDisplay"
-import {
-  Users,
-  Clock,
-  Settings,
-  Eye,
-  Ticket,
-  RefreshCw,
-  Wifi,
-  WifiOff,
-  Calendar,
-  Timer,
-  TrendingUp,
-} from "lucide-react"
+import NombreModal from "@/components/NombreModal"
+import { useSistemaEstado } from "@/hooks/useSistemaEstado"
+import { Printer, Users, Monitor, Settings } from "lucide-react"
+import Link from "next/link"
 
-interface TicketGenerado {
-  numero: number
-  nombre: string
-  fecha: string
-  timestamp: number
-}
+export default function HomePage() {
+  const { estado, tickets, loading, error, generarTicket } = useSistemaEstado()
+  const [showNombreModal, setShowNombreModal] = useState(false)
+  const [ultimoTicket, setUltimoTicket] = useState<any>(null)
 
-export default function PaginaPrincipal() {
-  const [mounted, setMounted] = useState(false)
-  const [mostrarModal, setMostrarModal] = useState(false)
-  const [ticketGenerado, setTicketGenerado] = useState<TicketGenerado | null>(null)
-  const [conectado, setConectado] = useState(true)
-  const [horaActual, setHoraActual] = useState("")
-  const [fechaActual, setFechaActual] = useState("")
-
-  const { estado, loading, error, generarTicket, cargarEstado, ultimaSincronizacion, cacheStats } =
-    useSistemaEstado("main")
-
-  useEffect(() => {
-    setMounted(true)
-
-    // Verificar conectividad
-    const checkConnection = () => {
-      setConectado(navigator.onLine)
-    }
-
-    checkConnection()
-    window.addEventListener("online", checkConnection)
-    window.addEventListener("offline", checkConnection)
-
-    // Actualizar hora cada segundo
-    const updateTime = () => {
-      const now = new Date()
-      setHoraActual(now.toLocaleTimeString("es-ES"))
-      setFechaActual(
-        now.toLocaleDateString("es-ES", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        }),
-      )
-    }
-
-    updateTime()
-    const timeInterval = setInterval(updateTime, 1000)
-
-    return () => {
-      window.removeEventListener("online", checkConnection)
-      window.removeEventListener("offline", checkConnection)
-      clearInterval(timeInterval)
-    }
-  }, [])
-
-  const manejarGenerarTicket = async (nombre: string) => {
+  const handleGenerarTicket = async (nombre?: string) => {
     try {
       const ticket = await generarTicket(nombre)
-      if (ticket) {
-        setTicketGenerado(ticket)
-        setMostrarModal(false)
+      setUltimoTicket(ticket)
+      setShowNombreModal(false)
+    } catch (err) {
+      console.error("Error al generar ticket:", err)
+    }
+  }
+
+  const imprimirTicket = () => {
+    if (ultimoTicket) {
+      const ventanaImpresion = window.open("", "_blank")
+      if (ventanaImpresion) {
+        ventanaImpresion.document.write(`
+          <html>
+            <head>
+              <title>Ticket ${ultimoTicket.numero}</title>
+              <style>
+                body { 
+                  font-family: Arial, sans-serif; 
+                  text-align: center; 
+                  padding: 20px;
+                  margin: 0;
+                }
+                .ticket {
+                  border: 2px solid #000;
+                  padding: 20px;
+                  margin: 20px auto;
+                  width: 300px;
+                  background: white;
+                }
+                .numero {
+                  font-size: 48px;
+                  font-weight: bold;
+                  color: #dc2626;
+                  margin: 20px 0;
+                }
+                .nombre {
+                  font-size: 24px;
+                  font-weight: bold;
+                  margin: 10px 0;
+                }
+                .fecha {
+                  font-size: 14px;
+                  color: #666;
+                  margin-top: 20px;
+                }
+                @media print {
+                  body { margin: 0; padding: 0; }
+                  .ticket { margin: 0; border: 2px solid #000; }
+                }
+              </style>
+            </head>
+            <body>
+              <div class="ticket">
+                <img src="/logo-rojo.png" alt="Logo" style="height: 60px; margin-bottom: 20px;">
+                <h2>TICKET DE TURNO</h2>
+                <div class="numero">${ultimoTicket.numero.toString().padStart(3, "0")}</div>
+                ${ultimoTicket.nombre ? `<div class="nombre">${ultimoTicket.nombre}</div>` : ""}
+                <div class="fecha">${new Date(ultimoTicket.timestamp).toLocaleString("es-ES")}</div>
+                <p style="margin-top: 20px; font-size: 12px;">
+                  Conserve este ticket hasta ser atendido
+                </p>
+              </div>
+              <script>
+                window.onload = function() {
+                  window.print();
+                  setTimeout(function() {
+                    window.close();
+                  }, 1000);
+                }
+              </script>
+            </body>
+          </html>
+        `)
+        ventanaImpresion.document.close()
       }
-    } catch (error) {
-      console.error("Error al generar ticket:", error)
-      alert("Error al generar el ticket. Por favor, intente nuevamente.")
     }
-  }
-
-  const actualizarManual = () => {
-    if (conectado) {
-      cargarEstado(true)
-    }
-  }
-
-  if (!mounted) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600"></div>
-      </div>
-    )
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-2xl font-semibold text-gray-600">Cargando sistema...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-lg text-gray-600">Cargando sistema de turnos...</p>
-          {cacheStats.totalEntries > 0 && (
-            <p className="text-sm text-gray-500 mt-2">Cache: {cacheStats.totalEntries} entradas</p>
-          )}
+          <div className="text-2xl font-semibold text-red-600 mb-4">Error del Sistema</div>
+          <div className="text-gray-600">{error}</div>
         </div>
       </div>
     )
   }
 
+  const ticketActual = tickets.find((t) => t.numero === estado.numeroActual)
+  const proximosTickets = tickets.filter((t) => t.numero > estado.numeroActual).slice(0, 3)
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 p-4">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="bg-white shadow-lg rounded-lg p-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <img
-                src="/logo-rojo.png"
-                alt="Logo ZOCO"
-                className="h-16 w-auto"
-                style={{
-                  filter:
-                    "brightness(0) saturate(100%) invert(11%) sepia(100%) saturate(7500%) hue-rotate(0deg) brightness(100%) contrast(120%)",
-                }}
-              />
-              <div>
-                <h1 className="text-3xl font-bold text-gray-800">Sistema de Turnos ZOCO</h1>
-                <p className="text-gray-600">Gestión inteligente de atención al cliente</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4">
-              {conectado ? (
-                <div className="flex items-center gap-2 text-green-600">
-                  <Wifi className="h-5 w-5" />
-                  <span className="text-sm font-medium">Conectado</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-red-600">
-                  <WifiOff className="h-5 w-5" />
-                  <span className="text-sm font-medium">Sin conexión</span>
-                </div>
-              )}
-
-              <Button variant="outline" size="sm" onClick={actualizarManual} disabled={!conectado}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Actualizar
-              </Button>
-            </div>
+    <div className="min-h-screen bg-gray-100">
+      {/* Header */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+          <div className="flex items-center space-x-4">
+            <img src="/logo-rojo.png" alt="Logo" className="h-12" />
+            <h1 className="text-2xl font-bold text-gray-800">Sistema de Turnos</h1>
           </div>
-
-          {/* Información de fecha y hora */}
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              <span>{fechaActual}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Timer className="h-4 w-4" />
-              <span>{horaActual}</span>
-              {ultimaSincronizacion && (
-                <span className="ml-4 text-xs text-gray-500">
-                  Última sync: {ultimaSincronizacion.toLocaleTimeString("es-AR")}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Indicador de cache */}
-          {cacheStats.totalEntries > 0 && (
-            <div className="mt-2">
-              <Badge variant="secondary" className="text-xs">
-                📦 Cache activo: {cacheStats.totalEntries} entradas
-              </Badge>
-            </div>
-          )}
-        </div>
-
-        {/* Error Message */}
-        {error && (
-          <Card className="mb-6 bg-red-50 border-red-200">
-            <CardContent className="p-4">
-              <p className="text-red-600 text-center">⚠️ {error}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Generar Ticket */}
-          <Card className="bg-gradient-to-br from-green-100 to-emerald-200 border-4 border-green-400 shadow-xl card-hover">
-            <CardHeader className="bg-gradient-to-r from-green-500 to-emerald-600 text-white text-center">
-              <CardTitle className="text-2xl flex items-center justify-center gap-2">
-                <Ticket className="h-8 w-8" />
-                SACAR TURNO
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-8 text-center">
-              <div className="mb-6">
-                <div className="text-6xl font-black text-green-600 mb-2">
-                  #{(estado?.numeroActual || 1).toString().padStart(3, "0")}
-                </div>
-                <p className="text-lg text-gray-700">Próximo número disponible</p>
-              </div>
-
-              <Button
-                onClick={() => setMostrarModal(true)}
-                disabled={!conectado}
-                className="w-full bg-green-600 hover:bg-green-700 text-white text-xl py-4 btn-hover-effect"
-                size="lg"
-              >
-                <Ticket className="mr-3 h-6 w-6" />
-                Generar Ticket
+          <div className="flex space-x-2">
+            <Link href="/empleados">
+              <Button variant="outline" size="sm">
+                <Users className="w-4 h-4 mr-2" />
+                Empleados
               </Button>
-
-              <p className="text-sm text-gray-600 mt-4">Haga clic para obtener su número de turno</p>
-            </CardContent>
-          </Card>
-
-          {/* Estado Actual */}
-          <Card className="bg-gradient-to-br from-blue-100 to-cyan-200 border-4 border-blue-400 shadow-xl card-hover">
-            <CardHeader className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white text-center">
-              <CardTitle className="text-2xl flex items-center justify-center gap-2">
-                <Users className="h-8 w-8" />
-                ESTADO ACTUAL
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <div className="space-y-4">
-                <div className="flex justify-between items-center p-3 bg-white rounded-lg">
-                  <span className="font-medium text-gray-700">Último Ticket:</span>
-                  <span className="text-2xl font-bold text-blue-600">
-                    #{(estado?.ultimoNumero || 0).toString().padStart(3, "0")}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center p-3 bg-white rounded-lg">
-                  <span className="font-medium text-gray-700">Total Emitidos:</span>
-                  <span className="text-2xl font-bold text-green-600">{estado?.totalAtendidos || 0}</span>
-                </div>
-
-                <div className="flex justify-between items-center p-3 bg-white rounded-lg">
-                  <span className="font-medium text-gray-700">Atendidos:</span>
-                  <span className="text-2xl font-bold text-purple-600">{estado?.numerosLlamados || 0}</span>
-                </div>
-
-                <div className="flex justify-between items-center p-3 bg-white rounded-lg">
-                  <span className="font-medium text-gray-700">En Espera:</span>
-                  <span className="text-2xl font-bold text-orange-600">
-                    {(estado?.totalAtendidos || 0) - (estado?.numerosLlamados || 0)}
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Acciones Rápidas */}
-          <Card className="bg-gradient-to-br from-purple-100 to-pink-200 border-4 border-purple-400 shadow-xl card-hover">
-            <CardHeader className="bg-gradient-to-r from-purple-500 to-pink-600 text-white text-center">
-              <CardTitle className="text-2xl flex items-center justify-center gap-2">
-                <TrendingUp className="h-8 w-8" />
-                ACCIONES
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <div className="space-y-4">
-                <a
-                  href="/proximos"
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 btn-hover-effect"
-                >
-                  <Eye className="h-5 w-5" />
-                  Ver Próximos Turnos
-                </a>
-
-                <a
-                  href="/empleados"
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 btn-hover-effect"
-                >
-                  <Users className="h-5 w-5" />
-                  Panel Empleados
-                </a>
-
-                <a
-                  href="/admin"
-                  className="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 btn-hover-effect"
-                >
-                  <Settings className="h-5 w-5" />
-                  Administración
-                </a>
-              </div>
-
-              <div className="mt-6 p-4 bg-white rounded-lg">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Eficiencia hoy:</span>
-                  <span className="font-bold text-purple-600">
-                    {estado?.totalAtendidos
-                      ? Math.round(((estado.numerosLlamados || 0) / estado.totalAtendidos) * 100)
-                      : 0}
-                    %
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+            </Link>
+            <Link href="/proximos">
+              <Button variant="outline" size="sm">
+                <Monitor className="w-4 h-4 mr-2" />
+                Próximos
+              </Button>
+            </Link>
+            <Link href="/admin">
+              <Button variant="outline" size="sm">
+                <Settings className="w-4 h-4 mr-2" />
+                Admin
+              </Button>
+            </Link>
+          </div>
         </div>
-
-        {/* Información del Sistema */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className="bg-yellow-50 border-yellow-300">
-            <CardContent className="p-6">
-              <h3 className="text-lg font-bold text-yellow-800 mb-3 flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                Información del Día
-              </h3>
-              <div className="space-y-2 text-sm text-yellow-700">
-                <div>Inicio de operaciones: {estado?.fechaInicio || "No disponible"}</div>
-                <div>
-                  Último reinicio:{" "}
-                  {estado?.ultimoReinicio ? new Date(estado.ultimoReinicio).toLocaleString("es-AR") : "No disponible"}
-                </div>
-                <div>Estado del sistema: {conectado ? "✅ Operativo" : "❌ Desconectado"}</div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-blue-50 border-blue-300">
-            <CardContent className="p-6">
-              <h3 className="text-lg font-bold text-blue-800 mb-3 flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
-                Rendimiento
-              </h3>
-              <div className="space-y-2 text-sm text-blue-700">
-                <div>
-                  Tiempo promedio:{" "}
-                  {estado?.tickets && estado.tickets.length > 1
-                    ? `${Math.round(
-                        (estado.tickets[estado.tickets.length - 1].timestamp - estado.tickets[0].timestamp) /
-                          estado.tickets.length /
-                          1000 /
-                          60,
-                      )} min`
-                    : "Calculando..."}
-                </div>
-                <div>
-                  Tickets por hora:{" "}
-                  {estado?.tickets ? estado.tickets.filter((t) => Date.now() - t.timestamp < 60 * 60 * 1000).length : 0}
-                </div>
-                <div>Cache optimizado: {cacheStats.totalEntries > 0 ? "✅ Activo" : "⏸️ Inactivo"}</div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Footer */}
-        <footer className="text-center mt-8 pt-4 border-t border-gray-200">
-          <p className="text-sm text-gray-500">
-            Sistema de Turnos ZOCO - Versión 5.3 | Develop by: Karim :) | Cache Inteligente Activado
-          </p>
-        </footer>
       </div>
 
-      {/* Modales */}
-      {mostrarModal && <NombreModal onConfirm={manejarGenerarTicket} onCancel={() => setMostrarModal(false)} />}
+      <div className="max-w-6xl mx-auto p-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Panel de Generación de Tickets */}
+          <div className="bg-white rounded-lg shadow-lg p-8">
+            <h2 className="text-3xl font-bold text-center mb-8 text-gray-800">Generar Nuevo Ticket</h2>
 
-      {ticketGenerado && (
-        <TicketDisplay
-          numero={ticketGenerado.numero}
-          nombre={ticketGenerado.nombre}
-          fecha={ticketGenerado.fecha}
-          onClose={() => setTicketGenerado(null)}
-        />
-      )}
+            <div className="space-y-6">
+              <Button
+                onClick={() => handleGenerarTicket()}
+                className="w-full h-16 text-xl font-semibold bg-red-600 hover:bg-red-700"
+                disabled={!estado.activo}
+              >
+                Generar Ticket Rápido
+              </Button>
+
+              <div className="text-center text-gray-500">o</div>
+
+              <Button
+                onClick={() => setShowNombreModal(true)}
+                variant="outline"
+                className="w-full h-16 text-xl font-semibold border-red-600 text-red-600 hover:bg-red-50"
+                disabled={!estado.activo}
+              >
+                Generar con Nombre
+              </Button>
+
+              {!estado.activo && <div className="text-center text-red-600 font-semibold">Sistema desactivado</div>}
+            </div>
+
+            {ultimoTicket && (
+              <div className="mt-8 p-6 bg-gray-50 rounded-lg">
+                <h3 className="text-lg font-semibold mb-4 text-center">Último Ticket Generado</h3>
+                <div className="flex justify-center mb-4">
+                  <TicketDisplay
+                    numero={ultimoTicket.numero}
+                    nombre={ultimoTicket.nombre}
+                    className="transform scale-75"
+                  />
+                </div>
+                <Button onClick={imprimirTicket} className="w-full bg-transparent" variant="outline">
+                  <Printer className="w-4 h-4 mr-2" />
+                  Imprimir Ticket
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Panel de Estado Actual */}
+          <div className="space-y-6">
+            {/* Ticket Actual */}
+            <div className="bg-white rounded-lg shadow-lg p-8">
+              <h2 className="text-2xl font-bold text-center mb-6 text-gray-800">Atendiendo Ahora</h2>
+              <div className="flex justify-center">
+                <TicketDisplay numero={estado.numeroActual} nombre={ticketActual?.nombre} />
+              </div>
+            </div>
+
+            {/* Próximos Tickets */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h3 className="text-xl font-bold text-center mb-4 text-gray-800">Próximos en Cola</h3>
+              <div className="space-y-3">
+                {proximosTickets.map((ticket) => (
+                  <div key={ticket.numero} className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                    <span className="text-2xl font-bold text-red-600">{ticket.numero.toString().padStart(3, "0")}</span>
+                    {ticket.nombre && <span className="text-lg font-semibold text-gray-700">{ticket.nombre}</span>}
+                  </div>
+                ))}
+                {proximosTickets.length === 0 && (
+                  <div className="text-center text-gray-500 py-4">No hay tickets en cola</div>
+                )}
+              </div>
+            </div>
+
+            {/* Estado del Sistema */}
+            <div className="bg-white rounded-lg shadow-lg p-6 text-center">
+              <div
+                className={`inline-block px-6 py-3 rounded-full text-white font-semibold text-lg ${
+                  estado.activo ? "bg-green-500" : "bg-red-500"
+                }`}
+              >
+                Sistema {estado.activo ? "Activo" : "Inactivo"}
+              </div>
+              <div className="mt-4 text-gray-600">
+                Próximo número:{" "}
+                <span className="font-bold text-2xl text-red-600">
+                  {estado.proximoNumero.toString().padStart(3, "0")}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <NombreModal isOpen={showNombreModal} onClose={() => setShowNombreModal(false)} onConfirm={handleGenerarTicket} />
     </div>
   )
 }

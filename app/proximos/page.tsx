@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Clock, Users, Timer, RefreshCw, ArrowLeft } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 import { Button } from "@/components/ui/button"
+import TicketDisplay from "@/components/TicketDisplay"
 
 const FRASES_ALEATORIAS = [
   "¡Gracias por visitarnos!",
@@ -54,10 +55,11 @@ export default function PaginaProximos() {
     ultimaSincronizacion,
     isClient,
     cacheStats, // Nueva utilidad de cache
+    tickets,
   } = useSistemaEstado("proximos") // Especificar que es la página próximos
 
   const [fraseAleatoria, setFraseAleatoria] = useState("")
-  const [horaActual, setHoraActual] = useState<Date | null>(null)
+  const [currentTime, setCurrentTime] = useState(new Date())
   const [actualizandoDatos, setActualizandoDatos] = useState(false)
 
   // Seleccionar frase aleatoria al cargar
@@ -68,18 +70,14 @@ export default function PaginaProximos() {
     }
   }, [isClient])
 
-  // Actualizar hora cada minuto
+  // Actualizar hora cada segundo
   useEffect(() => {
-    if (!isClient) return
+    const timer = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 1000)
 
-    const actualizarHora = () => {
-      setHoraActual(new Date())
-    }
-
-    actualizarHora()
-    const interval = setInterval(actualizarHora, 60000)
-    return () => clearInterval(interval)
-  }, [isClient])
+    return () => clearInterval(timer)
+  }, [])
 
   const actualizarDatosManual = async () => {
     setActualizandoDatos(true)
@@ -94,7 +92,7 @@ export default function PaginaProximos() {
 
   // Calcular próximos 5 números
   const calcularProximos5 = () => {
-    if (!estado || !estado.tickets) return []
+    if (!estado || !tickets) return []
 
     const proximoNumero = estado.numerosLlamados + 1
     const proximos = []
@@ -102,7 +100,7 @@ export default function PaginaProximos() {
     for (let i = 0; i < 5; i++) {
       const numeroAMostrar = proximoNumero + i
       if (numeroAMostrar <= estado.totalAtendidos) {
-        const ticket = estado.tickets.find((t) => t.numero === numeroAMostrar)
+        const ticket = tickets.find((t) => t.numero === numeroAMostrar)
         proximos.push({
           numero: numeroAMostrar,
           nombre: ticket?.nombre || "Cliente ZOCO",
@@ -127,6 +125,7 @@ export default function PaginaProximos() {
 
   const proximos5 = calcularProximos5()
   const tiempoPromedio = calcularTiempoPromedio()
+  const proximosTickets = tickets.filter((t) => t.numero > estado.numeroActual).slice(0, 9)
 
   if (loading || !isClient) {
     return (
@@ -134,6 +133,16 @@ export default function PaginaProximos() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600 mx-auto mb-4"></div>
           <p className="text-lg text-gray-600">Cargando próximos turnos (Cache Optimizado)...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg text-red-600">Error: {error}</p>
         </div>
       </div>
     )
@@ -172,8 +181,8 @@ export default function PaginaProximos() {
             <div className="flex items-center gap-1">
               <Clock className="h-4 w-4" />
               <span>
-                {horaActual
-                  ? horaActual.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
+                {currentTime
+                  ? currentTime.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
                   : "Cargando..."}
               </span>
             </div>
@@ -359,24 +368,44 @@ export default function PaginaProximos() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Próximos Tickets */}
+          <div className="lg:col-span-3">
+            <Card className="bg-white shadow-xl border-4 border-purple-300">
+              <CardHeader className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+                <CardTitle className="text-2xl flex items-center gap-2">
+                  <Users className="h-6 w-6" />
+                  Próximos Tickets
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                {proximosTickets.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {proximosTickets.map((ticket) => (
+                      <TicketDisplay key={ticket.numero} numero={ticket.numero} nombre={ticket.nombre} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <div className="text-6xl text-gray-300 mb-4">🎫</div>
+                    <p className="text-xl text-gray-500 mb-2">No hay tickets en cola</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
-        {/* Mensaje de error si existe */}
-        {error && (
-          <Card className="mb-6 bg-red-50 border-2 border-red-200">
-            <CardContent className="p-4">
-              <p className="text-red-600 text-center">⚠️ {error}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Footer */}
-        <footer className="text-center mt-8 pt-4 border-t border-gray-200">
-          <div className="text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 5.3 | Cache Optimizado - Menos consultas DB</p>
-            <p className="mt-1">Actualización inteligente cada 60s | Cache compartido entre páginas</p>
+        {/* Estado del Sistema */}
+        <div className="mt-8 text-center">
+          <div
+            className={`inline-block px-4 py-2 rounded-full text-white font-semibold ${
+              estado.activo ? "bg-green-500" : "bg-red-500"
+            }`}
+          >
+            Sistema {estado.activo ? "Activo" : "Inactivo"}
           </div>
-        </footer>
+        </div>
       </div>
     </div>
   )

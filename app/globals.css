@@ -315,59 +315,14 @@
   }
 }
 
-@keyframes scaleIn {
-  from {
-    transform: scale(0.95);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-.animate-fadeIn {
+.fade-in {
   animation: fadeIn 0.5s ease-out;
-}
-
-.animate-scaleIn {
-  animation: scaleIn 0.4s ease-out;
-}
-
-/* Clases utilitarias para texto extra grueso */
-.text-extra-bold {
-  font-weight: 900;
-}
-
-.text-super-bold {
-  font-weight: 800;
-  text-shadow: 0 0 1px rgba(0, 0, 0, 0.1);
-}
-
-/* Mejorar contraste en elementos específicos del sistema */
-.ticket-number {
-  font-weight: 900;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-.system-title {
-  font-weight: 800;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.important-text {
-  font-weight: 700;
-  color: rgb(17 24 39);
 }
 
 /* Estilos para impresión */
 @media print {
   .no-print {
     display: none !important;
-  }
-
-  .print-only {
-    display: block !important;
   }
 
   body {
@@ -377,182 +332,9 @@
 
   .ticket-print {
     page-break-inside: avoid;
-    margin: 0;
-    padding: 20px;
-    border: 2px solid #000;
+    margin: 10mm;
+    padding: 5mm;
+    border: 2px solid black;
     text-align: center;
   }
-}
-
-/* Estilos para el modal de nombre */
-.modal-overlay {
-  backdrop-filter: blur(4px);
-}
-
-/* Estilos para botones con efectos hover mejorados */
-.btn-hover-effect {
-  transition: all 0.3s ease;
-  transform: translateY(0);
-}
-
-.btn-hover-effect:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-}
-
-/* Estilos para las tarjetas con efectos de elevación */
-.card-hover {
-  transition: all 0.3s ease;
-}
-
-.card-hover:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-}
-
-/* Estilos para el texto con gradiente */
-.gradient-text {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* Estilos para animaciones de carga */
-.loading-dots::after {
-  content: "";
-  animation: dots 1.5s steps(5, end) infinite;
-}
-
-@keyframes dots {
-  0%,
-  20% {
-    color: rgba(0, 0, 0, 0);
-    text-shadow: .25em 0 0 rgba(0, 0, 0, 0), .5em 0 0 rgba(0, 0, 0, 0);
-  }
-  40% {
-    color: black;
-    text-shadow: .25em 0 0 rgba(0, 0, 0, 0), .5em 0 0 rgba(0, 0, 0, 0);
-  }
-  60% {
-    text-shadow: .25em 0 0 black, .5em 0 0 rgba(0, 0, 0, 0);
-  }
-  80%,
-  100% {
-    text-shadow: .25em 0 0 black, .5em 0 0 black;
-  }
-}
-
-/* Estilos responsivos mejorados */
-@media (max-width: 640px) {
-  .responsive-text {
-    font-size: 0.875rem;
-  }
-
-  .responsive-padding {
-    padding: 1rem;
-  }
-
-  .responsive-margin {
-    margin: 0.5rem;
-  }
-}
-
-/* Estilos para el modo oscuro (si se implementa) */
-.dark-mode {
-  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-  color: white;
-}
-
-.dark-mode .card {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-/* Estilos para accesibilidad */
-.focus-visible:focus {
-  outline: 2px solid #4f46e5;
-  outline-offset: 2px;
-}
-
-/* Estilos para animaciones de entrada */
-.slide-in-bottom {
-  animation: slideInBottom 0.5s ease-out;
-}
-
-@keyframes slideInBottom {
-  from {
-    transform: translateY(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-.slide-in-top {
-  animation: slideInTop 0.5s ease-out;
-}
-
-@keyframes slideInTop {
-  from {
-    transform: translateY(-100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-/* Estilos para efectos de pulso */
-.pulse-slow {
-  animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* Estilos para scrollbar personalizado */
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
-}
-
-/* Estilos para tooltips */
-.tooltip {
-  position: relative;
-}
-
-.tooltip::before {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.3s;
-}
-
-.tooltip:hover::before {
-  opacity: 1;
 }

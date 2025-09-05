@@ -1,23 +1,28 @@
 import { NextResponse } from "next/server"
-import { verificarConexionDB } from "@/lib/database"
+import { checkUpstashHealth } from "@/lib/upstash-health"
 
 export async function GET() {
   try {
-    const healthCheck = await verificarConexionDB()
+    const health = await checkUpstashHealth()
 
-    return NextResponse.json({
-      status: healthCheck.connected ? "healthy" : "unhealthy",
+    const response = {
+      status: health.status,
       timestamp: new Date().toISOString(),
-      details: healthCheck.details,
+      upstash: health,
+      version: "5.2",
+    }
+
+    return NextResponse.json(response, {
+      status: health.status === "healthy" ? 200 : 503,
     })
   } catch (error) {
     return NextResponse.json(
       {
-        status: "error",
+        status: "unhealthy",
+        error: error instanceof Error ? error.message : "Unknown error",
         timestamp: new Date().toISOString(),
-        error: error instanceof Error ? error.message : "Error desconocido",
       },
-      { status: 500 },
+      { status: 503 },
     )
   }
 }

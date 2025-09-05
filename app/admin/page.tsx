@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Shield,
@@ -25,8 +26,13 @@ import {
   Download,
   FileText,
   Archive,
+  Play,
+  Pause,
+  SkipForward,
+  Upload,
 } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
+import Link from "next/link"
 
 export default function PaginaAdmin() {
   const {
@@ -41,6 +47,11 @@ export default function PaginaAdmin() {
     isClient,
     cacheStats,
     invalidateCache,
+    siguienteTicket,
+    toggleSistema,
+    reiniciarSistema,
+    refetch,
+    tickets,
   } = useSistemaEstado("admin")
 
   const [backups, setBackups] = useState<any[]>([])
@@ -51,12 +62,15 @@ export default function PaginaAdmin() {
   const [horaActual, setHoraActual] = useState(new Date())
   const [mostrarMetricasAvanzadas, setMostrarMetricasAvanzadas] = useState(false)
   const [descargandoTodos, setDescargandoTodos] = useState(false)
+  const [healthStatus, setHealthStatus] = useState<any>(null)
+  const [backupData, setBackupData] = useState<string>("")
 
   useEffect(() => {
     if (isClient) {
       cargarDatosAdmin()
       cargarBackups()
     }
+    checkHealth()
   }, [isClient])
 
   // Actualizar hora cada minuto
@@ -1022,6 +1036,90 @@ export default function PaginaAdmin() {
 
   const totalesHistoricos = calcularTotalesHistoricos()
 
+  const checkHealth = async () => {
+    try {
+      const response = await fetch("/api/health")
+      const data = await response.json()
+      setHealthStatus(data)
+    } catch (error) {
+      console.error("Error checking health:", error)
+    }
+  }
+
+  const handleSiguienteTicket = async () => {
+    try {
+      await siguienteTicket()
+    } catch (error) {
+      console.error("Error al avanzar ticket:", error)
+    }
+  }
+
+  const handleToggleSistema = async () => {
+    try {
+      await toggleSistema()
+    } catch (error) {
+      console.error("Error al cambiar estado del sistema:", error)
+    }
+  }
+
+  const handleReiniciarSistema = async () => {
+    if (confirm("¿Está seguro de que desea reiniciar el sistema? Esto eliminará todos los tickets.")) {
+      try {
+        await reiniciarSistema()
+      } catch (error) {
+        console.error("Error al reiniciar sistema:", error)
+      }
+    }
+  }
+
+  const exportarBackup = async () => {
+    try {
+      const response = await fetch("/api/backup")
+      const data = await response.json()
+
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `backup-${new Date().toISOString().split("T")[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error("Error al exportar backup:", error)
+    }
+  }
+
+  const importarBackup = async () => {
+    if (!backupData.trim()) {
+      alert("Por favor, pegue los datos del backup")
+      return
+    }
+
+    try {
+      const data = JSON.parse(backupData)
+      const response = await fetch("/api/backup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      })
+
+      if (response.ok) {
+        alert("Backup restaurado correctamente")
+        setBackupData("")
+        refetch()
+      } else {
+        throw new Error("Error al restaurar backup")
+      }
+    } catch (error) {
+      console.error("Error al importar backup:", error)
+      alert("Error al importar backup. Verifique el formato de los datos.")
+    }
+  }
+
   if (loading || !isClient) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 flex items-center justify-center p-4">
@@ -1033,10 +1131,12 @@ export default function PaginaAdmin() {
     )
   }
 
+  const ticketsEnCola = tickets.filter((t) => t.numero > estado.numeroActual).length
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 p-4">
+      {/* Header */}
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="mb-6">
             <img
@@ -1081,13 +1181,13 @@ export default function PaginaAdmin() {
 
           {/* Botones de navegación - AGREGADO BOTÓN PRÓXIMOS */}
           <div className="flex justify-center gap-4">
-            <a
+            <Link
               href="/"
               className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Volver a Tickets
-            </a>
+            </Link>
             <a
               href="/empleados"
               className="inline-flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
@@ -1129,6 +1229,164 @@ export default function PaginaAdmin() {
             </div>
           </div>
         )}
+
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">Error: {error}</div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Panel de Control */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-2xl font-bold mb-6 text-gray-800">Control del Sistema</h2>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <span className="font-semibold">Estado del Sistema:</span>
+                <span
+                  className={`px-3 py-1 rounded-full text-white font-semibold ${
+                    estado.activo ? "bg-green-500" : "bg-red-500"
+                  }`}
+                >
+                  {estado.activo ? "Activo" : "Inactivo"}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <span className="font-semibold">Número Actual:</span>
+                <span className="text-2xl font-bold text-red-600">
+                  {estado.numeroActual.toString().padStart(3, "0")}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <span className="font-semibold">Próximo Número:</span>
+                <span className="text-2xl font-bold text-blue-600">
+                  {estado.proximoNumero.toString().padStart(3, "0")}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <span className="font-semibold">Tickets en Cola:</span>
+                <span className="text-2xl font-bold text-green-600">{ticketsEnCola}</span>
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-3">
+              <Button
+                onClick={handleToggleSistema}
+                className={`w-full h-12 text-lg font-semibold ${
+                  estado.activo ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"
+                }`}
+              >
+                {estado.activo ? (
+                  <>
+                    <Pause className="w-5 h-5 mr-2" />
+                    Desactivar Sistema
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-5 h-5 mr-2" />
+                    Activar Sistema
+                  </>
+                )}
+              </Button>
+
+              <Button
+                onClick={handleSiguienteTicket}
+                variant="outline"
+                className="w-full h-12 text-lg font-semibold bg-transparent"
+                disabled={ticketsEnCola === 0}
+              >
+                <SkipForward className="w-5 h-5 mr-2" />
+                Siguiente Ticket
+              </Button>
+
+              <Button
+                onClick={handleReiniciarSistema}
+                variant="destructive"
+                className="w-full h-12 text-lg font-semibold"
+              >
+                <RotateCcw className="w-5 h-5 mr-2" />
+                Reiniciar Sistema
+              </Button>
+            </div>
+          </div>
+
+          {/* Panel de Monitoreo */}
+          <div className="space-y-6">
+            {/* Estado de Salud */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-gray-800">Estado del Sistema</h3>
+                <Button onClick={checkHealth} variant="outline" size="sm">
+                  <Activity className="w-4 h-4 mr-2" />
+                  Actualizar
+                </Button>
+              </div>
+
+              {healthStatus && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                    <span className="font-semibold">Estado General:</span>
+                    <span
+                      className={`px-2 py-1 rounded text-white text-sm ${
+                        healthStatus.status === "healthy" ? "bg-green-500" : "bg-red-500"
+                      }`}
+                    >
+                      {healthStatus.status === "healthy" ? "Saludable" : "Con Problemas"}
+                    </span>
+                  </div>
+
+                  {healthStatus.upstash && (
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                      <span className="font-semibold">Base de Datos:</span>
+                      <span
+                        className={`px-2 py-1 rounded text-white text-sm ${
+                          healthStatus.upstash.status === "healthy" ? "bg-green-500" : "bg-red-500"
+                        }`}
+                      >
+                        {healthStatus.upstash.latency ? `${healthStatus.upstash.latency}ms` : "Error"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Backup y Restauración */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h3 className="text-xl font-bold mb-4 text-gray-800 flex items-center">
+                <Database className="w-5 h-5 mr-2" />
+                Backup y Restauración
+              </h3>
+
+              <div className="space-y-4">
+                <Button onClick={exportarBackup} variant="outline" className="w-full bg-transparent">
+                  <Download className="w-4 h-4 mr-2" />
+                  Exportar Backup
+                </Button>
+
+                <div>
+                  <Label htmlFor="backup-data" className="text-sm font-semibold">
+                    Datos de Backup (JSON):
+                  </Label>
+                  <textarea
+                    id="backup-data"
+                    value={backupData}
+                    onChange={(e) => setBackupData(e.target.value)}
+                    placeholder="Pegue aquí los datos del backup..."
+                    className="w-full h-32 mt-2 p-3 border border-gray-300 rounded-md resize-none text-sm"
+                  />
+                </div>
+
+                <Button onClick={importarBackup} className="w-full" disabled={!backupData.trim()}>
+                  <Upload className="w-4 h-4 mr-2" />
+                  Restaurar Backup
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Estadísticas Principales del Día */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -1956,6 +2214,56 @@ export default function PaginaAdmin() {
           </CardContent>
         </Card>
 
+        {/* Lista de Tickets */}
+        <div className="mt-8 bg-white rounded-lg shadow-lg p-6">
+          <h3 className="text-xl font-bold mb-4 text-gray-800">Tickets del Día</h3>
+
+          {tickets.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full table-auto">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="px-4 py-2 text-left font-semibold">Número</th>
+                    <th className="px-4 py-2 text-left font-semibold">Nombre</th>
+                    <th className="px-4 py-2 text-left font-semibold">Hora</th>
+                    <th className="px-4 py-2 text-left font-semibold">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tickets.map((ticket) => (
+                    <tr key={ticket.numero} className="border-t">
+                      <td className="px-4 py-2 font-bold text-red-600">{ticket.numero.toString().padStart(3, "0")}</td>
+                      <td className="px-4 py-2">{ticket.nombre || "-"}</td>
+                      <td className="px-4 py-2 text-gray-600">
+                        {new Date(ticket.timestamp).toLocaleTimeString("es-ES")}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span
+                          className={`px-2 py-1 rounded text-white text-sm ${
+                            ticket.numero === estado.numeroActual
+                              ? "bg-green-500"
+                              : ticket.numero < estado.numeroActual
+                                ? "bg-gray-500"
+                                : "bg-blue-500"
+                          }`}
+                        >
+                          {ticket.numero === estado.numeroActual
+                            ? "Atendiendo"
+                            : ticket.numero < estado.numeroActual
+                              ? "Atendido"
+                              : "En Cola"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center text-gray-500 py-8">No hay tickets generados hoy</div>
+          )}
+        </div>
+
         {/* Modales existentes... */}
         {mostrarConfirmacionEliminar && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -2071,7 +2379,7 @@ export default function PaginaAdmin() {
         {/* Footer */}
         <footer className="text-center mt-8 pt-4 border-t border-gray-200">
           <div className="text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 5.3| Historial Consolidado + Descarga Masiva</p>
+            <p>Develop by: Karim :) | Versión 5.2 | Historial Consolidado + Descarga Masiva</p>
             <p>Actualización inteligente cada 120s | Cache compartido entre páginas</p>
           </div>
         </footer>
