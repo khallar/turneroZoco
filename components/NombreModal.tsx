@@ -3,68 +3,101 @@
 import type React from "react"
 
 import { useState } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { User, X } from "lucide-react"
 
 interface NombreModalProps {
   isOpen: boolean
   onClose: () => void
-  onConfirm: (nombre?: string) => void
+  onSubmit: (nombre: string) => void
 }
 
-export default function NombreModal({ isOpen, onClose, onConfirm }: NombreModalProps) {
+export function NombreModal({ isOpen, onClose, onSubmit }: NombreModalProps) {
   const [nombre, setNombre] = useState("")
+  const [loading, setLoading] = useState(false)
 
-  if (!isOpen) return null
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    onConfirm(nombre.trim() || undefined)
-    setNombre("")
+
+    if (!nombre.trim()) {
+      return
+    }
+
+    setLoading(true)
+    try {
+      await onSubmit(nombre.trim())
+      setNombre("")
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleClose = () => {
-    setNombre("")
-    onClose()
+    if (!loading) {
+      setNombre("")
+      onClose()
+    }
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
-        <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Generar Ticket con Nombre</h2>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center text-xl">
+            <User className="h-5 w-5 mr-2 text-red-600" />
+            Solicitar Turno
+          </DialogTitle>
+        </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <Label htmlFor="nombre" className="text-lg font-semibold">
-              Nombre (opcional)
+          <div className="space-y-2">
+            <Label htmlFor="nombre" className="text-sm font-medium">
+              Ingrese su nombre
             </Label>
             <Input
               id="nombre"
               type="text"
+              placeholder="Ej: Juan Pérez"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
-              placeholder="Ingrese su nombre"
-              className="mt-2 h-12 text-lg"
+              className="w-full"
               maxLength={50}
+              disabled={loading}
+              autoFocus
             />
+            <p className="text-xs text-gray-500">Máximo 50 caracteres</p>
           </div>
 
-          <div className="flex space-x-4">
+          <div className="flex space-x-3">
             <Button
               type="button"
               variant="outline"
               onClick={handleClose}
-              className="flex-1 h-12 text-lg bg-transparent"
+              className="flex-1 bg-transparent"
+              disabled={loading}
             >
+              <X className="h-4 w-4 mr-2" />
               Cancelar
             </Button>
-            <Button type="submit" className="flex-1 h-12 text-lg bg-red-600 hover:bg-red-700">
-              Generar Ticket
+            <Button type="submit" className="flex-1 bg-red-600 hover:bg-red-700" disabled={!nombre.trim() || loading}>
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Generando...
+                </>
+              ) : (
+                <>
+                  <User className="h-4 w-4 mr-2" />
+                  Generar Turno
+                </>
+              )}
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

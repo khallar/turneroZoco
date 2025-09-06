@@ -5,20 +5,25 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { X, Share2, Download } from "lucide-react"
 
-interface TicketDisplayProps {
+interface TicketInfo {
   numero: number
-  nombre?: string
-  className?: string
-  fecha?: string
+  nombre: string
+  fecha: string
+  timestamp: number
+}
+
+interface TicketDisplayProps {
+  ticket: TicketInfo
+  isCurrentTicket?: boolean
+  showAnimation?: boolean
   onClose?: () => void
   esMobile?: boolean
 }
 
 export default function TicketDisplay({
-  numero,
-  nombre,
-  className = "",
-  fecha,
+  ticket,
+  isCurrentTicket = false,
+  showAnimation = false,
   onClose,
   esMobile,
 }: TicketDisplayProps) {
@@ -63,7 +68,7 @@ export default function TicketDisplay({
     // Número grande
     ctx.fillStyle = "#2563eb"
     ctx.font = "bold 72px Arial"
-    ctx.fillText(numero.toString().padStart(3, "0"), canvas.width / 2, 180)
+    ctx.fillText(ticket.numero.toString().padStart(3, "0"), canvas.width / 2, 180)
 
     // Borde del número
     ctx.strokeStyle = "#2563eb"
@@ -71,12 +76,12 @@ export default function TicketDisplay({
     ctx.strokeRect(80, 120, 240, 80)
 
     // Nombre del cliente
-    if (nombre) {
+    if (ticket.nombre) {
       ctx.fillStyle = "#16a34a"
       ctx.font = "bold 20px Arial"
       ctx.fillRect(60, 220, 280, 40) // Fondo verde claro
       ctx.fillStyle = "#ffffff"
-      ctx.fillText(nombre, canvas.width / 2, 245)
+      ctx.fillText(ticket.nombre, canvas.width / 2, 245)
     }
 
     // Línea separadora
@@ -92,8 +97,8 @@ export default function TicketDisplay({
     // Información adicional
     ctx.fillStyle = "#666666"
     ctx.font = "12px Arial"
-    if (fecha) {
-      ctx.fillText(`Fecha: ${fecha}`, canvas.width / 2, 310)
+    if (ticket.fecha) {
+      ctx.fillText(`Fecha: ${ticket.fecha}`, canvas.width / 2, 310)
     }
     ctx.fillText("Conserve este ticket", canvas.width / 2, 330)
     ctx.fillText("Será llamado por su número o nombre", canvas.width / 2, 350)
@@ -109,7 +114,7 @@ export default function TicketDisplay({
         const url = URL.createObjectURL(blob)
         const link = document.createElement("a")
         link.href = url
-        link.download = `ticket-${numero.toString().padStart(3, "0")}-${nombre ? nombre.replace(/\s+/g, "-") : ""}.png`
+        link.download = `ticket-${ticket.numero.toString().padStart(3, "0")}-${ticket.nombre.replace(/\s+/g, "-")}.png`
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
@@ -128,7 +133,7 @@ export default function TicketDisplay({
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Ticket ${numero}</title>
+            <title>Ticket ${ticket.numero}</title>
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
               body {
@@ -223,10 +228,10 @@ export default function TicketDisplay({
           <body>
             <div class="ticket" id="ticket">
               <h2>NÚMERO DE ATENCIÓN</h2>
-              <div class="numero">${numero.toString().padStart(3, "0")}</div>
-              ${nombre ? `<div class="nombre">${nombre}</div>` : ""}
+              <div class="numero">${ticket.numero.toString().padStart(3, "0")}</div>
+              ${ticket.nombre ? `<div class="nombre">${ticket.nombre}</div>` : ""}
               <hr>
-              ${fecha ? `<p class="info">Fecha: ${fecha}</p>` : ""}
+              ${ticket.fecha ? `<p class="info">Fecha: ${ticket.fecha}</p>` : ""}
               <p class="info">Conserve este ticket</p>
               <p class="info">Será llamado por su número o nombre</p>
               <p class="info">ZOCO - Sistema de Atención</p>
@@ -275,7 +280,7 @@ export default function TicketDisplay({
                 // Número
                 ctx.fillStyle = '#2563eb';
                 ctx.font = 'bold 72px Arial';
-                ctx.fillText('${numero.toString().padStart(3, "0")}', canvas.width / 2, 180);
+                ctx.fillText('${ticket.numero.toString().padStart(3, "0")}', canvas.width / 2, 180);
                 
                 // Borde del número
                 ctx.strokeStyle = '#2563eb';
@@ -284,13 +289,13 @@ export default function TicketDisplay({
                 
                 // Nombre
                 ${
-                  nombre
+                  ticket.nombre
                     ? `
                 ctx.fillStyle = '#16a34a';
                 ctx.fillRect(60, 220, 280, 40);
                 ctx.fillStyle = '#ffffff';
                 ctx.font = 'bold 20px Arial';
-                ctx.fillText('${nombre}', canvas.width / 2, 245);
+                ctx.fillText('${ticket.nombre}', canvas.width / 2, 245);
                 `
                     : ""
                 }
@@ -298,7 +303,7 @@ export default function TicketDisplay({
                 // Info
                 ctx.fillStyle = '#666666';
                 ctx.font = '12px Arial';
-                ${fecha ? `ctx.fillText('Fecha: ${fecha}', canvas.width / 2, 350);` : ""}
+                ${ticket.fecha ? `ctx.fillText('Fecha: ${ticket.fecha}', canvas.width / 2, 350);` : ""}
                 ctx.fillText('Conserve este ticket', canvas.width / 2, 370);
                 ctx.fillText('Será llamado por su número o nombre', canvas.width / 2, 390);
                 ctx.fillText('ZOCO - Sistema de Atención', canvas.width / 2, 420);
@@ -308,7 +313,7 @@ export default function TicketDisplay({
                   const url = URL.createObjectURL(blob);
                   const link = document.createElement('a');
                   link.href = url;
-                  link.download = 'ticket-${numero.toString().padStart(3, "0")}-${nombre ? nombre.replace(/\s+/g, "-") : ""}.png';
+                  link.download = 'ticket-${ticket.numero.toString().padStart(3, "0")}-${ticket.nombre.replace(/\s+/g, "-")}.png';
                   link.click();
                   URL.revokeObjectURL(url);
                 });
@@ -317,12 +322,12 @@ export default function TicketDisplay({
               function compartir() {
                 if (navigator.share) {
                   navigator.share({
-                    title: 'Ticket de Atención #${numero.toString().padStart(3, "0")}',
-                    text: 'Mi número de atención es: ${numero.toString().padStart(3, "0")}\\n${nombre ? `Nombre: ${nombre}\\n` : ""}',
+                    title: 'Ticket de Atención #${ticket.numero.toString().padStart(3, "0")}',
+                    text: 'Mi número de atención es: ${ticket.numero.toString().padStart(3, "0")}\\n${ticket.nombre ? `Nombre: ${ticket.nombre}\\n` : ""}',
                     url: window.location.href
                   });
                 } else {
-                  const texto = 'Mi número de atención es: ${numero.toString().padStart(3, "0")}\\n${nombre ? `Nombre: ${nombre}\\n` : ""}';
+                  const texto = 'Mi número de atención es: ${ticket.numero.toString().padStart(3, "0")}\\n${ticket.nombre ? `Nombre: ${ticket.nombre}\\n` : ""}';
                   navigator.clipboard.writeText(texto).then(() => {
                     alert('Información copiada al portapapeles');
                   });
@@ -339,12 +344,12 @@ export default function TicketDisplay({
   const compartirTicket = async () => {
     if (typeof navigator === "undefined" || !mounted) return
 
-    const texto = `Mi número de atención es: ${numero.toString().padStart(3, "0")}\n${nombre ? `Nombre: ${nombre}\n` : ""}`
+    const texto = `Mi número de atención es: ${ticket.numero.toString().padStart(3, "0")}\n${ticket.nombre ? `Nombre: ${ticket.nombre}\n` : ""}`
 
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `Ticket de Atención #${numero.toString().padStart(3, "0")}`,
+          title: `Ticket de Atención #${ticket.numero.toString().padStart(3, "0")}`,
           text: texto,
         })
       } catch (error) {
@@ -366,8 +371,15 @@ export default function TicketDisplay({
   if (!mostrarTicket || !mounted) return null
 
   return (
-    <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 ${className}`}>
-      <Card className="w-full max-w-sm bg-white">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <Card
+        className={`
+        ${isCurrentTicket ? "bg-red-600 text-white border-red-700 shadow-lg" : "bg-white border-gray-200"}
+        ${showAnimation ? "animate-pulse" : ""}
+        transition-all duration-300
+        w-full max-w-sm
+      `}
+      >
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-lg">Ticket Generado</CardTitle>
           {onClose && (
@@ -376,14 +388,16 @@ export default function TicketDisplay({
             </Button>
           )}
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-6 text-center">
           <div className="bg-white border-2 border-dashed border-gray-400 p-6 text-center font-mono mb-4">
             <h3 className="text-lg font-bold mb-4">NÚMERO DE ATENCIÓN</h3>
-            <div className="text-6xl font-bold text-red-600 border-2 border-red-600 rounded-lg py-4 mb-4">
-              {numero.toString().padStart(3, "0")}
+            <div className={`text-6xl font-bold ${isCurrentTicket ? "text-white" : "text-red-600"}`}>
+              {ticket.numero.toString().padStart(3, "0")}
             </div>
-            {nombre && <div className="text-2xl font-semibold text-gray-800">{nombre}</div>}
-            {fecha && <p className="text-sm italic mb-2">Fecha: {fecha}</p>}
+            <div className={`text-lg font-medium ${isCurrentTicket ? "text-red-100" : "text-gray-700"}`}>
+              {ticket.nombre}
+            </div>
+            <div className={`text-sm ${isCurrentTicket ? "text-red-200" : "text-gray-500"}`}>{ticket.fecha}</div>
             <hr className="border-dashed border-gray-400 my-3" />
             <p className="text-xs">Conserve este ticket</p>
             <p className="text-xs">Será llamado por su número o nombre</p>

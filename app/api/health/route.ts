@@ -3,18 +3,11 @@ import { checkUpstashHealth } from "@/lib/upstash-health"
 
 export async function GET() {
   try {
-    const health = await checkUpstashHealth()
+    const healthResult = await checkUpstashHealth()
 
-    const response = {
-      status: health.status,
-      timestamp: new Date().toISOString(),
-      upstash: health,
-      version: "5.2",
-    }
+    const statusCode = healthResult.status === "healthy" ? 200 : healthResult.status === "degraded" ? 206 : 503
 
-    return NextResponse.json(response, {
-      status: health.status === "healthy" ? 200 : 503,
-    })
+    return NextResponse.json(healthResult, { status: statusCode })
   } catch (error) {
     return NextResponse.json(
       {

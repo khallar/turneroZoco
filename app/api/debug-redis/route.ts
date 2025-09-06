@@ -1,200 +1,203 @@
 import { NextResponse } from "next/server"
-import { Redis } from "@upstash/redis"
 import { redis } from "@/lib/database"
-
-// Función para obtener las variables de entorno correctas
-function getRedisConfig() {
-  const configs = [
-    {
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-      name: "UPSTASH_REDIS_REST (Principal)",
-    },
-    {
-      url: process.env.KV_REST_API_URL,
-      token: process.env.KV_REST_API_TOKEN,
-      name: "KV_REST_API",
-    },
-    {
-      url: process.env.TURNOS_KV_REST_API_URL,
-      token: process.env.TURNOS_KV_REST_API_TOKEN,
-      name: "TURNOS_KV_REST_API",
-    },
-    {
-      url: process.env.REDIS_URL?.replace("rediss://", "https://").replace(":6379", ""),
-      token: process.env.REDIS_TOKEN,
-      name: "REDIS_URL (Convertido)",
-    },
-  ]
-
-  for (const config of configs) {
-    if (config.url && config.token) {
-      return { url: config.url, token: config.token, name: config.name }
-    }
-  }
-
-  throw new Error("No se encontraron variables de entorno válidas para Upstash Redis")
-}
 
 export async function GET() {
   try {
-    console.log("🔍 Iniciando inspección de Redis...")
+    console.log("🔍 Iniciando debug completo de Redis...")
 
-    const redisConfig = getRedisConfig()
-
-    // Test básico de conexión
-    const pingResult = await redis.ping()
-
-    // Test de escritura y lectura
-    const testKey = `test:${Date.now()}`
-    const testValue = { message: "test", timestamp: new Date().toISOString() }
-
-    await redis.set(testKey, testValue, { ex: 60 }) // Expira en 60 segundos
-    const readValue = await redis.get(testKey)
-
-    // Limpiar el test
-    await redis.del(testKey)
-
-    const redisInstance = new Redis({
-      url: redisConfig.url,
-      token: redisConfig.token,
-      retry: {
-        retries: 3,
-        backoff: (retryCount) => Math.exp(retryCount) * 50,
-      },
-      automaticDeserialization: true,
-    })
-
-    // Buscar todas las claves relacionadas con TURNOS_ZOCO
-    const prefijos = [
-      "TURNOS_ZOCO:estado:",
-      "TURNOS_ZOCO:tickets:",
-      "TURNOS_ZOCO:backup:",
-      "TURNOS_ZOCO:counter:",
-      "TURNOS_ZOCO:logs",
-    ]
-
-    const resultados = {
-      configuracion: redisConfig.name,
+    const debugInfo = {
       timestamp: new Date().toISOString(),
-      estadosDiarios: 0,
-      listasTickets: 0,
-      backups: 0,
-      contadores: 0,
-      logs: 0,
-      fechasEncontradas: new Set<string>(),
-      detallesClaves: [],
-      totalClaves: 0,
+      environment: {
+        NODE_ENV: process.env.NODE_ENV,
+        UPSTASH_REDIS_REST_URL: process.env.KV_REST_API_URL ? "Configurado" : "No configurado",
+        UPSTASH_REDIS_REST_TOKEN: process.env.KV_REST_API_TOKEN ? "Configurado" : "No configurado",
+        KV_REST_API_URL: process.env.KV_REST_API_URL ? "Configurado" : "No configurado",
+        KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ? "Configurado" : "No configurado",
+      },
+      tests: {},
     }
 
-    // Usar SCAN para obtener todas las claves de forma eficiente
-    let cursor = 0
-    const todasLasClaves: string[] = []
-
-    do {
-      const result = await redisInstance.scan(cursor, {
-        match: "TURNOS_ZOCO:*",
-        count: 100,
-      })
-
-      if (Array.isArray(result) && result.length >= 2) {
-        cursor = result[0] as number
-        const keys = result[1] as string[]
-        todasLasClaves.push(...keys)
-      } else {
-        break
+    // Test 1: Ping básico
+    try {
+      const pingStart = Date.now()
+      const pingResult = await redis.ping()
+      const pingTime = Date.now() - pingStart
+      debugInfo.tests.ping = {
+        success: true,
+        result: pingResult,
+        responseTime: pingTime + "ms",
       }
-    } while (cursor !== 0)
+      console.log("✅ Ping exitoso:", pingResult, `(${pingTime}ms)`)
+    } catch (error) {
+      debugInfo.tests.ping = {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+      console.error("❌ Ping falló:", error)
+    }
 
-    console.log(`🔍 Encontradas ${todasLasClaves.length} claves con prefijo TURNOS_ZOCO`)
+    // Test 2: Set/Get básico
+    try {
+      const testKey = "debug_test_" + Date.now()
+      const testValue = "debug_value_" + Math.random()
 
-    // Analizar cada clave
-    for (const clave of todasLasClaves) {
-      try {
-        // Obtener información de la clave
-        const tipo = await redisInstance.type(clave)
-        let tamaño = 0
+      const setStart = Date.now()
+      await redis.set(testKey, testValue, { ex: 30 })
+      const setTime = Date.now() - setStart
 
-        if (tipo === "string") {
-          const valor = await redisInstance.get(clave)
-          tamaño = JSON.stringify(valor).length
-        } else if (tipo === "list") {
-          tamaño = await redisInstance.llen(clave)
-        }
+      const getStart = Date.now()
+      const getValue = await redis.get(testKey)
+      const getTime = Date.now() - getStart
 
-        // Clasificar por tipo
-        if (clave.includes(":estado:")) {
-          resultados.estadosDiarios++
-          const fecha = clave.split(":estado:")[1]
-          if (fecha && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            resultados.fechasEncontradas.add(fecha)
+      await redis.del(testKey)
+
+      debugInfo.tests.setGet = {
+        success: getValue === testValue,
+        setTime: setTime + "ms",
+        getTime: getTime + "ms",
+        valueMatch: getValue === testValue,
+        expectedValue: testValue,
+        actualValue: getValue,
+      }
+      console.log("✅ Set/Get exitoso:", { setTime, getTime, match: getValue === testValue })
+    } catch (error) {
+      debugInfo.tests.setGet = {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+      console.error("❌ Set/Get falló:", error)
+    }
+
+    // Test 3: Scan de claves del sistema
+    try {
+      const scanStart = Date.now()
+      const keys = await redis.keys("TURNOS_ZOCO:*")
+      const scanTime = Date.now() - scanStart
+
+      debugInfo.tests.keysScan = {
+        success: true,
+        keysFound: Array.isArray(keys) ? keys.length : 0,
+        responseTime: scanTime + "ms",
+        sampleKeys: Array.isArray(keys) ? keys.slice(0, 10) : [],
+        keysByType: {},
+      }
+
+      // Analizar tipos de claves
+      if (Array.isArray(keys)) {
+        const keysByType = {}
+        keys.forEach((key) => {
+          const parts = key.split(":")
+          if (parts.length >= 3) {
+            const type = parts[1] // estado, tickets, backup, etc.
+            keysByType[type] = (keysByType[type] || 0) + 1
           }
-        } else if (clave.includes(":tickets:")) {
-          resultados.listasTickets++
-          const fecha = clave.split(":tickets:")[1]
-          if (fecha && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            resultados.fechasEncontradas.add(fecha)
-          }
-        } else if (clave.includes(":backup:")) {
-          resultados.backups++
-          const fecha = clave.split(":backup:")[1]
-          if (fecha && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            resultados.fechasEncontradas.add(fecha)
-          }
-        } else if (clave.includes(":counter:")) {
-          resultados.contadores++
-          const fecha = clave.split(":counter:")[1]
-          if (fecha && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            resultados.fechasEncontradas.add(fecha)
-          }
-        } else if (clave.includes(":logs")) {
-          resultados.logs++
-        }
-
-        // Agregar detalles de la clave
-        resultados.detallesClaves.push({
-          clave,
-          tipo,
-          tamaño,
-          categoria: clave.includes(":estado:")
-            ? "Estado"
-            : clave.includes(":tickets:")
-              ? "Tickets"
-              : clave.includes(":backup:")
-                ? "Backup"
-                : clave.includes(":counter:")
-                  ? "Contador"
-                  : "Logs",
         })
-      } catch (error) {
-        console.error(`Error analizando clave ${clave}:`, error)
+        debugInfo.tests.keysScan.keysByType = keysByType
       }
+
+      console.log("✅ Scan exitoso:", {
+        keysFound: Array.isArray(keys) ? keys.length : 0,
+        scanTime,
+      })
+    } catch (error) {
+      debugInfo.tests.keysScan = {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+      console.error("❌ Scan falló:", error)
     }
 
-    resultados.totalClaves = todasLasClaves.length
-    resultados.fechasEncontradas = Array.from(resultados.fechasEncontradas).sort()
+    // Test 4: Operaciones específicas del sistema
+    try {
+      const today = new Date().toISOString().split("T")[0]
+      const estadoKey = `TURNOS_ZOCO:estado:${today}`
+      const ticketsKey = `TURNOS_ZOCO:tickets:${today}`
 
-    console.log("📊 Resumen de inspección:")
-    console.log(`  - Estados diarios: ${resultados.estadosDiarios}`)
-    console.log(`  - Listas de tickets: ${resultados.listasTickets}`)
-    console.log(`  - Backups: ${resultados.backups}`)
-    console.log(`  - Contadores: ${resultados.contadores}`)
-    console.log(`  - Fechas encontradas: ${resultados.fechasEncontradas.length}`)
+      const systemStart = Date.now()
+      const [estadoExists, ticketsExists, estadoValue] = await Promise.all([
+        redis.exists(estadoKey),
+        redis.exists(ticketsKey),
+        redis.get(estadoKey),
+      ])
+      const systemTime = Date.now() - systemStart
 
-    return NextResponse.json({
-      ...resultados,
-      status: "success",
-      ping: pingResult,
-      writeTest: testValue,
-      readTest: readValue,
-      match: JSON.stringify(testValue) === JSON.stringify(readValue),
-    })
+      debugInfo.tests.systemKeys = {
+        success: true,
+        responseTime: systemTime + "ms",
+        estadoExists: estadoExists === 1,
+        ticketsExists: ticketsExists === 1,
+        estadoValue: estadoValue ? "Presente" : "Ausente",
+        todayKey: today,
+      }
+      console.log("✅ System keys check exitoso:", {
+        estadoExists: estadoExists === 1,
+        ticketsExists: ticketsExists === 1,
+      })
+    } catch (error) {
+      debugInfo.tests.systemKeys = {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+      console.error("❌ System keys check falló:", error)
+    }
+
+    // Test 5: Operaciones de lista (para tickets)
+    try {
+      const listKey = "debug_list_" + Date.now()
+      const listValues = ["item1", "item2", "item3"]
+
+      const listStart = Date.now()
+      await redis.rpush(listKey, ...listValues)
+      const listItems = await redis.lrange(listKey, 0, -1)
+      await redis.del(listKey)
+      const listTime = Date.now() - listStart
+
+      debugInfo.tests.listOperations = {
+        success: Array.isArray(listItems) && listItems.length === listValues.length,
+        responseTime: listTime + "ms",
+        itemsAdded: listValues.length,
+        itemsRetrieved: Array.isArray(listItems) ? listItems.length : 0,
+        itemsMatch: JSON.stringify(listItems) === JSON.stringify(listValues),
+      }
+      console.log("✅ List operations exitoso:", {
+        added: listValues.length,
+        retrieved: Array.isArray(listItems) ? listItems.length : 0,
+      })
+    } catch (error) {
+      debugInfo.tests.listOperations = {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+      console.error("❌ List operations falló:", error)
+    }
+
+    // Resumen general
+    const successfulTests = Object.values(debugInfo.tests).filter((test) => test.success).length
+    const totalTests = Object.keys(debugInfo.tests).length
+
+    debugInfo.summary = {
+      totalTests,
+      successfulTests,
+      failedTests: totalTests - successfulTests,
+      overallHealth:
+        successfulTests === totalTests
+          ? "Excelente"
+          : successfulTests >= totalTests * 0.8
+            ? "Bueno"
+            : successfulTests >= totalTests * 0.5
+              ? "Regular"
+              : "Crítico",
+    }
+
+    console.log("📊 Debug completado:", debugInfo.summary)
+
+    return NextResponse.json(debugInfo)
   } catch (error) {
-    console.error("❌ Error en inspección de Redis:", error)
+    console.error("❌ Error crítico en debug:", error)
     return NextResponse.json(
       {
-        status: "error",
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: "Error crítico en debug de Redis",
+        message: error instanceof Error ? error.message : String(error),
         timestamp: new Date().toISOString(),
       },
       { status: 500 },

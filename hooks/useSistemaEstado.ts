@@ -2,34 +2,64 @@
 
 import { useState, useEffect, useCallback } from "react"
 
-export interface Ticket {
+interface TicketInfo {
   numero: number
-  nombre?: string
-  timestamp: string
+  nombre: string
+  fecha: string
+  timestamp: number
 }
 
-export interface SistemaEstado {
+interface EstadoSistema {
   numeroActual: number
-  proximoNumero: number
-  activo: boolean
+  ultimoNumero: number
+  totalAtendidos: number
+  numerosLlamados: number
+  fechaInicio: string
+  ultimoReinicio: string
+  lastSync?: number
 }
 
-export function useSistemaEstado() {
-  const [estado, setEstado] = useState<SistemaEstado>({
-    numeroActual: 0,
-    proximoNumero: 1,
-    activo: false,
-  })
-  const [tickets, setTickets] = useState<Ticket[]>([])
+interface SistemaEstadoHook {
+  estado: EstadoSistema
+  tickets: TicketInfo[]
+  loading: boolean
+  error: string | null
+  generarTicket: (nombre: string) => Promise<TicketInfo | null>
+  llamarSiguiente: () => Promise<void>
+  reiniciarSistema: () => Promise<void>
+  refrescarEstado: () => Promise<void>
+}
+
+const estadoInicial: EstadoSistema = {
+  numeroActual: 1,
+  ultimoNumero: 0,
+  totalAtendidos: 0,
+  numerosLlamados: 0,
+  fechaInicio: new Date().toISOString().split("T")[0],
+  ultimoReinicio: new Date().toISOString(),
+  lastSync: Date.now(),
+}
+
+export function useSistemaEstado(): SistemaEstadoHook {
+  const [estado, setEstado] = useState<EstadoSistema>(estadoInicial)
+  const [tickets, setTickets] = useState<TicketInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchEstado = useCallback(async () => {
+  const refrescarEstado = useCallback(async () => {
     try {
-      const response = await fetch("/api/sistema")
+      setError(null)
+      const response = await fetch("/api/sistema", {
+        method: "GET",
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      })
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        throw new Error(`Error del servidor: ${response.status}`)
       }
+
       const data = await response.json()
 
       if (data.error) {
@@ -38,64 +68,30 @@ export function useSistemaEstado() {
 
       setEstado(data.estado)
       setTickets(data.tickets || [])
-      setError(null)
     } catch (err) {
-      console.error("Error fetching estado:", err)
+      console.error("Error al refrescar estado:", err)
       setError(err instanceof Error ? err.message : "Error desconocido")
     } finally {
       setLoading(false)
     }
   }, [])
 
-  const generarTicket = useCallback(
-    async (nombre?: string) => {
-      try {
-        const response = await fetch("/api/sistema", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            accion: "generar_ticket",
-            nombre,
-          }),
-        })
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
-
-        const data = await response.json()
-
-        if (data.error) {
-          throw new Error(data.error)
-        }
-
-        await fetchEstado()
-        return data.ticket
-      } catch (err) {
-        console.error("Error generando ticket:", err)
-        setError(err instanceof Error ? err.message : "Error generando ticket")
-        throw err
-      }
-    },
-    [fetchEstado],
-  )
-
-  const siguienteTicket = useCallback(async () => {
+  const generarTicket = useCallback(async (nombre: string): Promise<TicketInfo | null> => {
     try {
+      setError(null)
       const response = await fetch("/api/sistema", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          accion: "siguiente_ticket",
+          accion: "generar_ticket",
+          nombre: nombre.trim(),
         }),
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        throw new Error(`Error del servidor: ${response.status}`)
       }
 
       const data = await response.json()
@@ -104,29 +100,40 @@ export function useSistemaEstado() {
         throw new Error(data.error)
       }
 
-      await fetchEstado()
-      return data
-    } catch (err) {
-      console.error("Error siguiente ticket:", err)
-      setError(err instanceof Error ? err.message : "Error siguiente ticket")
-      throw err
-    }
-  }, [fetchEstado])
+      // Actualizar estado local
+      if (data.nuevoTicket) {
+        setTickets((prev) => [...prev, data.nuevoTicket])
+        setEstado((prev) => ({
+          ...prev,
+          numeroActual: data.nuevoTicket.numero + 1,
+          ultimoNumero: data.nuevoTicket.numero,
+          totalAtendidos: prev.totalAtendidos + 1,
+          lastSync: Date.now(),
+        }))
+        return data.nuevoTicket
+      }
 
-  const toggleSistema = useCallback(async () => {
+      return null
+    } catch (err) {
+      console.error("Error al generar ticket:", err)
+      setError(err instanceof Error ? err.message : "Error al generar ticket")
+      return null
+    }
+  }, [])
+
+  const llamarSiguiente = useCallback(async () => {
     try {
+      setError(null)
       const response = await fetch("/api/sistema", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          accion: "toggle_sistema",
-        }),
+        body: JSON.stringify({ accion: "llamar_siguiente" }),
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        throw new Error(`Error del servidor: ${response.status}`)
       }
 
       const data = await response.json()
@@ -135,29 +142,33 @@ export function useSistemaEstado() {
         throw new Error(data.error)
       }
 
-      await fetchEstado()
-      return data
+      // Actualizar estado local
+      setEstado((prev) => ({
+        ...prev,
+        numerosLlamados: prev.numerosLlamados + 1,
+        lastSync: Date.now(),
+      }))
     } catch (err) {
-      console.error("Error toggle sistema:", err)
-      setError(err instanceof Error ? err.message : "Error toggle sistema")
-      throw err
+      console.error("Error al llamar siguiente:", err)
+      setError(err instanceof Error ? err.message : "Error al llamar siguiente")
     }
-  }, [fetchEstado])
+  }, [])
 
   const reiniciarSistema = useCallback(async () => {
     try {
+      setError(null)
+      setLoading(true)
+
       const response = await fetch("/api/sistema", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          accion: "reiniciar_sistema",
-        }),
+        body: JSON.stringify({ accion: "reiniciar_sistema" }),
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        throw new Error(`Error del servidor: ${response.status}`)
       }
 
       const data = await response.json()
@@ -166,23 +177,35 @@ export function useSistemaEstado() {
         throw new Error(data.error)
       }
 
-      await fetchEstado()
-      return data
+      // Resetear estado local
+      setEstado(estadoInicial)
+      setTickets([])
+
+      // Refrescar para obtener el estado actualizado
+      await refrescarEstado()
     } catch (err) {
-      console.error("Error reiniciar sistema:", err)
-      setError(err instanceof Error ? err.message : "Error reiniciar sistema")
-      throw err
+      console.error("Error al reiniciar sistema:", err)
+      setError(err instanceof Error ? err.message : "Error al reiniciar sistema")
+    } finally {
+      setLoading(false)
     }
-  }, [fetchEstado])
+  }, [refrescarEstado])
 
+  // Cargar estado inicial
   useEffect(() => {
-    fetchEstado()
+    refrescarEstado()
+  }, [refrescarEstado])
 
-    // Actualizar cada 5 segundos
-    const interval = setInterval(fetchEstado, 5000)
+  // Auto-refresh cada 30 segundos para mantener sincronización
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!loading && !error) {
+        refrescarEstado()
+      }
+    }, 30000)
 
     return () => clearInterval(interval)
-  }, [fetchEstado])
+  }, [loading, error, refrescarEstado])
 
   return {
     estado,
@@ -190,9 +213,8 @@ export function useSistemaEstado() {
     loading,
     error,
     generarTicket,
-    siguienteTicket,
-    toggleSistema,
+    llamarSiguiente,
     reiniciarSistema,
-    refetch: fetchEstado,
+    refrescarEstado,
   }
 }

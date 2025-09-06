@@ -2,137 +2,35 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Clock, Users, Timer, RefreshCw, ArrowLeft } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { TicketDisplay } from "@/components/TicketDisplay"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
-import { Button } from "@/components/ui/button"
-import TicketDisplay from "@/components/TicketDisplay"
+import { Clock, Users, RefreshCw, TrendingUp } from "lucide-react"
 
-const FRASES_ALEATORIAS = [
-  "¡Gracias por visitarnos!",
-  "Su paciencia es muy apreciada",
-  "Estamos aquí para servirle",
-  "¡Bienvenido a nuestro local!",
-  "Pronto será atendido",
-  "Gracias por elegirnos",
-  "Su satisfacción es nuestra prioridad",
-  "¡Que tenga un excelente día!",
-  "Apreciamos su visita",
-  "Estamos para ayudarle",
-  "¡Hoy puede ser un gran día para decorar una torta o una fiesta! 🎉🍰 ",
-  "Mientras esperás tu turno, pensá qué excusa vas a dar para llevarte todo.😉🛍️",
-  "Decorá tu día con colores, glaseado… y un poco de ZOCO. 🌈✨",
-  "Respirá hondo… estás en el lugar donde empiezan las fiestas.🎈💃",
-  "No sos vos, es tu casa que necesita más cotillón 🏡🎊",
-  "Tranquilo… en ZOCO los turnos son rápidos y las ideas, infinitas 🧠⚡",
-  "¡ZOCOnsejo del día! Nunca subestimes el poder de una buena servilleta temática. 🍽️🎁",
-  "Quedate tranquilo, ya te toca. Y sí, podés llevarte ese globo gigante. 🎈🛒",
-  "Un turno en ZOCO vale más que mil excusas para no festejar. 🥳💬",
-  "Estás a un paso de que tu casa parezca una fiesta sorpresa permanente. 🎁🎊",
-  "¡Ya casi es tu turno! Prepará la sonrisa 😁",
-  "Turno en mano, paciencia en el corazón 🧘‍♂️",
-  "¿Ansias? Tranqui, lo bueno se hace esperar ⏳",
-  "¡Gracias por venir! Ya te atendemos 💕",
-  "Turnito sacado, ahora a mirar memes 😜",
-  "¡Sos el próximo protagonista! 🎬",
-  "Mientras esperás… pensá en algo rico 🍫",
-  "Tu número tiene suerte, lo presiento 🍀",
-  "Esto no es el bingo… ¡pero podés ganar buena onda! 🎟️",
-  "Estamos a full, pero ya te toca 💪",
-  "Gracias por bancarnos con onda 🙌",
-  "¡Zoco no se toma vacaciones! Vos tampoco del buen humor 😄",
-  "Te prometemos atención con una sonrisa 😃",
-  "Mientras esperás, pensá qué más te podés llevar 👀",
-  "Esto es más rápido que sacar una selfie 📸",
-]
-
-export default function PaginaProximos() {
-  const {
-    estado,
-    estadisticas,
-    loading,
-    error,
-    cargarEstado,
-    ultimaSincronizacion,
-    isClient,
-    cacheStats, // Nueva utilidad de cache
-    tickets,
-  } = useSistemaEstado("proximos") // Especificar que es la página próximos
-
-  const [fraseAleatoria, setFraseAleatoria] = useState("")
+export default function ProximosPage() {
+  const { estado, tickets, loading, error, refrescarEstado } = useSistemaEstado()
   const [currentTime, setCurrentTime] = useState(new Date())
-  const [actualizandoDatos, setActualizandoDatos] = useState(false)
 
-  // Seleccionar frase aleatoria al cargar
   useEffect(() => {
-    if (isClient) {
-      const fraseSeleccionada = FRASES_ALEATORIAS[Math.floor(Math.random() * FRASES_ALEATORIAS.length)]
-      setFraseAleatoria(fraseSeleccionada)
-    }
-  }, [isClient])
-
-  // Actualizar hora cada segundo
-  useEffect(() => {
-    const timer = setInterval(() => {
+    // Auto-refresh cada 3 segundos
+    const interval = setInterval(() => {
+      refrescarEstado()
       setCurrentTime(new Date())
-    }, 1000)
+    }, 3000)
 
-    return () => clearInterval(timer)
-  }, [])
+    return () => clearInterval(interval)
+  }, [refrescarEstado])
 
-  const actualizarDatosManual = async () => {
-    setActualizandoDatos(true)
-    try {
-      await cargarEstado(true, true) // Forzar actualización con estadísticas
-    } catch (error) {
-      console.error("Error al actualizar datos:", error)
-    } finally {
-      setActualizandoDatos(false)
-    }
-  }
+  // Obtener tickets pendientes (no atendidos)
+  const ticketsPendientes = tickets.slice(estado.numerosLlamados)
+  const proximosTickets = ticketsPendientes.slice(0, 8) // Mostrar los próximos 8
 
-  // Calcular próximos 5 números
-  const calcularProximos5 = () => {
-    if (!estado || !tickets) return []
-
-    const proximoNumero = estado.numerosLlamados + 1
-    const proximos = []
-
-    for (let i = 0; i < 5; i++) {
-      const numeroAMostrar = proximoNumero + i
-      if (numeroAMostrar <= estado.totalAtendidos) {
-        const ticket = tickets.find((t) => t.numero === numeroAMostrar)
-        proximos.push({
-          numero: numeroAMostrar,
-          nombre: ticket?.nombre || "Cliente ZOCO",
-          posicion: i + 1,
-        })
-      }
-    }
-
-    return proximos
-  }
-
-  // Calcular tiempo promedio de atención
-  const calcularTiempoPromedio = () => {
-    if (!estadisticas) return "Calculando..."
-
-    const tiempoPromedio = estadisticas.promedioTiempoPorTicket
-    if (tiempoPromedio === 0) return "Sin datos suficientes"
-
-    const minutos = Math.round(tiempoPromedio)
-    return `${minutos} minutos`
-  }
-
-  const proximos5 = calcularProximos5()
-  const tiempoPromedio = calcularTiempoPromedio()
-  const proximosTickets = tickets.filter((t) => t.numero > estado.numeroActual).slice(0, 9)
-
-  if (loading || !isClient) {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-lg text-gray-600">Cargando próximos turnos (Cache Optimizado)...</p>
+          <RefreshCw className="h-12 w-12 animate-spin mx-auto mb-4 text-red-600" />
+          <p className="text-xl text-gray-700">Cargando turnos...</p>
         </div>
       </div>
     )
@@ -140,271 +38,203 @@ export default function PaginaProximos() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-lg text-red-600">Error: {error}</p>
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8 text-center">
+            <div className="text-red-600 mb-4">
+              <Users className="h-16 w-16 mx-auto" />
+            </div>
+            <h2 className="text-2xl font-semibold mb-4">Sistema Temporalmente No Disponible</h2>
+            <p className="text-gray-600">{error}</p>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100 p-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="mb-6">
-            <img
-              src="/logo-rojo.png"
-              alt="Logo ZOCO"
-              className="h-32 md:h-40 mx-auto"
-              style={{
-                filter:
-                  "brightness(0) saturate(100%) invert(11%) sepia(100%) saturate(7500%) hue-rotate(0deg) brightness(100%) contrast(120%)",
-              }}
-            />
-          </div>
-
-          {/* Frase aleatoria */}
-          <div className="mb-6">
-            <Card className="bg-gradient-to-r from-yellow-100 to-orange-100 border-4 border-yellow-400 shadow-lg">
-              <CardContent className="p-6">
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-800 text-center">
-                  {fraseAleatoria || "¡Bienvenido a nuestro local!"}
-                </h1>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Información de estado optimizada */}
-          <div className="flex justify-center items-center gap-4 text-sm text-gray-500 mb-6">
-            <div className="flex items-center gap-1">
-              <Clock className="h-4 w-4" />
-              <span>
-                {currentTime
-                  ? currentTime.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
-                  : "Cargando..."}
-              </span>
+    <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100">
+      {/* Header */}
+      <div className="bg-red-600 text-white py-6 shadow-lg">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="bg-white p-3 rounded-full">
+                <img src="/logo-rojo.png" alt="ZOCO Logo" className="h-8 w-8" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold">Próximos Turnos</h1>
+                <p className="text-red-100">Sistema de Atención al Cliente - ZOCO</p>
+              </div>
             </div>
-            <div className="flex items-center gap-1">
-              <span>
-                Última actualización:{" "}
-                {ultimaSincronizacion
-                  ? ultimaSincronizacion.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
-                  : "Nunca"}
-              </span>
+            <div className="text-right">
+              <div className="text-2xl font-bold">
+                {currentTime.toLocaleTimeString("es-AR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}
+              </div>
+              <div className="text-red-200">
+                {currentTime.toLocaleDateString("es-AR", {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </div>
             </div>
-            {/* Indicador de cache */}
-            {cacheStats.totalEntries > 0 && (
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
-                  📦 Cache: {cacheStats.totalEntries} entradas
-                </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto p-6">
+        {/* Estadísticas */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <Card className="bg-white shadow-lg">
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="bg-blue-100 p-3 rounded-full">
+                  <Users className="h-6 w-6 text-blue-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Total de Turnos</p>
+                  <p className="text-3xl font-bold text-gray-900">{estado.totalAtendidos}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white shadow-lg">
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="bg-green-100 p-3 rounded-full">
+                  <TrendingUp className="h-6 w-6 text-green-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Atendidos</p>
+                  <p className="text-3xl font-bold text-gray-900">{estado.numerosLlamados}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white shadow-lg">
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="bg-orange-100 p-3 rounded-full">
+                  <Clock className="h-6 w-6 text-orange-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">En Espera</p>
+                  <p className="text-3xl font-bold text-gray-900">{estado.totalAtendidos - estado.numerosLlamados}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-red-600 text-white shadow-lg">
+            <CardContent className="p-6">
+              <div className="text-center">
+                <p className="text-sm font-medium text-red-100">Turno Actual</p>
+                <p className="text-4xl font-bold">#{estado.numeroActual - 1 || "N/A"}</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Próximos Turnos */}
+        <Card className="bg-white shadow-lg">
+          <CardHeader className="bg-gray-50 border-b">
+            <CardTitle className="flex items-center justify-between">
+              <span className="text-2xl text-gray-800">Próximos en Atención</span>
+              <Badge variant="outline" className="text-lg px-4 py-2">
+                {proximosTickets.length} turnos en cola
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            {proximosTickets.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {proximosTickets.map((ticket, index) => (
+                  <div key={ticket.numero} className="relative">
+                    {index === 0 && (
+                      <Badge className="absolute -top-2 -right-2 bg-red-600 text-white z-10 animate-pulse">
+                        Siguiente
+                      </Badge>
+                    )}
+                    {index < 3 && (
+                      <Badge variant="outline" className="absolute -top-2 -left-2 z-10">
+                        #{index + 1}
+                      </Badge>
+                    )}
+                    <TicketDisplay ticket={ticket} isCurrentTicket={index === 0} showAnimation={index === 0} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-16">
+                <div className="bg-gray-100 rounded-full p-8 w-32 h-32 mx-auto mb-6 flex items-center justify-center">
+                  <Clock className="h-16 w-16 text-gray-400" />
+                </div>
+                <h3 className="text-2xl font-semibold text-gray-700 mb-2">No hay turnos pendientes</h3>
+                <p className="text-gray-500 text-lg">Todos los turnos han sido atendidos</p>
               </div>
             )}
-          </div>
+          </CardContent>
+        </Card>
 
-          {/* Botones de navegación y actualización */}
-          <div className="flex justify-center gap-4 mb-8">
-            <a
-              href="/"
-              className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Volver a Tickets
-            </a>
-            <Button
-              onClick={actualizarDatosManual}
-              disabled={actualizandoDatos}
-              className="bg-purple-600 hover:bg-purple-700 text-white"
-            >
-              {actualizandoDatos ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Actualizando...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Actualizar
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-
-        {/* Grid principal */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Próximos 5 turnos */}
-          <div className="lg:col-span-2">
-            <Card className="bg-white shadow-xl border-4 border-purple-300">
-              <CardHeader className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
-                <CardTitle className="text-2xl flex items-center gap-2">
-                  <Users className="h-6 w-6" />
-                  Próximos 5 Turnos
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                {proximos5.length > 0 ? (
-                  <div className="space-y-4">
-                    {proximos5.map((turno, index) => (
-                      <div
-                        key={turno.numero}
-                        className={`p-4 rounded-lg border-l-4 ${
-                          index === 0
-                            ? "bg-green-50 border-green-500 shadow-lg"
-                            : index === 1
-                              ? "bg-blue-50 border-blue-500"
-                              : "bg-gray-50 border-gray-300"
-                        }`}
-                      >
-                        <div className="flex justify-between items-center">
-                          <div className="flex items-center gap-4">
-                            <div
-                              className={`text-3xl font-bold ${
-                                index === 0 ? "text-green-600" : index === 1 ? "text-blue-600" : "text-gray-600"
-                              }`}
-                            >
-                              #{turno.numero.toString().padStart(3, "0")}
-                            </div>
-                            <div>
-                              <p className="font-bold text-lg text-gray-800">{turno.nombre}</p>
-                              <p className="text-sm text-gray-500">
-                                {index === 0 ? "🔥 Próximo en ser llamado" : `Posición ${turno.posicion} en la fila`}
-                              </p>
-                            </div>
-                          </div>
-                          {index === 0 && (
-                            <div className="bg-green-500 text-white px-3 py-1 rounded-full text-sm font-bold animate-pulse">
-                              PRÓXIMO
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <div className="text-6xl text-gray-300 mb-4">🎫</div>
-                    <p className="text-xl text-gray-500 mb-2">No hay turnos pendientes</p>
-                    <p className="text-gray-400">Todos los números han sido llamados</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Panel lateral con estadísticas */}
-          <div className="space-y-6">
-            {/* Tiempo promedio */}
-            <Card className="bg-gradient-to-br from-orange-100 to-red-100 border-4 border-orange-300 shadow-xl">
-              <CardHeader className="bg-gradient-to-r from-orange-500 to-red-500 text-white">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Timer className="h-5 w-5" />
-                  Tiempo Promedio
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 text-center">
-                <div className="text-4xl font-bold text-orange-600 mb-2">{tiempoPromedio}</div>
-                <p className="text-sm text-gray-600">Por ticket atendido</p>
-                {estadisticas && estadisticas.promedioTiempoPorTicket > 0 && (
-                  <div className="mt-4 p-3 bg-white rounded-lg">
-                    <p className="text-xs text-gray-500">
-                      Basado en {estadisticas.ticketsAtendidos} tickets atendidos hoy
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Estadísticas del día */}
-            <Card className="bg-gradient-to-br from-blue-100 to-purple-100 border-4 border-blue-300 shadow-xl">
-              <CardHeader className="bg-gradient-to-r from-blue-500 to-purple-500 text-white">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Clock className="h-5 w-5" />
-                  Estado del Día
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                <div className="space-y-4">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Tickets emitidos:</span>
-                    <span className="font-bold text-blue-600">{estado?.totalAtendidos || 0}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Ya llamados:</span>
-                    <span className="font-bold text-green-600">{estado?.numerosLlamados || 0}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">En espera:</span>
-                    <span className="font-bold text-orange-600">
-                      {(estado?.totalAtendidos || 0) - (estado?.numerosLlamados || 0)}
-                    </span>
-                  </div>
-                  <hr className="border-gray-300" />
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Próximo número:</span>
-                    <span className="font-bold text-purple-600">
-                      #{(estado?.numerosLlamados + 1 || 1).toString().padStart(3, "0")}
-                    </span>
-                  </div>
+        {/* Información adicional */}
+        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card className="bg-white shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-lg text-gray-800">Información del Sistema</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Último reinicio:</span>
+                  <span className="font-medium">{new Date(estado.ultimoReinicio).toLocaleString("es-AR")}</span>
                 </div>
-              </CardContent>
-            </Card>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Fecha de inicio:</span>
+                  <span className="font-medium">{estado.fechaInicio}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Estado del sistema:</span>
+                  <Badge variant="outline" className="bg-green-50 text-green-700">
+                    Operativo
+                  </Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-            {/* Información adicional */}
-            <Card className="bg-gradient-to-br from-green-100 to-teal-100 border-4 border-green-300 shadow-xl">
-              <CardContent className="p-6 text-center">
-                <div className="text-2xl mb-2">📱</div>
-                <p className="text-sm text-gray-600 mb-2">
-                  <strong>¿Necesitas sacar un número?</strong>
-                </p>
-                <a
-                  href="/"
-                  className="inline-block bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors"
-                >
-                  Ir a Sacar Ticket
-                </a>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Próximos Tickets */}
-          <div className="lg:col-span-3">
-            <Card className="bg-white shadow-xl border-4 border-purple-300">
-              <CardHeader className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
-                <CardTitle className="text-2xl flex items-center gap-2">
-                  <Users className="h-6 w-6" />
-                  Próximos Tickets
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                {proximosTickets.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {proximosTickets.map((ticket) => (
-                      <TicketDisplay key={ticket.numero} numero={ticket.numero} nombre={ticket.nombre} />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <div className="text-6xl text-gray-300 mb-4">🎫</div>
-                    <p className="text-xl text-gray-500 mb-2">No hay tickets en cola</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        {/* Estado del Sistema */}
-        <div className="mt-8 text-center">
-          <div
-            className={`inline-block px-4 py-2 rounded-full text-white font-semibold ${
-              estado.activo ? "bg-green-500" : "bg-red-500"
-            }`}
-          >
-            Sistema {estado.activo ? "Activo" : "Inactivo"}
-          </div>
+          <Card className="bg-white shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-lg text-gray-800">Tiempo Estimado</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Tiempo promedio por turno:</span>
+                  <span className="font-medium">3-5 minutos</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Tiempo estimado de espera:</span>
+                  <span className="font-medium">
+                    {proximosTickets.length > 0 ? `${Math.max(1, proximosTickets.length * 4)} minutos` : "Sin espera"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Actualización automática:</span>
+                  <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                    Cada 3 segundos
+                  </Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

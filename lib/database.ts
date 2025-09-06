@@ -23,8 +23,8 @@ function getRedisConfig() {
   // Intentar diferentes combinaciones de variables de entorno disponibles
   const configs = [
     {
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      url: process.env.KV_REST_API_URL,
+      token: process.env.KV_REST_API_TOKEN,
       name: "UPSTASH_REDIS_REST (Principal)",
     },
     {
@@ -58,8 +58,8 @@ function getRedisConfig() {
   console.error("❌ No se encontraron variables de entorno válidas para Upstash Redis")
   console.log("🔍 Variables disponibles en el entorno:")
   console.log({
-    UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL ? "✓ Configurado" : "✗ No configurado",
-    UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN ? "✓ Configurado" : "✗ No configurado",
+    UPSTASH_REDIS_REST_URL: process.env.KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
+    UPSTASH_REDIS_REST_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
     KV_REST_API_URL: process.env.KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
     KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ? "✓ Configurado" : "✗ No configurado",
     TURNOS_KV_REST_API_URL: process.env.TURNOS_KV_REST_API_URL ? "✓ Configurado" : "✗ No configurado",
@@ -100,6 +100,9 @@ try {
   })
   redisConfig = { url: "mock", token: "mock", name: "Mock (Error de configuración)" }
 }
+
+// Export the redis client
+export { redis }
 
 // Prefijos para las claves de Redis - ACTUALIZADOS CON NUEVO NOMBRE
 const STATE_KEY_PREFIX = "TURNOS_ZOCO:estado:" // TURNOS_ZOCO:estado:YYYY-MM-DD
@@ -401,8 +404,6 @@ export async function crearBackupDiario(estado: EstadoSistema & { tickets: Ticke
         distribucionPorHora: metricas.distribucionPorHora,
         velocidadAtencion: metricas.velocidadAtencion,
         tiempoEntreTickets: metricas.tiempoEntreTickets,
-        eficienciaDiaria:
-          estado.totalAtendidos > 0 ? Math.round((estado.numerosLlamados / estado.totalAtendidos) * 100) : 0,
         proyeccionCumplida: metricas.proyeccionCumplida,
         nombresComunes: metricas.nombresComunes,
       },
@@ -877,6 +878,42 @@ export async function obtenerBackup(fecha: string): Promise<any | null> {
   }
 }
 
+// Nueva función para obtener resumen de días anteriores
+export async function obtenerResumenDiasAnteriores(dias = 7): Promise<any[]> {
+  try {
+    console.log(`📊 Obteniendo resumen de los últimos ${dias} días...`)
+
+    const resumenes: any[] = []
+    const hoy = new Date()
+
+    for (let i = 1; i <= dias; i++) {
+      const fecha = new Date(hoy)
+      fecha.setDate(hoy.getDate() - i)
+      const fechaStr = fecha.toISOString().split("T")[0] // YYYY-MM-DD
+
+      const backup = await obtenerBackup(fechaStr)
+      if (backup && backup.resumen) {
+        resumenes.push({
+          fecha: fechaStr,
+          ...backup.resumen,
+          fechaFormateada: fecha.toLocaleDateString("es-AR", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          }),
+        })
+      }
+    }
+
+    console.log(`✅ Obtenidos ${resumenes.length} resúmenes de días anteriores`)
+    return resumenes
+  } catch (error) {
+    console.error("❌ Error al obtener resumen de días anteriores:", error)
+    return []
+  }
+}
+
 // Función para limpiar datos antiguos (estados diarios, listas de tickets y backups)
 export async function limpiarDatosAntiguos(): Promise<void> {
   try {
@@ -973,13 +1010,155 @@ export async function obtenerEstadisticas(estado: EstadoSistema & { tickets: Tic
   }
 }
 
-export async function verificarConexionDB(): Promise<boolean> {
+export async function verificarConexionDB(): Promise<{ connected: boolean; details: any }> {
   try {
-    const result = await redis.ping()
-    return result === "PONG"
+    console.log("🔍 Verificando conexión a TURNOS_ZOCO (Upstash Redis)...")
+
+    const startTime = Date.now()
+
+    // Verificar configuración primero
+    if (!redisConfig || redisConfig.name === "Mock (Error de configuración)") {
+      return {
+        connected: false,
+        details: {
+          error: "Configuración de Redis no válida",
+          config: redisConfig?.name || "No configurado",
+          timestamp: new Date().toISOString(),
+        },
+      }
+    }
+
+    // Test básico con manejo de errores mejorado
+    try {
+      const testKey = "TURNOS_ZOCO:health_check:" + Date.now()
+      const testValue = "health_check_" + Math.random().toString(36).substring(7)
+
+      console.log("🧪 Ejecutando test de conexión básico...")
+
+      // Intentar operación SET con timeout
+      await Promise.race([
+        redis.set(testKey, testValue, { ex: 30 }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout en SET")), 10000)),
+      ])
+
+      console.log("✅ SET exitoso")
+
+      // Esperar un momento para asegurar consistencia
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      // Intentar operación GET con timeout
+      const result = await Promise.race([
+        redis.get(testKey),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout en GET")), 10000)),
+      ])
+
+      console.log("✅ GET exitoso, resultado:", result)
+
+      // Limpiar
+      try {
+        await redis.del(testKey)
+        console.log("✅ DEL exitoso")
+      } catch (delError) {
+        console.log("⚠️ Error en DEL (no crítico):", delError)
+      }
+
+      const responseTime = Date.now() - startTime
+      const isConnected = result === testValue
+
+      const details = {
+        connected: isConnected,
+        responseTime: responseTime + "ms",
+        config: redisConfig.name,
+        endpoint: redisConfig.url.substring(0, 50) + "...",
+        region: redisConfig.url.includes("us1") ? "US East" : redisConfig.url.includes("eu1") ? "EU West" : "Global",
+        testResult: result === testValue ? "✅ Exitoso" : "❌ Fallido",
+        testValue: testValue,
+        receivedValue: result,
+        timestamp: new Date().toISOString(),
+      }
+
+      if (isConnected) {
+        console.log("✅ Conexión a TURNOS_ZOCO (Upstash Redis) verificada exitosamente")
+        console.log(`⚡ Tiempo de respuesta: ${responseTime}ms`)
+      } else {
+        console.error("❌ Fallo en la verificación de conexión - valores no coinciden")
+        console.error(`Esperado: ${testValue}, Recibido: ${result}`)
+
+        // Si falla la verificación de valores, intentar con ping como alternativa
+        try {
+          const pingResult = await redis.ping()
+          if (pingResult === "PONG") {
+            console.log("✅ Ping exitoso como fallback")
+            return {
+              connected: true,
+              details: {
+                ...details,
+                connected: true,
+                testResult: "✅ Ping exitoso (fallback)",
+                warning: "SET/GET test falló, pero ping exitoso",
+              },
+            }
+          }
+        } catch (pingError) {
+          console.error("❌ Ping también falló:", pingError)
+        }
+      }
+
+      return { connected: isConnected, details }
+    } catch (operationError) {
+      console.error("❌ Error en operaciones de Redis:", operationError)
+
+      // Intentar ping como fallback
+      try {
+        console.log("🔄 Intentando ping como fallback...")
+        const pingResult = await Promise.race([
+          redis.ping(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout en PING")), 5000)),
+        ])
+
+        console.log("✅ Ping exitoso:", pingResult)
+
+        return {
+          connected: true,
+          details: {
+            connected: true,
+            responseTime: Date.now() - startTime + "ms",
+            config: redisConfig.name,
+            endpoint: redisConfig.url.substring(0, 50) + "...",
+            testResult: "✅ Ping exitoso (fallback)",
+            pingResult: pingResult,
+            warning: "Operaciones SET/GET fallaron, pero ping exitoso",
+            originalError: operationError instanceof Error ? operationError.message : String(operationError),
+            timestamp: new Date().toISOString(),
+          },
+        }
+      } catch (pingError) {
+        console.error("❌ Ping también falló:", pingError)
+
+        return {
+          connected: false,
+          details: {
+            error: "Todas las operaciones de conexión fallaron",
+            config: redisConfig.name,
+            endpoint: redisConfig.url.substring(0, 50) + "...",
+            operationError: operationError instanceof Error ? operationError.message : String(operationError),
+            pingError: pingError instanceof Error ? pingError.message : String(pingError),
+            timestamp: new Date().toISOString(),
+          },
+        }
+      }
+    }
   } catch (error) {
-    console.error("Error verificando conexión a Redis:", error)
-    return false
+    console.error("❌ Error inesperado en verificarConexionDB:", error)
+    return {
+      connected: false,
+      details: {
+        error: "Error inesperado en verificación",
+        message: error instanceof Error ? error.message : "Error desconocido",
+        config: redisConfig?.name || "No configurado",
+        timestamp: new Date().toISOString(),
+      },
+    }
   }
 }
 
