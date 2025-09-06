@@ -1,4 +1,4 @@
-import { redis } from "@/lib/database"
+import { redis } from "./database"
 
 interface CacheEntry<T> {
   data: T
@@ -8,8 +8,7 @@ interface CacheEntry<T> {
 
 export class CacheManager {
   private static instance: CacheManager
-  private localCache = new Map<string, CacheEntry<any>>()
-  private readonly DEFAULT_TTL = 5 * 60 * 1000 // 5 minutos
+  private defaultTTL = 300 // 5 minutos por defecto
 
   static getInstance(): CacheManager {
     if (!CacheManager.instance) {
@@ -18,137 +17,73 @@ export class CacheManager {
     return CacheManager.instance
   }
 
-  async get<T>(key: string, fallback?: () => Promise<T>, ttl?: number): Promise<T | null> {
+  async set<T>(key: string, data: T, ttl?: number): Promise<void> {
+    const entry: CacheEntry<T> = {
+      data,
+      timestamp: Date.now(),
+      ttl: ttl || this.defaultTTL,
+    }
+
+    await redis.setex(`cache:${key}`, entry.ttl, JSON.stringify(entry))
+  }
+
+  async get<T>(key: string): Promise<T | null> {
     try {
-      // Verificar cache local primero
-      const localEntry = this.localCache.get(key)
-      if (localEntry && Date.now() - localEntry.timestamp < localEntry.ttl) {
-        console.log(`📋 Cache hit (local): ${key}`)
-        return localEntry.data
+      const cached = await redis.get(`cache:${key}`)
+      if (!cached) return null
+
+      const entry: CacheEntry<T> = JSON.parse(cached)
+
+      // Verificar si el cache ha expirado
+      const now = Date.now()
+      if (now - entry.timestamp > entry.ttl * 1000) {
+        await this.delete(key)
+        return null
       }
 
-      // Verificar Redis
-      const redisValue = await redis.get(key)
-      if (redisValue !== null) {
-        console.log(`📋 Cache hit (Redis): ${key}`)
-        // Actualizar cache local
-        this.localCache.set(key, {
-          data: redisValue,
-          timestamp: Date.now(),
-          ttl: ttl || this.DEFAULT_TTL,
-        })
-        return redisValue
-      }
-
-      // Si hay fallback, ejecutarlo
-      if (fallback) {
-        console.log(`📋 Cache miss, ejecutando fallback: ${key}`)
-        const data = await fallback()
-        await this.set(key, data, ttl)
-        return data
-      }
-
-      return null
+      return entry.data
     } catch (error) {
-      console.error(`Error en cache get para ${key}:`, error)
-
-      // Intentar fallback si hay error
-      if (fallback) {
-        try {
-          return await fallback()
-        } catch (fallbackError) {
-          console.error(`Error en fallback para ${key}:`, fallbackError)
-        }
-      }
-
+      console.error("Error al obtener del cache:", error)
       return null
     }
   }
 
-  async set<T>(key: string, value: T, ttl?: number): Promise<void> {
-    try {
-      const effectiveTtl = ttl || this.DEFAULT_TTL
+  async delete(key: string): Promise<void> {
+    await redis.del(`cache:${key}`)
+  }
 
-      // Guardar en Redis con expiración
-      await redis.set(key, value, { ex: Math.floor(effectiveTtl / 1000) })
-
-      // Actualizar cache local
-      this.localCache.set(key, {
-        data: value,
-        timestamp: Date.now(),
-        ttl: effectiveTtl,
-      })
-
-      console.log(`📋 Cache set: ${key} (TTL: ${effectiveTtl}ms)`)
-    } catch (error) {
-      console.error(`Error en cache set para ${key}:`, error)
+  async clear(pattern?: string): Promise<void> {
+    const keys = await redis.keys(pattern ? `cache:${pattern}*` : "cache:*")
+    if (keys.length > 0) {
+      await redis.del(...keys)
     }
   }
 
-  async invalidate(key: string): Promise<void> {
-    try {
-      // Eliminar de Redis
-      await redis.del(key)
-
-      // Eliminar de cache local
-      this.localCache.delete(key)
-
-      console.log(`📋 Cache invalidated: ${key}`)
-    } catch (error) {
-      console.error(`Error invalidando cache para ${key}:`, error)
-    }
+  async exists(key: string): Promise<boolean> {
+    const result = await redis.exists(`cache:${key}`)
+    return result === 1
   }
 
-  async invalidatePattern(pattern: string): Promise<void> {
-    try {
-      // Eliminar de Redis usando pattern
-      const keys = await redis.keys(pattern)
-      if (keys.length > 0) {
-        await redis.del(...keys)
-      }
-
-      // Eliminar de cache local
-      for (const [key] of this.localCache) {
-        if (key.includes(pattern.replace("*", ""))) {
-          this.localCache.delete(key)
-        }
-      }
-
-      console.log(`📋 Cache pattern invalidated: ${pattern} (${keys.length} keys)`)
-    } catch (error) {
-      console.error(`Error invalidando pattern ${pattern}:`, error)
-    }
+  async ttl(key: string): Promise<number> {
+    return await redis.ttl(`cache:${key}`)
   }
 
-  // Limpiar cache local de entradas expiradas
-  cleanupLocalCache(): void {
-    const now = Date.now()
-    for (const [key, entry] of this.localCache) {
-      if (now - entry.timestamp >= entry.ttl) {
-        this.localCache.delete(key)
-      }
-    }
+  // Métodos específicos para el sistema de colas
+  async cacheEstadoSistema(estado: any): Promise<void> {
+    await this.set("estado_sistema", estado, 30) // Cache por 30 segundos
   }
 
-  // Obtener estadísticas del cache
-  getStats() {
-    return {
-      localCacheSize: this.localCache.size,
-      localCacheKeys: Array.from(this.localCache.keys()),
-    }
+  async getCachedEstadoSistema(): Promise<any> {
+    return await this.get("estado_sistema")
+  }
+
+  async cacheEstadisticas(stats: any): Promise<void> {
+    await this.set("estadisticas_diarias", stats, 300) // Cache por 5 minutos
+  }
+
+  async getCachedEstadisticas(): Promise<any> {
+    return await this.get("estadisticas_diarias")
   }
 }
 
-// Instancia singleton
 export const cacheManager = CacheManager.getInstance()
-
-// Limpiar cache local cada 5 minutos
-if (typeof window === "undefined") {
-  // Solo en servidor
-  setInterval(
-    () => {
-      cacheManager.cleanupLocalCache()
-    },
-    5 * 60 * 1000,
-  )
-}

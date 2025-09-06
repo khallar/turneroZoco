@@ -3,101 +3,67 @@
 import type React from "react"
 
 import { useState } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { User, X } from "lucide-react"
+import { X, User } from "lucide-react"
 
 interface NombreModalProps {
-  isOpen: boolean
-  onClose: () => void
-  onSubmit: (nombre: string) => void
+  onConfirm: (nombre: string) => void
+  onCancel: () => void
 }
 
-export function NombreModal({ isOpen, onClose, onSubmit }: NombreModalProps) {
+export function NombreModal({ onConfirm, onCancel }: NombreModalProps) {
   const [nombre, setNombre] = useState("")
-  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!nombre.trim()) {
-      return
-    }
-
-    setLoading(true)
-    try {
-      await onSubmit(nombre.trim())
-      setNombre("")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleClose = () => {
-    if (!loading) {
-      setNombre("")
-      onClose()
+    if (nombre.trim()) {
+      onConfirm(nombre.trim())
     }
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center text-xl">
-            <User className="h-5 w-5 mr-2 text-red-600" />
-            Solicitar Turno
-          </DialogTitle>
-        </DialogHeader>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="flex items-center gap-2">
+            <User className="h-5 w-5" />
+            Ingrese su nombre
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={onCancel}>
+            <X className="h-4 w-4" />
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="nombre">Nombre completo</Label>
+              <Input
+                id="nombre"
+                type="text"
+                placeholder="Ej: Juan Pérez"
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                maxLength={50}
+                autoFocus
+                className="text-lg"
+              />
+              <p className="text-sm text-gray-500">Este nombre aparecerá en su ticket y será usado para llamarlo</p>
+            </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="nombre" className="text-sm font-medium">
-              Ingrese su nombre
-            </Label>
-            <Input
-              id="nombre"
-              type="text"
-              placeholder="Ej: Juan Pérez"
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              className="w-full"
-              maxLength={50}
-              disabled={loading}
-              autoFocus
-            />
-            <p className="text-xs text-gray-500">Máximo 50 caracteres</p>
-          </div>
-
-          <div className="flex space-x-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleClose}
-              className="flex-1 bg-transparent"
-              disabled={loading}
-            >
-              <X className="h-4 w-4 mr-2" />
-              Cancelar
-            </Button>
-            <Button type="submit" className="flex-1 bg-red-600 hover:bg-red-700" disabled={!nombre.trim() || loading}>
-              {loading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Generando...
-                </>
-              ) : (
-                <>
-                  <User className="h-4 w-4 mr-2" />
-                  Generar Turno
-                </>
-              )}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+            <div className="flex gap-2">
+              <Button type="submit" className="flex-1 bg-red-600 hover:bg-red-700" disabled={!nombre.trim()}>
+                Generar Ticket
+              </Button>
+              <Button type="button" variant="outline" onClick={onCancel}>
+                Cancelar
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   )
 }

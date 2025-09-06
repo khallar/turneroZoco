@@ -1010,154 +1010,44 @@ export async function obtenerEstadisticas(estado: EstadoSistema & { tickets: Tic
   }
 }
 
-export async function verificarConexionDB(): Promise<{ connected: boolean; details: any }> {
+export async function verificarConexionDB(): Promise<boolean> {
   try {
-    console.log("🔍 Verificando conexión a TURNOS_ZOCO (Upstash Redis)...")
+    // Usar un valor más confiable para la prueba
+    const testKey = `health_check_${Math.random().toString(36).substring(7)}`
+    const testValue = `test_${Date.now()}`
 
-    const startTime = Date.now()
+    // Realizar operación SET
+    await redis.set(testKey, testValue, { ex: 5 })
 
-    // Verificar configuración primero
-    if (!redisConfig || redisConfig.name === "Mock (Error de configuración)") {
-      return {
-        connected: false,
-        details: {
-          error: "Configuración de Redis no válida",
-          config: redisConfig?.name || "No configurado",
-          timestamp: new Date().toISOString(),
-        },
-      }
+    // Pequeña pausa para asegurar consistencia
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    // Realizar operación GET
+    const retrievedValue = await redis.get(testKey)
+
+    // Limpiar
+    await redis.del(testKey)
+
+    // Verificar que el valor coincida
+    if (retrievedValue === testValue) {
+      return true
     }
 
-    // Test básico con manejo de errores mejorado
-    try {
-      const testKey = "TURNOS_ZOCO:health_check:" + Date.now()
-      const testValue = "health_check_" + Math.random().toString(36).substring(7)
-
-      console.log("🧪 Ejecutando test de conexión básico...")
-
-      // Intentar operación SET con timeout
-      await Promise.race([
-        redis.set(testKey, testValue, { ex: 30 }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout en SET")), 10000)),
-      ])
-
-      console.log("✅ SET exitoso")
-
-      // Esperar un momento para asegurar consistencia
-      await new Promise((resolve) => setTimeout(resolve, 100))
-
-      // Intentar operación GET con timeout
-      const result = await Promise.race([
-        redis.get(testKey),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout en GET")), 10000)),
-      ])
-
-      console.log("✅ GET exitoso, resultado:", result)
-
-      // Limpiar
-      try {
-        await redis.del(testKey)
-        console.log("✅ DEL exitoso")
-      } catch (delError) {
-        console.log("⚠️ Error en DEL (no crítico):", delError)
-      }
-
-      const responseTime = Date.now() - startTime
-      const isConnected = result === testValue
-
-      const details = {
-        connected: isConnected,
-        responseTime: responseTime + "ms",
-        config: redisConfig.name,
-        endpoint: redisConfig.url.substring(0, 50) + "...",
-        region: redisConfig.url.includes("us1") ? "US East" : redisConfig.url.includes("eu1") ? "EU West" : "Global",
-        testResult: result === testValue ? "✅ Exitoso" : "❌ Fallido",
-        testValue: testValue,
-        receivedValue: result,
-        timestamp: new Date().toISOString(),
-      }
-
-      if (isConnected) {
-        console.log("✅ Conexión a TURNOS_ZOCO (Upstash Redis) verificada exitosamente")
-        console.log(`⚡ Tiempo de respuesta: ${responseTime}ms`)
-      } else {
-        console.error("❌ Fallo en la verificación de conexión - valores no coinciden")
-        console.error(`Esperado: ${testValue}, Recibido: ${result}`)
-
-        // Si falla la verificación de valores, intentar con ping como alternativa
-        try {
-          const pingResult = await redis.ping()
-          if (pingResult === "PONG") {
-            console.log("✅ Ping exitoso como fallback")
-            return {
-              connected: true,
-              details: {
-                ...details,
-                connected: true,
-                testResult: "✅ Ping exitoso (fallback)",
-                warning: "SET/GET test falló, pero ping exitoso",
-              },
-            }
-          }
-        } catch (pingError) {
-          console.error("❌ Ping también falló:", pingError)
-        }
-      }
-
-      return { connected: isConnected, details }
-    } catch (operationError) {
-      console.error("❌ Error en operaciones de Redis:", operationError)
-
-      // Intentar ping como fallback
-      try {
-        console.log("🔄 Intentando ping como fallback...")
-        const pingResult = await Promise.race([
-          redis.ping(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout en PING")), 5000)),
-        ])
-
-        console.log("✅ Ping exitoso:", pingResult)
-
-        return {
-          connected: true,
-          details: {
-            connected: true,
-            responseTime: Date.now() - startTime + "ms",
-            config: redisConfig.name,
-            endpoint: redisConfig.url.substring(0, 50) + "...",
-            testResult: "✅ Ping exitoso (fallback)",
-            pingResult: pingResult,
-            warning: "Operaciones SET/GET fallaron, pero ping exitoso",
-            originalError: operationError instanceof Error ? operationError.message : String(operationError),
-            timestamp: new Date().toISOString(),
-          },
-        }
-      } catch (pingError) {
-        console.error("❌ Ping también falló:", pingError)
-
-        return {
-          connected: false,
-          details: {
-            error: "Todas las operaciones de conexión fallaron",
-            config: redisConfig.name,
-            endpoint: redisConfig.url.substring(0, 50) + "...",
-            operationError: operationError instanceof Error ? operationError.message : String(operationError),
-            pingError: pingError instanceof Error ? pingError.message : String(pingError),
-            timestamp: new Date().toISOString(),
-          },
-        }
-      }
-    }
+    // Fallback: intentar PING si SET/GET falla
+    console.warn("SET/GET test failed, trying PING fallback")
+    const pingResult = await redis.ping()
+    return pingResult === "PONG"
   } catch (error) {
-    console.error("❌ Error inesperado en verificarConexionDB:", error)
-    return {
-      connected: false,
-      details: {
-        error: "Error inesperado en verificación",
-        message: error instanceof Error ? error.message : "Error desconocido",
-        config: redisConfig?.name || "No configurado",
-        timestamp: new Date().toISOString(),
-      },
+    console.error("Error al verificar conexión a Redis:", error)
+
+    // Último intento con PING simple
+    try {
+      const pingResult = await redis.ping()
+      console.log("PING fallback successful:", pingResult)
+      return pingResult === "PONG"
+    } catch (pingError) {
+      console.error("PING fallback también falló:", pingError)
+      return false
     }
   }
 }

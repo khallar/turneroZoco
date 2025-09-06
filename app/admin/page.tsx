@@ -1,22 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
-import {
-  Download,
-  RefreshCw,
-  Settings,
-  Database,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  Users,
-  TrendingUp,
-} from "lucide-react"
+import { RefreshCw, Trash2, Download, AlertTriangle, Database, Activity, BarChart3, Settings } from "lucide-react"
 
 interface BackupInfo {
   fecha: string
@@ -33,12 +22,14 @@ interface BackupInfo {
   createdAt: string
 }
 
-export default function PaginaAdmin() {
+export default function AdminPage() {
   const {
     estado,
-    estadisticas,
+    reiniciarSistema,
     loading,
     error,
+    refetch,
+    estadisticas,
     cargarEstado,
     ultimaSincronizacion,
     obtenerBackups: obtenerBackupsOriginal,
@@ -49,11 +40,11 @@ export default function PaginaAdmin() {
     siguienteTicket,
     toggleSistema,
     reiniciarSistema: reiniciarSistemaOriginal,
-    refetch,
     tickets,
     refrescarEstado,
   } = useSistemaEstado("admin")
-
+  const [estadoSalud, setEstadoSalud] = useState<any>(null)
+  const [cargandoSalud, setCargandoSalud] = useState(false)
   const [backups, setBackups] = useState<BackupInfo[]>([])
   const [loadingBackups, setLoadingBackups] = useState(false)
   const [systemHealth, setSystemHealth] = useState<any>(null)
@@ -66,6 +57,63 @@ export default function PaginaAdmin() {
   const [descargandoTodos, setDescargandoTodos] = useState(false)
   const [healthStatus, setHealthStatus] = useState<any>(null)
   const [backupData, setBackupData] = useState<string>("")
+
+  const verificarSalud = async () => {
+    setCargandoSalud(true)
+    try {
+      const response = await fetch("/api/health")
+      const data = await response.json()
+      setEstadoSalud(data)
+    } catch (error) {
+      console.error("Error al verificar salud:", error)
+    } finally {
+      setCargandoSalud(false)
+    }
+  }
+
+  const generarBackup = async () => {
+    try {
+      const response = await fetch("/api/backup")
+      const data = await response.json()
+
+      if (data.success) {
+        // Descargar backup como archivo JSON
+        const blob = new Blob([JSON.stringify(data.backup, null, 2)], {
+          type: "application/json",
+        })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.href = url
+        link.download = `backup-zoco-${new Date().toISOString().split("T")[0]}.json`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+
+        alert("Backup generado y descargado exitosamente")
+      } else {
+        alert("Error al generar backup: " + data.error)
+      }
+    } catch (error) {
+      console.error("Error al generar backup:", error)
+      alert("Error al generar backup")
+    }
+  }
+
+  const handleReiniciarSistema = async () => {
+    if (confirm("¿Está seguro de que desea reiniciar el sistema? Esto eliminará todos los datos actuales.")) {
+      const success = await reiniciarSistema()
+      if (success) {
+        alert("Sistema reiniciado exitosamente")
+      } else {
+        alert("Error al reiniciar el sistema")
+      }
+    }
+  }
+
+  useEffect(() => {
+    verificarSalud()
+  }, [])
 
   useEffect(() => {
     if (isClient) {
@@ -1064,7 +1112,7 @@ export default function PaginaAdmin() {
     }
   }
 
-  const handleReiniciarSistema = async () => {
+  const handleReiniciarSistemaOriginal = async () => {
     if (confirm("¿Está seguro de que desea reiniciar el sistema? Esto eliminará todos los tickets.")) {
       try {
         await reiniciarSistemaOriginal()
@@ -1196,318 +1244,210 @@ export default function PaginaAdmin() {
   const ticketsEnCola = tickets.filter((t) => t.numero > estado.numeroActual).length
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100 p-4">
+      <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Panel de Administración</h1>
-              <p className="text-gray-600 mt-1">Sistema de gestión de turnos - ZOCO</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Button onClick={refrescarEstado} variant="outline">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Actualizar
-              </Button>
-              <Button onClick={reiniciarSistemaOriginal} variant="destructive">
-                <Settings className="h-4 w-4 mr-2" />
-                Reiniciar Sistema
-              </Button>
-            </div>
-          </div>
+        <div className="mb-8 text-center">
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">Panel de Administración</h1>
+          <p className="text-gray-600">Gestión y monitoreo del sistema ZOCO</p>
         </div>
 
-        <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">Resumen</TabsTrigger>
-            <TabsTrigger value="backups">Backups</TabsTrigger>
-            <TabsTrigger value="health">Salud del Sistema</TabsTrigger>
-            <TabsTrigger value="settings">Configuración</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview" className="space-y-6">
-            {/* Estadísticas principales */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center">
-                    <Users className="h-8 w-8 text-blue-600" />
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-600">Total Tickets</p>
-                      <p className="text-2xl font-bold text-gray-900">{estado.totalAtendidos}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center">
-                    <CheckCircle className="h-8 w-8 text-green-600" />
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-600">Atendidos</p>
-                      <p className="text-2xl font-bold text-gray-900">{estado.numerosLlamados}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center">
-                    <Clock className="h-8 w-8 text-orange-600" />
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-600">Pendientes</p>
-                      <p className="text-2xl font-bold text-gray-900">
-                        {estado.totalAtendidos - estado.numerosLlamados}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center">
-                    <TrendingUp className="h-8 w-8 text-purple-600" />
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-600">Eficiencia</p>
-                      <p className="text-2xl font-bold text-gray-900">
-                        {estado.totalAtendidos > 0
-                          ? Math.round((estado.numerosLlamados / estado.totalAtendidos) * 100)
-                          : 0}
-                        %
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Información del sistema */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Estado del Sistema</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Fecha de inicio:</span>
-                      <span className="font-medium">{estado.fechaInicio}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Último reinicio:</span>
-                      <span className="font-medium text-sm">
-                        {new Date(estado.ultimoReinicio).toLocaleString("es-AR")}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Próximo número:</span>
-                      <Badge variant="outline">#{estado.numeroActual}</Badge>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Última sincronización:</span>
-                      <span className="font-medium text-sm">
-                        {estado.lastSync ? new Date(estado.lastSync).toLocaleTimeString("es-AR") : "N/A"}
-                      </span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Acciones Rápidas</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <Button onClick={crearBackup} className="w-full bg-transparent" variant="outline">
-                      <Database className="h-4 w-4 mr-2" />
-                      Crear Backup Manual
-                    </Button>
-                    <Button onClick={() => window.open("/empleados", "_blank")} className="w-full" variant="outline">
-                      <Users className="h-4 w-4 mr-2" />
-                      Panel de Empleados
-                    </Button>
-                    <Button onClick={() => window.open("/proximos", "_blank")} className="w-full" variant="outline">
-                      <Clock className="h-4 w-4 mr-2" />
-                      Próximos Turnos
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="backups" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>Backups del Sistema</span>
-                  <Button onClick={crearBackup} size="sm">
-                    <Database className="h-4 w-4 mr-2" />
-                    Crear Backup
-                  </Button>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loadingBackups ? (
-                  <div className="text-center py-8">
-                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-gray-400" />
-                    <p className="text-gray-600">Cargando backups...</p>
-                  </div>
-                ) : backups.length > 0 ? (
-                  <div className="space-y-4">
-                    {backups.map((backup) => (
-                      <div key={backup.fecha} className="border rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="font-semibold">{backup.fecha}</h3>
-                            <p className="text-sm text-gray-600">
-                              {backup.resumen.totalTicketsEmitidos} tickets emitidos,
-                              {backup.resumen.totalTicketsAtendidos} atendidos
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Creado: {new Date(backup.createdAt).toLocaleString("es-AR")}
-                            </p>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Badge variant="outline">{backup.resumen.eficienciaDiaria}% eficiencia</Badge>
-                            <Button onClick={() => descargarBackup(backup.fecha)} size="sm" variant="outline">
-                              <Download className="h-4 w-4 mr-1" />
-                              Descargar
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+        {/* Estado del sistema */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Estado del Sistema</CardTitle>
+              <Activity className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {error ? (
+                  <Badge variant="destructive">Error</Badge>
                 ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <Database className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>No hay backups disponibles</p>
-                  </div>
+                  <Badge variant="default" className="bg-green-600">
+                    Activo
+                  </Badge>
                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+              </div>
+            </CardContent>
+          </Card>
 
-          <TabsContent value="health" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>Salud del Sistema</span>
-                  <Button onClick={verificarSaludSistema} size="sm" variant="outline">
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Verificar
-                  </Button>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {systemHealth ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center space-x-2">
-                      {systemHealth.status === "healthy" ? (
-                        <CheckCircle className="h-5 w-5 text-green-600" />
-                      ) : (
-                        <AlertTriangle className="h-5 w-5 text-red-600" />
-                      )}
-                      <span className="font-medium">
-                        Estado: {systemHealth.status === "healthy" ? "Saludable" : "Con problemas"}
-                      </span>
-                    </div>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Tickets en Cola</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{estado?.cola?.length || 0}</div>
+            </CardContent>
+          </Card>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="bg-gray-50 p-3 rounded">
-                        <p className="text-sm text-gray-600">Latencia</p>
-                        <p className="font-semibold">{systemHealth.latency}ms</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded">
-                        <p className="text-sm text-gray-600">Ping</p>
-                        <p className="font-semibold">{systemHealth.details.ping ? "✅ OK" : "❌ Error"}</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded">
-                        <p className="text-sm text-gray-600">Lectura/Escritura</p>
-                        <p className="font-semibold">
-                          {systemHealth.details.read && systemHealth.details.write ? "✅ OK" : "❌ Error"}
-                        </p>
-                      </div>
-                    </div>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Atendidos Hoy</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{estado?.historial?.length || 0}</div>
+            </CardContent>
+          </Card>
 
-                    {systemHealth.details.errors.length > 0 && (
-                      <div className="bg-red-50 border border-red-200 rounded p-3">
-                        <p className="font-medium text-red-800 mb-2">Errores detectados:</p>
-                        <ul className="text-sm text-red-700 space-y-1">
-                          {systemHealth.details.errors.map((error: string, index: number) => (
-                            <li key={index}>• {error}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Último Número</CardTitle>
+              <Settings className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{estado?.numeroActual || 0}</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Acciones principales */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* Gestión de datos */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5" />
+                Gestión de Datos
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button onClick={generarBackup} className="w-full bg-blue-600 hover:bg-blue-700">
+                <Download className="mr-2 h-4 w-4" />
+                Generar Backup
+              </Button>
+
+              <Button onClick={refetch} variant="outline" className="w-full bg-transparent" disabled={loading}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                Actualizar Datos
+              </Button>
+
+              <Button onClick={handleReiniciarSistema} variant="destructive" className="w-full">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Reiniciar Sistema
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Estado de salud */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                Estado de Salud
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {estadoSalud && (
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span>Estado:</span>
+                    <Badge
+                      variant={
+                        estadoSalud.status === "healthy"
+                          ? "default"
+                          : estadoSalud.status === "degraded"
+                            ? "secondary"
+                            : "destructive"
+                      }
+                      className={estadoSalud.status === "healthy" ? "bg-green-600" : ""}
+                    >
+                      {estadoSalud.status}
+                    </Badge>
                   </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <AlertTriangle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>Haga clic en "Verificar" para comprobar la salud del sistema</p>
+                  <div className="flex justify-between">
+                    <span>Latencia:</span>
+                    <span>{estadoSalud.latency}ms</span>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="settings" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Configuración del Sistema</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
-                    <div className="flex items-center">
-                      <AlertTriangle className="h-5 w-5 text-yellow-600 mr-2" />
-                      <span className="font-medium text-yellow-800">Zona de Peligro</span>
-                    </div>
-                    <p className="text-yellow-700 mt-2 mb-4">
-                      Estas acciones afectarán el funcionamiento del sistema. Use con precaución.
-                    </p>
-                    <Button onClick={reiniciarSistemaOriginal} variant="destructive">
-                      <Settings className="h-4 w-4 mr-2" />
-                      Reiniciar Sistema Completo
-                    </Button>
+                  <div className="flex justify-between">
+                    <span>Conexión Redis:</span>
+                    <Badge variant={estadoSalud.details?.connection ? "default" : "destructive"}>
+                      {estadoSalud.details?.connection ? "OK" : "Error"}
+                    </Badge>
                   </div>
+                </div>
+              )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <h3 className="font-semibold">Información del Sistema</h3>
-                      <div className="bg-gray-50 p-3 rounded">
-                        <p className="text-sm text-gray-600">Versión</p>
-                        <p className="font-medium">v5.3.0</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded">
-                        <p className="text-sm text-gray-600">Base de datos</p>
-                        <p className="font-medium">Upstash Redis</p>
-                      </div>
+              <Button
+                onClick={verificarSalud}
+                variant="outline"
+                className="w-full bg-transparent"
+                disabled={cargandoSalud}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${cargandoSalud ? "animate-spin" : ""}`} />
+                Verificar Salud
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Información detallada */}
+        {estado && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Información Detallada del Sistema</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <h3 className="font-semibold mb-3">Estado Actual</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span>Número Actual:</span>
+                      <span>{estado.numeroActual}</span>
                     </div>
-
-                    <div className="space-y-4">
-                      <h3 className="font-semibold">Configuración</h3>
-                      <div className="bg-gray-50 p-3 rounded">
-                        <p className="text-sm text-gray-600">Auto-backup</p>
-                        <p className="font-medium">Habilitado</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded">
-                        <p className="text-sm text-gray-600">Retención de datos</p>
-                        <p className="font-medium">30 días</p>
-                      </div>
+                    <div className="flex justify-between">
+                      <span>Número Llamado:</span>
+                      <span>{estado.numeroLlamado}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Personas en Cola:</span>
+                      <span>{estado.cola?.length || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Total Atendidos:</span>
+                      <span>{estado.historial?.length || 0}</span>
                     </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+
+                <div>
+                  <h3 className="font-semibold mb-3">Configuración</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span>Versión:</span>
+                      <span>5.2.0</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Base de Datos:</span>
+                      <span>Redis (Upstash)</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Actualización:</span>
+                      <span>Automática (3s)</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {error && (
+          <Card className="mt-6 border-red-200">
+            <CardHeader>
+              <CardTitle className="text-red-600 flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Error del Sistema
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-red-600">{error}</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   )

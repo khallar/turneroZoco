@@ -1,100 +1,95 @@
-import { redis } from "@/lib/database"
+import { redis } from "./database"
 
-export interface HealthCheckResult {
+export interface HealthStatus {
   status: "healthy" | "unhealthy" | "degraded"
   latency: number
   timestamp: string
   details: {
-    ping: boolean
-    read: boolean
-    write: boolean
-    errors: string[]
+    connection: boolean
+    operations: {
+      set: boolean
+      get: boolean
+      delete: boolean
+    }
+    error?: string
   }
 }
 
-export async function checkUpstashHealth(): Promise<HealthCheckResult> {
+export async function checkUpstashHealth(): Promise<HealthStatus> {
   const startTime = Date.now()
-  const errors: string[] = []
-  let pingSuccess = false
-  let readSuccess = false
-  let writeSuccess = false
+  const timestamp = new Date().toISOString()
+
+  const healthCheck: HealthStatus = {
+    status: "unhealthy",
+    latency: 0,
+    timestamp,
+    details: {
+      connection: false,
+      operations: {
+        set: false,
+        get: false,
+        delete: false,
+      },
+    },
+  }
 
   try {
-    // Test 1: Ping
-    try {
-      const pingResult = await redis.ping()
-      pingSuccess = pingResult === "PONG"
-      if (!pingSuccess) {
-        errors.push(`Ping failed: expected PONG, got ${pingResult}`)
-      }
-    } catch (error) {
-      errors.push(`Ping error: ${error instanceof Error ? error.message : String(error)}`)
-    }
+    // Test basic connection with PING
+    await redis.ping()
+    healthCheck.details.connection = true
 
-    // Test 2: Write
+    // Test SET operation
     const testKey = `health_check_${Date.now()}`
-    const testValue = `test_${Math.random()}`
+    const testValue = "test_value"
 
-    try {
-      await redis.set(testKey, testValue, { ex: 60 })
-      writeSuccess = true
-    } catch (error) {
-      errors.push(`Write error: ${error instanceof Error ? error.message : String(error)}`)
+    await redis.set(testKey, testValue, { ex: 10 }) // Expire in 10 seconds
+    healthCheck.details.operations.set = true
+
+    // Test GET operation
+    const retrievedValue = await redis.get(testKey)
+    if (retrievedValue === testValue) {
+      healthCheck.details.operations.get = true
     }
 
-    // Test 3: Read
-    if (writeSuccess) {
-      try {
-        const readValue = await redis.get(testKey)
-        readSuccess = readValue === testValue
-        if (!readSuccess) {
-          errors.push(`Read failed: expected ${testValue}, got ${readValue}`)
-        }
+    // Test DELETE operation
+    await redis.del(testKey)
+    healthCheck.details.operations.delete = true
 
-        // Cleanup
-        try {
-          await redis.del(testKey)
-        } catch (cleanupError) {
-          // Non-critical error
-        }
-      } catch (error) {
-        errors.push(`Read error: ${error instanceof Error ? error.message : String(error)}`)
-      }
-    }
+    // Calculate latency
+    healthCheck.latency = Date.now() - startTime
 
-    const latency = Date.now() - startTime
+    // Determine overall status
+    const allOperationsSuccessful =
+      healthCheck.details.connection &&
+      healthCheck.details.operations.set &&
+      healthCheck.details.operations.get &&
+      healthCheck.details.operations.delete
 
-    let status: "healthy" | "unhealthy" | "degraded"
-    if (pingSuccess && readSuccess && writeSuccess) {
-      status = "healthy"
-    } else if (pingSuccess) {
-      status = "degraded"
+    if (allOperationsSuccessful) {
+      healthCheck.status = healthCheck.latency > 1000 ? "degraded" : "healthy"
     } else {
-      status = "unhealthy"
+      healthCheck.status = "degraded"
     }
+  } catch (error) {
+    healthCheck.latency = Date.now() - startTime
+    healthCheck.details.error = error instanceof Error ? error.message : "Unknown error"
+    healthCheck.status = "unhealthy"
+  }
 
+  return healthCheck
+}
+
+export async function getRedisInfo() {
+  try {
+    const info = await redis.info()
     return {
-      status,
-      latency,
-      timestamp: new Date().toISOString(),
-      details: {
-        ping: pingSuccess,
-        read: readSuccess,
-        write: writeSuccess,
-        errors,
-      },
+      success: true,
+      info: info,
     }
   } catch (error) {
     return {
-      status: "unhealthy",
-      latency: Date.now() - startTime,
-      timestamp: new Date().toISOString(),
-      details: {
-        ping: false,
-        read: false,
-        write: false,
-        errors: [`Critical error: ${error instanceof Error ? error.message : String(error)}`],
-      },
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
     }
   }
 }

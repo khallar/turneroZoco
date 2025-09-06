@@ -171,6 +171,50 @@ export async function GET() {
       console.error("❌ List operations falló:", error)
     }
 
+    // Test básico de conexión
+    const ping = await redis.ping()
+
+    // Obtener información del servidor Redis
+    const info = await redis.info()
+
+    // Test de operaciones básicas
+    const testKey = `test_${Date.now()}`
+    await redis.set(testKey, "test_value", { ex: 10 })
+    const testValue = await redis.get(testKey)
+    await redis.del(testKey)
+
+    // Obtener algunas estadísticas
+    const [numeroActual, numeroLlamado, colaLength, historialLength] = await Promise.all([
+      redis.get("numero_actual"),
+      redis.get("numero_llamado"),
+      redis.llen("cola_atencion"),
+      redis.llen("historial_diario"),
+    ])
+
+    debugInfo.redis_status = ping === "PONG" ? "connected" : "error"
+    debugInfo.ping_response = ping
+    debugInfo.test_operations = {
+      set_get_delete: testValue === "test_value",
+    }
+    debugInfo.current_data = {
+      numero_actual: numeroActual,
+      numero_llamado: numeroLlamado,
+      cola_length: colaLength,
+      historial_length: historialLength,
+    }
+    debugInfo.server_info = {
+      version: info
+        .split("\n")
+        .find((line) => line.startsWith("redis_version:"))
+        ?.split(":")[1]
+        ?.trim(),
+      uptime: info
+        .split("\n")
+        .find((line) => line.startsWith("uptime_in_seconds:"))
+        ?.split(":")[1]
+        ?.trim(),
+    }
+
     // Resumen general
     const successfulTests = Object.values(debugInfo.tests).filter((test) => test.success).length
     const totalTests = Object.keys(debugInfo.tests).length
