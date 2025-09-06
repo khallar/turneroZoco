@@ -1,95 +1,74 @@
-import { redis } from "./database"
+import { redis } from "@/lib/database"
 
 export interface HealthStatus {
-  status: "healthy" | "unhealthy" | "degraded"
+  status: "healthy" | "degraded" | "unhealthy"
   latency: number
-  timestamp: string
   details: {
+    ping: boolean
+    read: boolean
+    write: boolean
     connection: boolean
-    operations: {
-      set: boolean
-      get: boolean
-      delete: boolean
-    }
-    error?: string
+    errors: string[]
   }
 }
 
 export async function checkUpstashHealth(): Promise<HealthStatus> {
   const startTime = Date.now()
-  const timestamp = new Date().toISOString()
+  const errors: string[] = []
+  let ping = false
+  let read = false
+  let write = false
+  let connection = false
 
-  const healthCheck: HealthStatus = {
-    status: "unhealthy",
-    latency: 0,
-    timestamp,
+  try {
+    // Test 1: Ping
+    try {
+      await redis.ping()
+      ping = true
+      connection = true
+    } catch (error) {
+      errors.push(`Ping failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+    }
+
+    // Test 2: Read operation
+    try {
+      await redis.get("health_check_test")
+      read = true
+    } catch (error) {
+      errors.push(`Read failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+    }
+
+    // Test 3: Write operation
+    try {
+      await redis.set("health_check_test", Date.now().toString(), { ex: 60 })
+      write = true
+    } catch (error) {
+      errors.push(`Write failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+    }
+  } catch (error) {
+    errors.push(`Connection failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+  }
+
+  const latency = Date.now() - startTime
+
+  let status: "healthy" | "degraded" | "unhealthy"
+  if (ping && read && write) {
+    status = "healthy"
+  } else if (connection && (read || write)) {
+    status = "degraded"
+  } else {
+    status = "unhealthy"
+  }
+
+  return {
+    status,
+    latency,
     details: {
-      connection: false,
-      operations: {
-        set: false,
-        get: false,
-        delete: false,
-      },
+      ping,
+      read,
+      write,
+      connection,
+      errors,
     },
-  }
-
-  try {
-    // Test basic connection with PING
-    await redis.ping()
-    healthCheck.details.connection = true
-
-    // Test SET operation
-    const testKey = `health_check_${Date.now()}`
-    const testValue = "test_value"
-
-    await redis.set(testKey, testValue, { ex: 10 }) // Expire in 10 seconds
-    healthCheck.details.operations.set = true
-
-    // Test GET operation
-    const retrievedValue = await redis.get(testKey)
-    if (retrievedValue === testValue) {
-      healthCheck.details.operations.get = true
-    }
-
-    // Test DELETE operation
-    await redis.del(testKey)
-    healthCheck.details.operations.delete = true
-
-    // Calculate latency
-    healthCheck.latency = Date.now() - startTime
-
-    // Determine overall status
-    const allOperationsSuccessful =
-      healthCheck.details.connection &&
-      healthCheck.details.operations.set &&
-      healthCheck.details.operations.get &&
-      healthCheck.details.operations.delete
-
-    if (allOperationsSuccessful) {
-      healthCheck.status = healthCheck.latency > 1000 ? "degraded" : "healthy"
-    } else {
-      healthCheck.status = "degraded"
-    }
-  } catch (error) {
-    healthCheck.latency = Date.now() - startTime
-    healthCheck.details.error = error instanceof Error ? error.message : "Unknown error"
-    healthCheck.status = "unhealthy"
-  }
-
-  return healthCheck
-}
-
-export async function getRedisInfo() {
-  try {
-    const info = await redis.info()
-    return {
-      success: true,
-      info: info,
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    }
   }
 }

@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { redis, verificarConexionDB } from "@/lib/database"
+import { redis } from "@/lib/database"
 
 interface TicketInfo {
   numero: number
@@ -8,58 +8,152 @@ interface TicketInfo {
   timestamp: number
 }
 
+interface EstadoSistema {
+  numeroActual: number
+  ultimoNumero: number
+  totalAtendidos: number
+  numerosLlamados: number
+  fechaInicio: string
+  ultimoReinicio: string
+  tickets: TicketInfo[]
+  lastSync?: number
+}
+
+// Función simplificada para obtener la fecha actual en Argentina
+function getFechaHoy(): string {
+  const ahora = new Date()
+  const fechaArgentina = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }))
+  return fechaArgentina.toISOString().split("T")[0]
+}
+
+// Función simplificada para verificar si debe reiniciarse
+function debeReiniciarse(estado: EstadoSistema): boolean {
+  const fechaHoy = getFechaHoy()
+  return fechaHoy !== estado.fechaInicio
+}
+
+// Función simplificada para leer estado
+async function leerEstadoSistema(): Promise<EstadoSistema> {
+  try {
+    const [numeroActual, ultimoNumero, totalAtendidos, numerosLlamados, fechaInicio, ultimoReinicio] =
+      await Promise.all([
+        redis.get("numero_actual"),
+        redis.get("ultimo_numero"),
+        redis.get("total_atendidos"),
+        redis.get("numeros_llamados"),
+        redis.get("fecha_inicio"),
+        redis.get("ultimo_reinicio"),
+      ])
+
+    // Obtener tickets
+    const ticketsData = await redis.lrange("tickets_diarios", 0, -1)
+    const tickets = ticketsData.map((ticket) => JSON.parse(ticket as string))
+
+    return {
+      numeroActual: Number(numeroActual) || 1,
+      ultimoNumero: Number(ultimoNumero) || 0,
+      totalAtendidos: Number(totalAtendidos) || 0,
+      numerosLlamados: Number(numerosLlamados) || 0,
+      fechaInicio: (fechaInicio as string) || getFechaHoy(),
+      ultimoReinicio: (ultimoReinicio as string) || new Date().toISOString(),
+      tickets,
+      lastSync: Date.now(),
+    }
+  } catch (error) {
+    console.error("Error al leer estado:", error)
+    // Retornar estado inicial en caso de error
+    const fechaHoy = getFechaHoy()
+    return {
+      numeroActual: 1,
+      ultimoNumero: 0,
+      totalAtendidos: 0,
+      numerosLlamados: 0,
+      fechaInicio: fechaHoy,
+      ultimoReinicio: new Date().toISOString(),
+      tickets: [],
+      lastSync: Date.now(),
+    }
+  }
+}
+
+// Función simplificada para escribir estado
+async function escribirEstadoSistema(estado: EstadoSistema): Promise<void> {
+  const pipeline = redis.pipeline()
+
+  pipeline.set("numero_actual", estado.numeroActual)
+  pipeline.set("ultimo_numero", estado.ultimoNumero)
+  pipeline.set("total_atendidos", estado.totalAtendidos)
+  pipeline.set("numeros_llamados", estado.numerosLlamados)
+  pipeline.set("fecha_inicio", estado.fechaInicio)
+  pipeline.set("ultimo_reinicio", estado.ultimoReinicio)
+
+  await pipeline.exec()
+}
+
+// Función simplificada para generar ticket
+async function generarTicketSimplificado(nombre: string): Promise<TicketInfo> {
+  const fechaHoy = getFechaHoy()
+  const ahora = new Date()
+
+  // Obtener el próximo número de forma atómica
+  const numeroActual = await redis.incr("numero_actual")
+
+  // Crear el ticket
+  const ticket: TicketInfo = {
+    numero: numeroActual,
+    nombre: nombre.trim() || "Cliente ZOCO",
+    fecha: fechaHoy,
+    timestamp: ahora.getTime(),
+  }
+
+  // Guardar el ticket y actualizar contadores
+  const pipeline = redis.pipeline()
+  pipeline.lpush("tickets_diarios", JSON.stringify(ticket))
+  pipeline.incr("total_atendidos")
+  await pipeline.exec()
+
+  return ticket
+}
+
 export async function GET() {
   try {
-    // Verificar conexión a la base de datos
-    const conexionOk = await verificarConexionDB()
-    if (!conexionOk) {
-      console.warn("Advertencia: Conexión a Redis no verificada, continuando...")
+    console.log("📡 GET /api/sistema - Leyendo estado...")
+
+    let estado = await leerEstadoSistema()
+
+    // Verificar si debe reiniciarse automáticamente
+    if (debeReiniciarse(estado)) {
+      console.log("🔄 Reinicio automático necesario")
+
+      const fechaHoy = getFechaHoy()
+      estado = {
+        numeroActual: 1,
+        ultimoNumero: 0,
+        totalAtendidos: 0,
+        numerosLlamados: 0,
+        fechaInicio: fechaHoy,
+        ultimoReinicio: new Date().toISOString(),
+        tickets: [],
+        lastSync: Date.now(),
+      }
+
+      await escribirEstadoSistema(estado)
+      // Limpiar tickets del día anterior
+      await redis.del("tickets_diarios")
     }
 
-    // Obtener datos del sistema
-    const [numeroActual, numeroLlamado, cola, historial, configuracion] = await Promise.all([
-      redis.get("numero_actual").catch(() => 0),
-      redis.get("numero_llamado").catch(() => 0),
-      redis.lrange("cola_atencion", 0, -1).catch(() => []),
-      redis.lrange("historial_diario", 0, -1).catch(() => []),
-      redis.hgetall("configuracion_sistema").catch(() => ({})),
-    ])
-
-    // Parsear datos de la cola e historial
-    const colaParsed = (cola || []).map((item) => {
-      try {
-        return typeof item === "string" ? JSON.parse(item) : item
-      } catch {
-        return item
-      }
+    console.log("✅ Estado devuelto:", {
+      numeroActual: estado.numeroActual,
+      totalAtendidos: estado.totalAtendidos,
+      numerosLlamados: estado.numerosLlamados,
+      totalTickets: estado.tickets.length,
     })
 
-    const historialParsed = (historial || []).map((item) => {
-      try {
-        return typeof item === "string" ? JSON.parse(item) : item
-      } catch {
-        return item
-      }
-    })
-
-    const estado = {
-      numeroActual: Number.parseInt(numeroActual as string) || 0,
-      numeroLlamado: Number.parseInt(numeroLlamado as string) || 0,
-      cola: colaParsed,
-      historial: historialParsed,
-      configuracion: configuracion || {},
-    }
-
-    return NextResponse.json({
-      success: true,
-      estado,
-      timestamp: new Date().toISOString(),
-    })
+    return NextResponse.json(estado)
   } catch (error) {
-    console.error("Error al obtener estado del sistema:", error)
+    console.error("❌ Error en GET /api/sistema:", error)
     return NextResponse.json(
       {
-        success: false,
         error: "Error interno del servidor",
         details: error instanceof Error ? error.message : "Error desconocido",
       },
@@ -70,147 +164,137 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { accion, nombre } = body
+    console.log("📨 POST /api/sistema")
 
-    // Verificar conexión a la base de datos
-    const conexionOk = await verificarConexionDB()
-    if (!conexionOk) {
-      console.warn("Advertencia: Conexión a Redis no verificada, continuando...")
+    const body = await request.json()
+    const { action, nombre, ...nuevoEstado } = body
+
+    console.log("🎯 Acción:", action)
+
+    let estado = await leerEstadoSistema()
+
+    // Verificar reinicio antes de cualquier operación
+    if (debeReiniciarse(estado)) {
+      console.log("🔄 Reinicio automático durante POST")
+
+      const fechaHoy = getFechaHoy()
+      estado = {
+        numeroActual: 1,
+        ultimoNumero: 0,
+        totalAtendidos: 0,
+        numerosLlamados: 0,
+        fechaInicio: fechaHoy,
+        ultimoReinicio: new Date().toISOString(),
+        tickets: [],
+        lastSync: Date.now(),
+      }
+
+      await escribirEstadoSistema(estado)
+      await redis.del("tickets_diarios")
     }
 
-    switch (accion) {
-      case "generar_ticket":
-        return await generarTicket(nombre)
+    // Generar ticket de forma simplificada
+    if (action === "GENERAR_TICKET") {
+      if (!nombre || typeof nombre !== "string" || nombre.trim().length === 0) {
+        return NextResponse.json({ error: "Nombre requerido" }, { status: 400 })
+      }
 
-      case "llamar_siguiente":
-        return await llamarSiguiente()
+      console.log("🎫 Generando ticket para:", nombre)
 
-      case "reiniciar_sistema":
-        return await reiniciarSistema()
+      try {
+        const nuevoTicket = await generarTicketSimplificado(nombre)
 
-      default:
+        // Leer estado actualizado
+        const estadoActualizado = await leerEstadoSistema()
+
+        console.log("✅ Ticket generado exitosamente")
+
+        return NextResponse.json({
+          ...estadoActualizado,
+          ticketGenerado: nuevoTicket,
+        })
+      } catch (error) {
+        console.error("❌ Error al generar ticket:", error)
         return NextResponse.json(
           {
-            success: false,
-            error: "Acción no válida",
+            error: "Error al generar ticket",
+            details: error instanceof Error ? error.message : "Error desconocido",
           },
-          { status: 400 },
+          { status: 500 },
         )
+      }
     }
+
+    // Otras acciones administrativas
+    if (action === "ELIMINAR_TODOS_REGISTROS") {
+      const fechaHoy = getFechaHoy()
+      const estadoLimpio: EstadoSistema = {
+        numeroActual: 1,
+        ultimoNumero: 0,
+        totalAtendidos: 0,
+        numerosLlamados: 0,
+        fechaInicio: fechaHoy,
+        ultimoReinicio: new Date().toISOString(),
+        tickets: [],
+        lastSync: Date.now(),
+      }
+
+      await escribirEstadoSistema(estadoLimpio)
+      await redis.del("tickets_diarios")
+
+      return NextResponse.json({
+        ...estadoLimpio,
+        mensaje: "Todos los registros han sido eliminados exitosamente",
+      })
+    }
+
+    if (action === "REINICIAR_CONTADOR_DIARIO") {
+      const fechaHoy = getFechaHoy()
+      const estadoReiniciado: EstadoSistema = {
+        numeroActual: 1,
+        ultimoNumero: 0,
+        totalAtendidos: 0,
+        numerosLlamados: 0,
+        fechaInicio: fechaHoy,
+        ultimoReinicio: new Date().toISOString(),
+        tickets: [],
+        lastSync: Date.now(),
+      }
+
+      await escribirEstadoSistema(estadoReiniciado)
+      await redis.del("tickets_diarios")
+
+      return NextResponse.json({
+        ...estadoReiniciado,
+        mensaje: "Contador diario reiniciado exitosamente",
+      })
+    }
+
+    // Actualización normal de estado
+    if (typeof nuevoEstado.numeroActual === "number") {
+      const estadoActualizado = {
+        numeroActual: nuevoEstado.numeroActual,
+        ultimoNumero: nuevoEstado.ultimoNumero || estado.ultimoNumero,
+        totalAtendidos: nuevoEstado.totalAtendidos,
+        numerosLlamados: nuevoEstado.numerosLlamados,
+        fechaInicio: estado.fechaInicio,
+        ultimoReinicio: estado.ultimoReinicio,
+        lastSync: Date.now(),
+      }
+
+      await escribirEstadoSistema(estadoActualizado)
+      const estadoFinal = await leerEstadoSistema()
+
+      return NextResponse.json(estadoFinal)
+    }
+
+    return NextResponse.json({ error: "Acción no válida" }, { status: 400 })
   } catch (error) {
-    console.error("Error en POST /api/sistema:", error)
+    console.error("❌ Error en POST /api/sistema:", error)
     return NextResponse.json(
       {
-        success: false,
         error: "Error interno del servidor",
         details: error instanceof Error ? error.message : "Error desconocido",
-      },
-      { status: 500 },
-    )
-  }
-}
-
-async function generarTicket(nombre?: string): Promise<NextResponse> {
-  try {
-    // Obtener el número actual y incrementarlo
-    const numeroActual = await redis.get("numero_actual").catch(() => 0)
-    const nuevoNumero = (Number.parseInt(numeroActual as string) || 0) + 1
-
-    // Crear el ticket
-    const ticket: TicketInfo = {
-      numero: nuevoNumero,
-      nombre: nombre || "",
-      fecha: new Date().toLocaleDateString("es-ES"),
-      timestamp: Date.now(),
-    }
-
-    // Guardar en Redis usando pipeline para atomicidad
-    const pipeline = redis.pipeline()
-    pipeline.set("numero_actual", nuevoNumero)
-    pipeline.lpush("cola_atencion", JSON.stringify(ticket))
-
-    await pipeline.exec()
-
-    return NextResponse.json({
-      success: true,
-      ticket,
-      mensaje: "Ticket generado exitosamente",
-    })
-  } catch (error) {
-    console.error("Error al generar ticket:", error)
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Error al generar ticket",
-      },
-      { status: 500 },
-    )
-  }
-}
-
-async function llamarSiguiente(): Promise<NextResponse> {
-  try {
-    // Obtener el siguiente ticket de la cola
-    const siguienteTicket = await redis.rpop("cola_atencion")
-
-    if (!siguienteTicket) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "No hay tickets en la cola",
-        },
-        { status: 400 },
-      )
-    }
-
-    const ticket = JSON.parse(siguienteTicket)
-
-    // Actualizar número llamado y agregar al historial
-    const pipeline = redis.pipeline()
-    pipeline.set("numero_llamado", ticket.numero)
-    pipeline.lpush("historial_diario", siguienteTicket)
-
-    await pipeline.exec()
-
-    return NextResponse.json({
-      success: true,
-      ticket,
-      mensaje: "Siguiente ticket llamado exitosamente",
-    })
-  } catch (error) {
-    console.error("Error al llamar siguiente:", error)
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Error al llamar siguiente ticket",
-      },
-      { status: 500 },
-    )
-  }
-}
-
-async function reiniciarSistema(): Promise<NextResponse> {
-  try {
-    // Limpiar todos los datos del sistema
-    const pipeline = redis.pipeline()
-    pipeline.set("numero_actual", 0)
-    pipeline.set("numero_llamado", 0)
-    pipeline.del("cola_atencion")
-    pipeline.del("historial_diario")
-
-    await pipeline.exec()
-
-    return NextResponse.json({
-      success: true,
-      mensaje: "Sistema reiniciado exitosamente",
-    })
-  } catch (error) {
-    console.error("Error al reiniciar sistema:", error)
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Error al reiniciar sistema",
       },
       { status: 500 },
     )

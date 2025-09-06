@@ -1,89 +1,183 @@
-import { redis } from "./database"
-
-interface CacheEntry<T> {
+interface CacheEntry<T = any> {
   data: T
   timestamp: number
   ttl: number
+  key: string
 }
 
-export class CacheManager {
-  private static instance: CacheManager
-  private defaultTTL = 300 // 5 minutos por defecto
+interface CacheStats {
+  totalEntries: number
+  entries: Array<{
+    key: string
+    age: number
+    ttl: number
+    fresh: boolean
+  }>
+  subscribers: number
+}
 
-  static getInstance(): CacheManager {
-    if (!CacheManager.instance) {
-      CacheManager.instance = new CacheManager()
-    }
-    return CacheManager.instance
+class CacheManager {
+  private cache = new Map<string, CacheEntry>()
+  private subscribers = new Set<() => void>()
+  private cleanupInterval: NodeJS.Timeout | null = null
+
+  constructor() {
+    // Limpiar cache cada 5 minutos
+    this.cleanupInterval = setInterval(
+      () => {
+        this.cleanup()
+      },
+      5 * 60 * 1000,
+    )
   }
 
-  async set<T>(key: string, data: T, ttl?: number): Promise<void> {
+  set<T>(key: string, data: T, ttlSeconds = 300): void {
     const entry: CacheEntry<T> = {
       data,
       timestamp: Date.now(),
-      ttl: ttl || this.defaultTTL,
+      ttl: ttlSeconds * 1000,
+      key,
     }
 
-    await redis.setex(`cache:${key}`, entry.ttl, JSON.stringify(entry))
+    this.cache.set(key, entry)
+    this.notifySubscribers()
   }
 
-  async get<T>(key: string): Promise<T | null> {
-    try {
-      const cached = await redis.get(`cache:${key}`)
-      if (!cached) return null
+  get<T>(key: string): T | null {
+    const entry = this.cache.get(key)
+    if (!entry) return null
 
-      const entry: CacheEntry<T> = JSON.parse(cached)
+    const now = Date.now()
+    const age = now - entry.timestamp
 
-      // Verificar si el cache ha expirado
-      const now = Date.now()
-      if (now - entry.timestamp > entry.ttl * 1000) {
-        await this.delete(key)
-        return null
-      }
-
-      return entry.data
-    } catch (error) {
-      console.error("Error al obtener del cache:", error)
+    if (age > entry.ttl) {
+      this.cache.delete(key)
+      this.notifySubscribers()
       return null
     }
+
+    return entry.data as T
   }
 
-  async delete(key: string): Promise<void> {
-    await redis.del(`cache:${key}`)
+  has(key: string): boolean {
+    const entry = this.cache.get(key)
+    if (!entry) return false
+
+    const now = Date.now()
+    const age = now - entry.timestamp
+
+    if (age > entry.ttl) {
+      this.cache.delete(key)
+      this.notifySubscribers()
+      return false
+    }
+
+    return true
   }
 
-  async clear(pattern?: string): Promise<void> {
-    const keys = await redis.keys(pattern ? `cache:${pattern}*` : "cache:*")
-    if (keys.length > 0) {
-      await redis.del(...keys)
+  delete(key: string): boolean {
+    const deleted = this.cache.delete(key)
+    if (deleted) {
+      this.notifySubscribers()
+    }
+    return deleted
+  }
+
+  clear(): void {
+    this.cache.clear()
+    this.notifySubscribers()
+  }
+
+  invalidate(pattern?: string): void {
+    if (!pattern) {
+      this.clear()
+      return
+    }
+
+    const keysToDelete: string[] = []
+    for (const key of this.cache.keys()) {
+      if (key.includes(pattern)) {
+        keysToDelete.push(key)
+      }
+    }
+
+    keysToDelete.forEach((key) => this.cache.delete(key))
+    if (keysToDelete.length > 0) {
+      this.notifySubscribers()
     }
   }
 
-  async exists(key: string): Promise<boolean> {
-    const result = await redis.exists(`cache:${key}`)
-    return result === 1
+  getStats(): CacheStats {
+    const now = Date.now()
+    const entries = Array.from(this.cache.entries()).map(([key, entry]) => {
+      const age = Math.floor((now - entry.timestamp) / 1000)
+      const ttl = Math.floor(entry.ttl / 1000)
+      const fresh = age < ttl
+
+      return {
+        key,
+        age,
+        ttl,
+        fresh,
+      }
+    })
+
+    return {
+      totalEntries: this.cache.size,
+      entries,
+      subscribers: this.subscribers.size,
+    }
   }
 
-  async ttl(key: string): Promise<number> {
-    return await redis.ttl(`cache:${key}`)
+  subscribe(callback: () => void): () => void {
+    this.subscribers.add(callback)
+    return () => {
+      this.subscribers.delete(callback)
+    }
   }
 
-  // Métodos específicos para el sistema de colas
-  async cacheEstadoSistema(estado: any): Promise<void> {
-    await this.set("estado_sistema", estado, 30) // Cache por 30 segundos
+  private cleanup(): void {
+    const now = Date.now()
+    const keysToDelete: string[] = []
+
+    for (const [key, entry] of this.cache.entries()) {
+      const age = now - entry.timestamp
+      if (age > entry.ttl) {
+        keysToDelete.push(key)
+      }
+    }
+
+    keysToDelete.forEach((key) => this.cache.delete(key))
+    if (keysToDelete.length > 0) {
+      console.log(`🧹 Cache cleanup: removed ${keysToDelete.length} expired entries`)
+      this.notifySubscribers()
+    }
   }
 
-  async getCachedEstadoSistema(): Promise<any> {
-    return await this.get("estado_sistema")
+  private notifySubscribers(): void {
+    this.subscribers.forEach((callback) => {
+      try {
+        callback()
+      } catch (error) {
+        console.error("Error in cache subscriber:", error)
+      }
+    })
   }
 
-  async cacheEstadisticas(stats: any): Promise<void> {
-    await this.set("estadisticas_diarias", stats, 300) // Cache por 5 minutos
-  }
-
-  async getCachedEstadisticas(): Promise<any> {
-    return await this.get("estadisticas_diarias")
+  destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval)
+      this.cleanupInterval = null
+    }
+    this.cache.clear()
+    this.subscribers.clear()
   }
 }
 
-export const cacheManager = CacheManager.getInstance()
+// Singleton instance
+export const cacheManager = new CacheManager()
+
+// Hook para usar el cache en componentes React
+export function useCache() {
+  return cacheManager
+}
