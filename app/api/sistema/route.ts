@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { redis } from "@/lib/database"
+import { leerEstadoSistema, escribirEstadoSistema, generarTicketAtomico, verificarConexionDB } from "@/lib/database"
 
 interface TicketInfo {
   numero: number
@@ -15,146 +15,56 @@ interface EstadoSistema {
   numerosLlamados: number
   fechaInicio: string
   ultimoReinicio: string
-  tickets: TicketInfo[]
+  tickets: TicketInfo[] // Mantener aquí para la consistencia del tipo en la API
   lastSync?: number
 }
 
-// Función simplificada para obtener la fecha actual en Argentina
-function getFechaHoy(): string {
-  const ahora = new Date()
-  const fechaArgentina = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }))
-  return fechaArgentina.toISOString().split("T")[0]
-}
-
-// Función simplificada para verificar si debe reiniciarse
+// Función para verificar si debe reiniciarse
 function debeReiniciarse(estado: EstadoSistema): boolean {
-  const fechaHoy = getFechaHoy()
-  return fechaHoy !== estado.fechaInicio
-}
-
-// Función simplificada para leer estado
-async function leerEstadoSistema(): Promise<EstadoSistema> {
   try {
-    const [numeroActual, ultimoNumero, totalAtendidos, numerosLlamados, fechaInicio, ultimoReinicio] =
-      await Promise.all([
-        redis.get("numero_actual"),
-        redis.get("ultimo_numero"),
-        redis.get("total_atendidos"),
-        redis.get("numeros_llamados"),
-        redis.get("fecha_inicio"),
-        redis.get("ultimo_reinicio"),
-      ])
+    const ahora = new Date()
+    const fechaActualArgentina = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }))
+    const fechaHoyString = fechaActualArgentina.toISOString().split("T")[0]
+    const fechaInicioString = estado.fechaInicio
 
-    // Obtener tickets
-    const ticketsData = await redis.lrange("tickets_diarios", 0, -1)
-    const tickets = ticketsData.map((ticket) => JSON.parse(ticket as string))
+    const esDiaDiferente = fechaHoyString !== fechaInicioString
 
-    return {
-      numeroActual: Number(numeroActual) || 1,
-      ultimoNumero: Number(ultimoNumero) || 0,
-      totalAtendidos: Number(totalAtendidos) || 0,
-      numerosLlamados: Number(numerosLlamados) || 0,
-      fechaInicio: (fechaInicio as string) || getFechaHoy(),
-      ultimoReinicio: (ultimoReinicio as string) || new Date().toISOString(),
-      tickets,
-      lastSync: Date.now(),
+    if (esDiaDiferente) {
+      console.log(`🔄 Reinicio automático necesario (TURNOS_ZOCO): ${fechaHoyString} vs ${fechaInicioString}`)
+      return true
     }
+
+    return false
   } catch (error) {
-    console.error("Error al leer estado:", error)
-    // Retornar estado inicial en caso de error
-    const fechaHoy = getFechaHoy()
-    return {
-      numeroActual: 1,
-      ultimoNumero: 0,
-      totalAtendidos: 0,
-      numerosLlamados: 0,
-      fechaInicio: fechaHoy,
-      ultimoReinicio: new Date().toISOString(),
-      tickets: [],
-      lastSync: Date.now(),
-    }
+    console.error("❌ Error verificando reinicio (TURNOS_ZOCO):", error)
+    return false
   }
 }
 
-// Función simplificada para escribir estado
-async function escribirEstadoSistema(estado: EstadoSistema): Promise<void> {
-  const pipeline = redis.pipeline()
-
-  pipeline.set("numero_actual", estado.numeroActual)
-  pipeline.set("ultimo_numero", estado.ultimoNumero)
-  pipeline.set("total_atendidos", estado.totalAtendidos)
-  pipeline.set("numeros_llamados", estado.numerosLlamados)
-  pipeline.set("fecha_inicio", estado.fechaInicio)
-  pipeline.set("ultimo_reinicio", estado.ultimoReinicio)
-
-  await pipeline.exec()
-}
-
-// Función simplificada para generar ticket
-async function generarTicketSimplificado(nombre: string): Promise<TicketInfo> {
-  const fechaHoy = getFechaHoy()
-  const ahora = new Date()
-
-  // Obtener el próximo número de forma atómica
-  const numeroActual = await redis.incr("numero_actual")
-
-  // Crear el ticket
-  const ticket: TicketInfo = {
-    numero: numeroActual,
-    nombre: nombre.trim() || "Cliente ZOCO",
-    fecha: fechaHoy,
-    timestamp: ahora.getTime(),
-  }
-
-  // Guardar el ticket y actualizar contadores
-  const pipeline = redis.pipeline()
-  pipeline.lpush("tickets_diarios", JSON.stringify(ticket))
-  pipeline.incr("total_atendidos")
-  await pipeline.exec()
-
-  return ticket
-}
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    console.log("📡 GET /api/sistema - Leyendo estado...")
+    console.log("📖 GET /api/sistema - Obteniendo estado del sistema...")
 
-    let estado = await leerEstadoSistema()
+    const estadoCompleto = await leerEstadoSistema()
 
-    // Verificar si debe reiniciarse automáticamente
-    if (debeReiniciarse(estado)) {
-      console.log("🔄 Reinicio automático necesario")
-
-      const fechaHoy = getFechaHoy()
-      estado = {
-        numeroActual: 1,
-        ultimoNumero: 0,
-        totalAtendidos: 0,
-        numerosLlamados: 0,
-        fechaInicio: fechaHoy,
-        ultimoReinicio: new Date().toISOString(),
-        tickets: [],
-        lastSync: Date.now(),
-      }
-
-      await escribirEstadoSistema(estado)
-      // Limpiar tickets del día anterior
-      await redis.del("tickets_diarios")
-    }
-
-    console.log("✅ Estado devuelto:", {
-      numeroActual: estado.numeroActual,
-      totalAtendidos: estado.totalAtendidos,
-      numerosLlamados: estado.numerosLlamados,
-      totalTickets: estado.tickets.length,
+    console.log("✅ Estado obtenido exitosamente:", {
+      numeroActual: estadoCompleto.numeroActual,
+      totalAtendidos: estadoCompleto.totalAtendidos,
+      numerosLlamados: estadoCompleto.numerosLlamados,
+      ticketsCount: estadoCompleto.tickets?.length || 0,
     })
 
-    return NextResponse.json(estado)
+    return NextResponse.json({
+      success: true,
+      estado: estadoCompleto,
+    })
   } catch (error) {
     console.error("❌ Error en GET /api/sistema:", error)
+
     return NextResponse.json(
       {
-        error: "Error interno del servidor",
+        success: false,
+        error: "Error al obtener estado del sistema",
         details: error instanceof Error ? error.message : "Error desconocido",
       },
       { status: 500 },
@@ -164,135 +74,110 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("📨 POST /api/sistema")
+    console.log("\n=== 📨 POST /api/sistema - TURNOS_ZOCO (Upstash Redis) ===")
 
     const body = await request.json()
-    const { action, nombre, ...nuevoEstado } = body
+    const { action, nombre } = body
 
-    console.log("🎯 Acción:", action)
+    console.log("📝 POST /api/sistema - Acción:", action)
 
-    let estado = await leerEstadoSistema()
-
-    // Verificar reinicio antes de cualquier operación
-    if (debeReiniciarse(estado)) {
-      console.log("🔄 Reinicio automático durante POST")
-
-      const fechaHoy = getFechaHoy()
-      estado = {
-        numeroActual: 1,
-        ultimoNumero: 0,
-        totalAtendidos: 0,
-        numerosLlamados: 0,
-        fechaInicio: fechaHoy,
-        ultimoReinicio: new Date().toISOString(),
-        tickets: [],
-        lastSync: Date.now(),
+    // Verificar conexión a la base de datos (no bloquear si falla)
+    try {
+      const conexionOK = await verificarConexionDB()
+      if (!conexionOK) {
+        console.log("⚠️ Advertencia: Problema de conexión detectado, pero continuando...")
       }
-
-      await escribirEstadoSistema(estado)
-      await redis.del("tickets_diarios")
+    } catch (connectionError) {
+      console.error("❌ Error al verificar conexión, pero continuando:", connectionError)
     }
 
-    // Generar ticket de forma simplificada
-    if (action === "GENERAR_TICKET") {
-      if (!nombre || typeof nombre !== "string" || nombre.trim().length === 0) {
-        return NextResponse.json({ error: "Nombre requerido" }, { status: 400 })
-      }
+    switch (action) {
+      case "generar_ticket": {
+        console.log("🎫 Generando ticket para:", nombre)
 
-      console.log("🎫 Generando ticket para:", nombre)
+        const ticket = await generarTicketAtomico(nombre || "Cliente ZOCO")
 
-      try {
-        const nuevoTicket = await generarTicketSimplificado(nombre)
-
-        // Leer estado actualizado
-        const estadoActualizado = await leerEstadoSistema()
-
-        console.log("✅ Ticket generado exitosamente")
+        console.log("✅ Ticket generado:", ticket)
 
         return NextResponse.json({
-          ...estadoActualizado,
-          ticketGenerado: nuevoTicket,
+          success: true,
+          ticket,
+          message: "Ticket generado exitosamente",
         })
-      } catch (error) {
-        console.error("❌ Error al generar ticket:", error)
+      }
+
+      case "llamar_siguiente": {
+        console.log("📢 Llamando siguiente número...")
+
+        const estadoActual = await leerEstadoSistema()
+
+        if (estadoActual.numerosLlamados >= estadoActual.totalAtendidos) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "No hay más números para llamar",
+            },
+            { status: 400 },
+          )
+        }
+
+        const nuevoEstado = {
+          ...estadoActual,
+          numerosLlamados: estadoActual.numerosLlamados + 1,
+          lastSync: Date.now(),
+        }
+
+        await escribirEstadoSistema(nuevoEstado)
+
+        console.log("✅ Siguiente número llamado:", nuevoEstado.numerosLlamados)
+
+        return NextResponse.json({
+          success: true,
+          numeroLlamado: nuevoEstado.numerosLlamados,
+          message: "Siguiente número llamado exitosamente",
+        })
+      }
+
+      case "reiniciar": {
+        console.log("🔄 Reiniciando contador...")
+
+        const fechaHoy = new Date().toISOString().split("T")[0]
+        const estadoReiniciado = {
+          numeroActual: 1,
+          ultimoNumero: 0,
+          totalAtendidos: 0,
+          numerosLlamados: 0,
+          fechaInicio: fechaHoy,
+          ultimoReinicio: new Date().toISOString(),
+          lastSync: Date.now(),
+        }
+
+        await escribirEstadoSistema(estadoReiniciado)
+
+        console.log("✅ Sistema reiniciado exitosamente")
+
+        return NextResponse.json({
+          success: true,
+          estado: estadoReiniciado,
+          message: "Sistema reiniciado exitosamente",
+        })
+      }
+
+      default:
         return NextResponse.json(
           {
-            error: "Error al generar ticket",
-            details: error instanceof Error ? error.message : "Error desconocido",
+            success: false,
+            error: "Acción no válida",
           },
-          { status: 500 },
+          { status: 400 },
         )
-      }
     }
-
-    // Otras acciones administrativas
-    if (action === "ELIMINAR_TODOS_REGISTROS") {
-      const fechaHoy = getFechaHoy()
-      const estadoLimpio: EstadoSistema = {
-        numeroActual: 1,
-        ultimoNumero: 0,
-        totalAtendidos: 0,
-        numerosLlamados: 0,
-        fechaInicio: fechaHoy,
-        ultimoReinicio: new Date().toISOString(),
-        tickets: [],
-        lastSync: Date.now(),
-      }
-
-      await escribirEstadoSistema(estadoLimpio)
-      await redis.del("tickets_diarios")
-
-      return NextResponse.json({
-        ...estadoLimpio,
-        mensaje: "Todos los registros han sido eliminados exitosamente",
-      })
-    }
-
-    if (action === "REINICIAR_CONTADOR_DIARIO") {
-      const fechaHoy = getFechaHoy()
-      const estadoReiniciado: EstadoSistema = {
-        numeroActual: 1,
-        ultimoNumero: 0,
-        totalAtendidos: 0,
-        numerosLlamados: 0,
-        fechaInicio: fechaHoy,
-        ultimoReinicio: new Date().toISOString(),
-        tickets: [],
-        lastSync: Date.now(),
-      }
-
-      await escribirEstadoSistema(estadoReiniciado)
-      await redis.del("tickets_diarios")
-
-      return NextResponse.json({
-        ...estadoReiniciado,
-        mensaje: "Contador diario reiniciado exitosamente",
-      })
-    }
-
-    // Actualización normal de estado
-    if (typeof nuevoEstado.numeroActual === "number") {
-      const estadoActualizado = {
-        numeroActual: nuevoEstado.numeroActual,
-        ultimoNumero: nuevoEstado.ultimoNumero || estado.ultimoNumero,
-        totalAtendidos: nuevoEstado.totalAtendidos,
-        numerosLlamados: nuevoEstado.numerosLlamados,
-        fechaInicio: estado.fechaInicio,
-        ultimoReinicio: estado.ultimoReinicio,
-        lastSync: Date.now(),
-      }
-
-      await escribirEstadoSistema(estadoActualizado)
-      const estadoFinal = await leerEstadoSistema()
-
-      return NextResponse.json(estadoFinal)
-    }
-
-    return NextResponse.json({ error: "Acción no válida" }, { status: 400 })
   } catch (error) {
     console.error("❌ Error en POST /api/sistema:", error)
+
     return NextResponse.json(
       {
+        success: false,
         error: "Error interno del servidor",
         details: error instanceof Error ? error.message : "Error desconocido",
       },

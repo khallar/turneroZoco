@@ -1,41 +1,57 @@
-import { NextResponse } from "next/server"
-import { redis } from "@/lib/database"
+import { type NextRequest, NextResponse } from "next/server"
+import { leerEstadoSistema, verificarConexionDB } from "@/lib/database"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const debugInfo = {
+    console.log("🔍 Iniciando debug del sistema...")
+
+    // Verificar conexión a la base de datos
+    const conexion = await verificarConexionDB()
+
+    // Leer estado actual
+    let estadoActual = null
+    let errorEstado = null
+
+    try {
+      estadoActual = await leerEstadoSistema()
+    } catch (error) {
+      errorEstado = error instanceof Error ? error.message : "Error desconocido"
+    }
+
+    // Información del entorno
+    const entorno = {
+      NODE_ENV: process.env.NODE_ENV,
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      hasUpstashUrl: !!process.env.KV_REST_API_URL,
+      hasUpstashToken: !!process.env.KV_REST_API_TOKEN,
+      hasKvUrl: !!process.env.KV_REST_API_URL,
+      hasKvToken: !!process.env.KV_REST_API_TOKEN,
       timestamp: new Date().toISOString(),
-      environment: {
-        NODE_ENV: process.env.NODE_ENV,
-        VERCEL_ENV: process.env.VERCEL_ENV,
-      },
-      upstash: {
-        connection: {
-          status: "checking...",
-        },
+    }
+
+    const debugInfo = {
+      conexion,
+      estadoActual,
+      errorEstado,
+      entorno,
+      sistema: {
+        version: "5.2",
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
       },
     }
 
-    // Test Redis connection
-    try {
-      const pingResult = await redis.ping()
-      debugInfo.upstash.connection = {
-        status: "healthy",
-        ping: pingResult,
-      }
-    } catch (error) {
-      debugInfo.upstash.connection = {
-        status: "error",
-        error: error instanceof Error ? error.message : "Unknown error",
-      }
-    }
+    console.log("✅ Debug completado")
 
     return NextResponse.json(debugInfo)
   } catch (error) {
+    console.error("❌ Error en debug:", error)
+
     return NextResponse.json(
       {
-        error: "Debug endpoint error",
-        details: error instanceof Error ? error.message : "Unknown error",
+        error: "Error en debug del sistema",
+        details: error instanceof Error ? error.message : "Error desconocido",
+        timestamp: new Date().toISOString(),
       },
       { status: 500 },
     )

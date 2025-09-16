@@ -1,74 +1,77 @@
-import { redis } from "@/lib/database"
+import { Redis } from "@upstash/redis"
 
-export interface HealthStatus {
-  status: "healthy" | "degraded" | "unhealthy"
-  latency: number
-  details: {
-    ping: boolean
-    read: boolean
-    write: boolean
-    connection: boolean
-    errors: string[]
-  }
-}
-
-export async function checkUpstashHealth(): Promise<HealthStatus> {
-  const startTime = Date.now()
-  const errors: string[] = []
-  let ping = false
-  let read = false
-  let write = false
-  let connection = false
-
+// Función para verificar la salud de Upstash Redis
+export async function checkUpstashHealth(): Promise<{
+  status: "healthy" | "unhealthy"
+  details: any
+  timestamp: string
+}> {
   try {
-    // Test 1: Ping
-    try {
-      await redis.ping()
-      ping = true
-      connection = true
-    } catch (error) {
-      errors.push(`Ping failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+    // Obtener configuración de Redis
+    const redisUrl = process.env.KV_REST_API_URL || process.env.KV_REST_API_URL
+    const redisToken = process.env.KV_REST_API_TOKEN || process.env.KV_REST_API_TOKEN
+
+    if (!redisUrl || !redisToken) {
+      return {
+        status: "unhealthy",
+        details: {
+          error: "Missing Redis configuration",
+          hasUrl: !!redisUrl,
+          hasToken: !!redisToken,
+        },
+        timestamp: new Date().toISOString(),
+      }
     }
 
-    // Test 2: Read operation
-    try {
-      await redis.get("health_check_test")
-      read = true
-    } catch (error) {
-      errors.push(`Read failed: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
+    // Crear cliente Redis
+    const redis = new Redis({
+      url: redisUrl,
+      token: redisToken,
+    })
 
-    // Test 3: Write operation
-    try {
-      await redis.set("health_check_test", Date.now().toString(), { ex: 60 })
-      write = true
-    } catch (error) {
-      errors.push(`Write failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+    // Test de conectividad
+    const startTime = Date.now()
+    const testKey = `health_check_${Date.now()}`
+    const testValue = "ping"
+
+    // Realizar operaciones de prueba
+    await redis.set(testKey, testValue, { ex: 10 }) // Expira en 10 segundos
+    const result = await redis.get(testKey)
+    await redis.del(testKey)
+
+    const responseTime = Date.now() - startTime
+
+    if (result === testValue) {
+      return {
+        status: "healthy",
+        details: {
+          responseTime: `${responseTime}ms`,
+          operations: ["SET", "GET", "DEL"],
+          endpoint: redisUrl.substring(0, 50) + "...",
+          testPassed: true,
+        },
+        timestamp: new Date().toISOString(),
+      }
+    } else {
+      return {
+        status: "unhealthy",
+        details: {
+          error: "Test value mismatch",
+          expected: testValue,
+          received: result,
+          responseTime: `${responseTime}ms`,
+        },
+        timestamp: new Date().toISOString(),
+      }
     }
   } catch (error) {
-    errors.push(`Connection failed: ${error instanceof Error ? error.message : "Unknown error"}`)
-  }
-
-  const latency = Date.now() - startTime
-
-  let status: "healthy" | "degraded" | "unhealthy"
-  if (ping && read && write) {
-    status = "healthy"
-  } else if (connection && (read || write)) {
-    status = "degraded"
-  } else {
-    status = "unhealthy"
-  }
-
-  return {
-    status,
-    latency,
-    details: {
-      ping,
-      read,
-      write,
-      connection,
-      errors,
-    },
+    return {
+      status: "unhealthy",
+      details: {
+        error: error instanceof Error ? error.message : "Unknown error",
+        type: error instanceof Error ? error.constructor.name : "Unknown",
+      },
+      timestamp: new Date().toISOString(),
+    }
   }
 }
