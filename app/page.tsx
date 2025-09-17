@@ -163,32 +163,55 @@ export default function HomePage() {
       {/* Modal de Ticket Generado */}
       {showTicket && ultimoTicket && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full mx-4 animate-scaleIn">
+          <div className="bg-gradient-to-br from-red-50 via-white to-orange-50 rounded-3xl shadow-2xl max-w-sm w-full mx-4 animate-scaleIn border-4 border-red-200 relative overflow-hidden">
+            {/* Elementos decorativos de fondo */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-red-100 rounded-full opacity-30 -translate-y-16 translate-x-16"></div>
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-orange-100 rounded-full opacity-40 translate-y-12 -translate-x-12"></div>
+            <div className="absolute top-1/2 left-1/2 w-40 h-40 bg-red-50 rounded-full opacity-20 -translate-x-1/2 -translate-y-1/2"></div>
+
             {/* Botón Cerrar */}
             <button
               onClick={cerrarTicket}
-              className="absolute top-4 right-4 bg-gray-100 hover:bg-gray-200 rounded-full p-2 transition-colors z-10"
+              className="absolute top-4 right-4 bg-white/80 hover:bg-white rounded-full p-2 transition-colors z-20 shadow-lg"
             >
               <X className="h-5 w-5 text-gray-600" />
             </button>
 
             {/* Contenido del Ticket */}
-            <div className="p-8 text-center">
-              {/* Header */}
+            <div className="p-8 text-center relative z-10">
+              {/* Header con Logo */}
               <div className="mb-6">
-                <img src="/logo-rojo.png" alt="ZOCO" className="h-16 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold text-gray-800">¡Tu Número!</h2>
+                <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-4 mb-4 shadow-lg">
+                  <img src="/logo-rojo.png" alt="ZOCO" className="h-20 mx-auto" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800">¡Tu Número de Atención!</h2>
               </div>
 
-              {/* Número Principal */}
-              <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-8 mb-6 text-white">
-                <div className="text-7xl font-black mb-2">{ultimoTicket.numero.toString().padStart(3, "0")}</div>
-                <div className="bg-white/20 rounded-xl py-2 px-4 text-xl font-bold">{ultimoTicket.nombre}</div>
+              {/* Número Principal con Logo de fondo */}
+              <div className="relative bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-8 mb-6 text-white shadow-xl overflow-hidden">
+                {/* Logo de fondo sutil */}
+                <div className="absolute inset-0 flex items-center justify-center opacity-10">
+                  <img src="/logo-rojo.png" alt="ZOCO Background" className="h-32 filter brightness-0 invert" />
+                </div>
+
+                {/* Contenido principal */}
+                <div className="relative z-10">
+                  <div className="text-7xl font-black mb-4 drop-shadow-lg">
+                    {ultimoTicket.numero.toString().padStart(3, "0")}
+                  </div>
+                  <div className="bg-white/20 backdrop-blur-sm rounded-xl py-3 px-6 text-xl font-bold border border-white/30">
+                    {ultimoTicket.nombre}
+                  </div>
+                </div>
+
+                {/* Elementos decorativos en el número */}
+                <div className="absolute top-2 right-2 w-8 h-8 bg-white/10 rounded-full"></div>
+                <div className="absolute bottom-2 left-2 w-6 h-6 bg-white/10 rounded-full"></div>
               </div>
 
               {/* Información de Fecha y Hora */}
-              <div className="bg-gray-50 rounded-xl p-4 mb-6">
-                <div className="text-sm text-gray-600 mb-1">Generado el:</div>
+              <div className="bg-white/70 backdrop-blur-sm rounded-xl p-4 mb-6 shadow-lg border border-gray-200">
+                <div className="text-sm text-gray-600 mb-1">📅 Generado el:</div>
                 <div className="font-bold text-gray-800">
                   {new Date().toLocaleDateString("es-AR", {
                     weekday: "long",
@@ -198,6 +221,7 @@ export default function HomePage() {
                   })}
                 </div>
                 <div className="font-bold text-gray-800 text-lg">
+                  🕐{" "}
                   {new Date().toLocaleTimeString("es-AR", {
                     hour: "2-digit",
                     minute: "2-digit",
@@ -206,9 +230,9 @@ export default function HomePage() {
               </div>
 
               {/* Instrucciones */}
-              <div className="border-t border-gray-200 pt-4">
-                <p className="text-sm text-gray-600 leading-relaxed">
-                  Por favor, <span className="font-semibold text-red-600">avance al centro del salón</span> para ser
+              <div className="bg-white/70 backdrop-blur-sm rounded-xl p-4 mb-6 border border-gray-200">
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  📍 Por favor, <span className="font-semibold text-red-600">avance al centro del salón</span> para ser
                   llamado cuando llegue su turno
                 </p>
               </div>
@@ -216,9 +240,9 @@ export default function HomePage() {
               {/* Botón de Cerrar */}
               <Button
                 onClick={cerrarTicket}
-                className="w-full mt-6 bg-red-600 hover:bg-red-700 text-white py-3 text-lg rounded-xl"
+                className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white py-4 text-lg rounded-xl shadow-lg transform hover:scale-105 transition-all duration-300"
               >
-                Entendido
+                ✅ Entendido
               </Button>
             </div>
           </div>
