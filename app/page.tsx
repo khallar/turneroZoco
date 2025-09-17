@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import TicketDisplay from "@/components/TicketDisplay"
 import { NombreModal } from "@/components/NombreModal"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 import { Printer, Users, Clock, TrendingUp } from "lucide-react"
@@ -198,12 +197,13 @@ export default function HomePage() {
             <CardContent>
               {ultimoTicket ? (
                 <div className="space-y-4">
-                  <TicketDisplay
-                    numero={ultimoTicket.numero}
-                    nombre={ultimoTicket.nombre}
-                    fecha={ultimoTicket.fecha}
-                    showActions={true}
-                  />
+                  <div className="space-y-4">
+                    <div className="text-6xl font-bold text-red-600">
+                      {ultimoTicket.numero.toString().padStart(3, "0")}
+                    </div>
+                    <div className="text-xl font-semibold text-gray-800">{ultimoTicket.nombre}</div>
+                    <div className="text-sm text-gray-500">{ultimoTicket.fecha}</div>
+                  </div>
                   <div className="text-center no-print">
                     <Button onClick={handleImprimirTicket} variant="outline" className="w-full bg-transparent">
                       <Printer className="h-4 w-4 mr-2" />
