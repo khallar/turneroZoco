@@ -1,10 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
-import { Clock, Users, TrendingUp, Calendar } from "lucide-react"
+import { Clock, Users } from "lucide-react"
 
 export default function ProximosPage() {
   const { estado, loading, error } = useSistemaEstado()
@@ -14,16 +12,15 @@ export default function ProximosPage() {
     const interval = setInterval(() => {
       setHoraActual(new Date().toLocaleTimeString("es-AR"))
     }, 1000)
-
     return () => clearInterval(interval)
   }, [])
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Cargando información de turnos...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-white mx-auto mb-4"></div>
+          <p className="text-white text-xl">Cargando próximos turnos...</p>
         </div>
       </div>
     )
@@ -31,202 +28,176 @@ export default function ProximosPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="p-6 text-center">
-            <div className="text-red-600 mb-4">⚠️</div>
-            <h2 className="text-xl font-semibold mb-2">Error de Conexión</h2>
-            <p className="text-gray-600">{error}</p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-gradient-to-br from-red-900 via-red-800 to-red-700 flex items-center justify-center">
+        <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full text-center mx-4">
+          <div className="text-red-600 mb-4 text-6xl">⚠️</div>
+          <h2 className="text-2xl font-bold mb-4 text-gray-800">Error de Conexión</h2>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors font-semibold"
+          >
+            Reintentar
+          </button>
+        </div>
       </div>
     )
   }
 
-  // Calcular próximos números
+  // Calcular próximos números con nombres
   const numeroActualLlamado = estado.numerosLlamados
-  const proximosNumeros = []
+  const proximosConNombres = []
 
+  // Obtener los próximos 5 tickets con nombres
   for (let i = 1; i <= 5; i++) {
     const numeroProximo = numeroActualLlamado + i
-    if (numeroProximo <= estado.totalAtendidos) {
-      proximosNumeros.push(numeroProximo)
+    if (numeroProximo <= estado.totalAtendidos && estado.tickets) {
+      const ticket = estado.tickets.find((t) => t.numero === numeroProximo)
+      if (ticket) {
+        proximosConNombres.push({
+          numero: numeroProximo,
+          nombre: ticket.nombre,
+          posicion: i,
+        })
+      }
     }
   }
 
   const ticketsPendientes = estado.totalAtendidos - estado.numerosLlamados
-  const eficiencia = estado.totalAtendidos > 0 ? Math.round((estado.numerosLlamados / estado.totalAtendidos) * 100) : 0
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center space-x-4">
-              <img src="/logo-rojo.png" alt="ZOCO" className="h-12 w-auto" />
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Próximos Turnos</h1>
-                <p className="text-gray-500">Información para clientes en espera</p>
-              </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900">
+      {/* Header con Logo */}
+      <div className="pt-8 pb-6">
+        <div className="text-center">
+          <img src="/logo-rojo.png" alt="ZOCO" className="h-20 mx-auto mb-4 filter brightness-0 invert" />
+          <h1 className="text-4xl font-bold text-white mb-2">Próximos Turnos</h1>
+          <div className="flex justify-center items-center gap-6 text-white/80">
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              <span className="text-lg font-medium">{horaActual}</span>
             </div>
-            <div className="text-right">
-              <div className="text-2xl font-bold text-gray-900">{horaActual}</div>
-              <div className="text-sm text-gray-500">
-                {new Date().toLocaleDateString("es-AR", {
-                  weekday: "long",
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </div>
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              <span className="text-lg font-medium">{ticketsPendientes} en espera</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Número actual siendo atendido */}
+      <div className="max-w-2xl mx-auto px-6">
+        {/* Número Actual Siendo Atendido */}
         <div className="mb-8">
-          <Card className="border-2 border-red-200 bg-red-50">
-            <CardContent className="p-8 text-center">
-              <h2 className="text-2xl font-semibold text-red-800 mb-4">Atendiendo Ahora</h2>
-              <div className="text-8xl font-bold text-red-600 mb-4">
-                {numeroActualLlamado > 0 ? numeroActualLlamado.toString().padStart(3, "0") : "---"}
-              </div>
-              <p className="text-red-700 text-lg">
-                {numeroActualLlamado > 0 ? "Número en atención" : "Esperando primer cliente"}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Estadísticas rápidas */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">En Espera</p>
-                  <p className="text-3xl font-bold text-orange-600">{ticketsPendientes}</p>
-                </div>
-                <Clock className="h-8 w-8 text-orange-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Hoy</p>
-                  <p className="text-3xl font-bold text-blue-600">{estado.totalAtendidos}</p>
-                </div>
-                <Users className="h-8 w-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Atendidos</p>
-                  <p className="text-3xl font-bold text-green-600">{estado.numerosLlamados}</p>
-                </div>
-                <TrendingUp className="h-8 w-8 text-green-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Progreso</p>
-                  <p className="text-3xl font-bold text-purple-600">{eficiencia}%</p>
-                </div>
-                <Calendar className="h-8 w-8 text-purple-600" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Próximos números */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-2xl">Próximos en la Fila</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {proximosNumeros.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                {proximosNumeros.map((numero, index) => (
-                  <div
-                    key={numero}
-                    className={`text-center p-6 rounded-lg border-2 ${
-                      index === 0 ? "border-green-200 bg-green-50" : "border-gray-200 bg-gray-50"
-                    }`}
-                  >
-                    <div className={`text-4xl font-bold mb-2 ${index === 0 ? "text-green-600" : "text-gray-600"}`}>
-                      {numero.toString().padStart(3, "0")}
-                    </div>
-                    <Badge variant={index === 0 ? "default" : "secondary"}>
-                      {index === 0 ? "Siguiente" : `+${index + 1}`}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <div className="text-6xl mb-4">🎉</div>
-                <h3 className="text-2xl font-semibold text-gray-700 mb-2">¡No hay más turnos en espera!</h3>
-                <p className="text-gray-500">Todos los números han sido atendidos</p>
+          <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-3xl p-8 text-center shadow-2xl border border-red-400">
+            <h2 className="text-2xl font-bold text-white mb-4">🔥 ATENDIENDO AHORA</h2>
+            <div className="text-8xl font-black text-white mb-4 tracking-wider">
+              {numeroActualLlamado > 0 ? numeroActualLlamado.toString().padStart(3, "0") : "---"}
+            </div>
+            {numeroActualLlamado > 0 && estado.tickets && (
+              <div className="bg-white/20 rounded-xl p-4 backdrop-blur-sm">
+                <p className="text-white text-xl font-semibold">
+                  {estado.tickets.find((t) => t.numero === numeroActualLlamado)?.nombre || "Cliente"}
+                </p>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        {/* Información adicional */}
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Tiempo Estimado</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Tiempo promedio por cliente:</span>
-                  <span className="font-medium">3-5 minutos</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Estimado para próximo:</span>
-                  <span className="font-medium">{proximosNumeros.length > 0 ? "3-5 minutos" : "Inmediato"}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Próximos 5 Turnos */}
+        <div className="space-y-4 mb-8">
+          <h3 className="text-2xl font-bold text-white text-center mb-6">📋 Próximos en la Fila</h3>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Estado del Sistema</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Sistema:</span>
-                  <Badge variant="default">Activo</Badge>
+          {proximosConNombres.length > 0 ? (
+            <div className="space-y-3">
+              {proximosConNombres.map((item, index) => (
+                <div
+                  key={item.numero}
+                  className={`rounded-2xl p-6 shadow-xl transition-all duration-300 hover:scale-105 ${
+                    index === 0
+                      ? "bg-gradient-to-r from-green-500 to-emerald-600 border-2 border-green-400"
+                      : index === 1
+                        ? "bg-gradient-to-r from-blue-500 to-blue-600 border-2 border-blue-400"
+                        : index === 2
+                          ? "bg-gradient-to-r from-purple-500 to-purple-600 border-2 border-purple-400"
+                          : "bg-gradient-to-r from-gray-600 to-gray-700 border-2 border-gray-500"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="bg-white/20 rounded-full w-16 h-16 flex items-center justify-center backdrop-blur-sm">
+                        <span className="text-2xl font-black text-white">
+                          {item.numero.toString().padStart(3, "0")}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-white text-xl font-bold capitalize">{item.nombre}</p>
+                        <p className="text-white/80 text-sm">
+                          {index === 0 ? "🥇 Siguiente" : `Posición ${item.posicion}`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div
+                        className={`px-4 py-2 rounded-full text-sm font-bold ${
+                          index === 0 ? "bg-white text-green-600" : "bg-white/20 text-white"
+                        }`}
+                      >
+                        {index === 0 ? "SIGUIENTE" : `+${item.posicion}`}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Última actualización:</span>
-                  <span className="font-medium">{horaActual}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Versión:</span>
-                  <span className="font-medium">5.2</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-gradient-to-r from-gray-700 to-gray-800 rounded-2xl p-12 text-center shadow-xl">
+              <div className="text-8xl mb-6">🎉</div>
+              <h3 className="text-3xl font-bold text-white mb-4">¡Excelente!</h3>
+              <p className="text-white/80 text-xl">No hay más turnos en espera</p>
+              <p className="text-white/60 text-lg mt-2">Todos los números han sido atendidos</p>
+            </div>
+          )}
+        </div>
+
+        {/* Información del Sistema */}
+        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 shadow-xl border border-white/20">
+          <div className="grid grid-cols-2 gap-6 text-center">
+            <div>
+              <div className="text-3xl font-bold text-white">{estado.totalAtendidos}</div>
+              <p className="text-white/80">Total Emitidos Hoy</p>
+            </div>
+            <div>
+              <div className="text-3xl font-bold text-white">{estado.numerosLlamados}</div>
+              <p className="text-white/80">Total Atendidos</p>
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-white/20 text-center">
+            <p className="text-white/60 text-sm">Sistema Activo • Versión 5.2 • Actualizado: {horaActual}</p>
+          </div>
+        </div>
+
+        {/* Navegación */}
+        <div className="text-center mt-8 pb-8">
+          <div className="space-x-6">
+            <a
+              href="/"
+              className="inline-block bg-white/20 hover:bg-white/30 text-white px-6 py-3 rounded-xl font-semibold transition-colors backdrop-blur-sm"
+            >
+              🏠 Inicio
+            </a>
+            <a
+              href="/empleados"
+              className="inline-block bg-white/20 hover:bg-white/30 text-white px-6 py-3 rounded-xl font-semibold transition-colors backdrop-blur-sm"
+            >
+              👥 Empleados
+            </a>
+            <a
+              href="/admin"
+              className="inline-block bg-white/20 hover:bg-white/30 text-white px-6 py-3 rounded-xl font-semibold transition-colors backdrop-blur-sm"
+            >
+              ⚙️ Admin
+            </a>
+          </div>
         </div>
       </div>
     </div>
