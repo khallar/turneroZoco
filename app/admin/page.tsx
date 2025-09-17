@@ -201,29 +201,19 @@ export default function PaginaAdmin() {
     }
   }
 
+  // NUEVA FUNCIÓN: Reiniciar contador diario
   const reiniciarContadorDiario = async () => {
     setProcesandoAccion(true)
     try {
-      const response = await fetch("/api/sistema", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "REINICIAR_CONTADOR_DIARIO",
-        }),
-      })
-
-      if (response.ok) {
-        invalidateCache()
-        await recargar()
-        alert("Contador diario reiniciado exitosamente")
+      const success = await reiniciarContador()
+      if (success) {
+        alert("✅ Contador diario reiniciado exitosamente")
       } else {
         throw new Error("Error al reiniciar contador")
       }
     } catch (error) {
       console.error("Error al reiniciar contador:", error)
-      alert("Error al reiniciar contador")
+      alert("❌ Error al reiniciar contador")
     } finally {
       setProcesandoAccion(false)
       setMostrarConfirmacionReinicio(false)
@@ -748,31 +738,6 @@ export default function PaginaAdmin() {
           </div>
         </div>
 
-        {/* Estadísticas de Cache - MINIMIZADO - FIXED */}
-        {false && (
-          <div className="mb-6 flex justify-center">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <Database className="h-4 w-4 text-blue-600" />
-                <span className="text-blue-800 font-medium">Cache:</span>
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="text-blue-700">0 entradas</span>
-                <span className="text-green-700">0 frescas</span>
-                <span className="text-purple-700">0 suscriptores</span>
-                <Button
-                  onClick={invalidateCache}
-                  size="sm"
-                  variant="outline"
-                  className="text-xs px-2 py-1 h-6 bg-transparent"
-                >
-                  Limpiar
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Estadísticas Principales del Día */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
@@ -816,6 +781,29 @@ export default function PaginaAdmin() {
             <CardContent>
               <div className="text-3xl font-bold">{estadisticasAdminCalculadas.eficienciaGeneral}%</div>
               <p className="text-xs opacity-80">Tasa de atención</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* BOTÓN DE REINICIAR DÍA - AGREGADO */}
+        <div className="mb-8 text-center">
+          <Card className="bg-gradient-to-r from-orange-50 to-red-50 border-orange-200">
+            <CardContent className="p-6">
+              <h3 className="text-xl font-bold text-orange-800 mb-4 flex items-center justify-center gap-2">
+                <RotateCcw className="h-6 w-6" />
+                Gestión del Contador Diario
+              </h3>
+              <p className="text-orange-700 mb-4">
+                Reinicia el contador para comenzar un nuevo día. Los datos actuales se respaldarán automáticamente.
+              </p>
+              <Button
+                onClick={() => setMostrarConfirmacionReinicio(true)}
+                disabled={procesandoAccion}
+                className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-3 text-lg rounded-xl shadow-lg"
+              >
+                <RotateCcw className="mr-3 h-5 w-5" />
+                {procesandoAccion ? "Reiniciando..." : "Reiniciar Contador Diario"}
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -1533,7 +1521,7 @@ export default function PaginaAdmin() {
         {/* Footer */}
         <footer className="text-center mt-8 pt-4 border-t border-gray-200">
           <div className="text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 5.2 | Historial Consolidado + Descarga Masiva</p>
+            <p>Develop by: Karim :) | Versión 6.0 | Panel Admin con Reinicio de Contador</p>
             <p>Actualización inteligente cada 120s | Cache compartido entre páginas</p>
           </div>
         </footer>
