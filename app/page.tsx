@@ -87,79 +87,70 @@ export default function HomePage() {
   const ticketsPendientes = estado.totalAtendidos - estado.numerosLlamados
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header con estadísticas */}
-        <div className="text-center mb-8">
-          <div className="flex justify-center gap-6 mb-6">
-            <div className="bg-white rounded-xl px-4 py-2 shadow-md">
-              <div className="flex items-center gap-2 text-sm">
-                <Users className="h-4 w-4 text-red-600" />
-                <span className="font-semibold text-gray-700">{estado.totalAtendidos} tickets hoy</span>
-              </div>
-            </div>
-            <div className="bg-white rounded-xl px-4 py-2 shadow-md">
-              <div className="flex items-center gap-2 text-sm">
-                <Clock className="h-4 w-4 text-orange-600" />
-                <span className="font-semibold text-gray-700">{ticketsPendientes} en espera</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Logo */}
-        <div className="text-center mb-16">
-          <img src="/logo-rojo.png" alt="ZOCO" className="h-32 md:h-40 mx-auto drop-shadow-lg" />
-        </div>
-
-        {/* Contenido Principal */}
-        <div className="max-w-2xl mx-auto">
-          {/* Botón Principal */}
-          <div className="text-center mb-12">
-            <Button
-              onClick={() => setShowModal(true)}
-              disabled={generandoTicket}
-              className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-16 py-8 text-4xl md:text-5xl font-bold rounded-3xl shadow-2xl transform hover:scale-105 transition-all duration-300"
-              style={{ minHeight: "120px", minWidth: "300px" }}
-            >
-              {generandoTicket ? (
-                <div className="flex items-center gap-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-                  Generando...
+    <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 flex flex-col">
+      <div className="flex-1">
+        <div className="container mx-auto px-4 py-8">
+          {/* Header con estadísticas */}
+          <div className="text-center mb-8">
+            <div className="flex justify-center gap-6 mb-6">
+              <div className="bg-white rounded-xl px-4 py-2 shadow-md">
+                <div className="flex items-center gap-2 text-sm">
+                  <Users className="h-4 w-4 text-red-600" />
+                  <span className="font-semibold text-gray-700">{estado.totalAtendidos} tickets hoy</span>
                 </div>
-              ) : (
-                "SACAR NÚMERO"
-              )}
-            </Button>
-          </div>
-
-          {/* Frase de Bienvenida */}
-          <div className="text-center mb-12">
-            <div className="bg-white rounded-2xl p-6 shadow-lg max-w-lg mx-auto">
-              <p className="text-gray-700 text-lg md:text-xl font-medium">{fraseAleatoria}</p>
+              </div>
+              <div className="bg-white rounded-xl px-4 py-2 shadow-md">
+                <div className="flex items-center gap-2 text-sm">
+                  <Clock className="h-4 w-4 text-orange-600" />
+                  <span className="font-semibold text-gray-700">{ticketsPendientes} en espera</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Enlaces de Navegación */}
-          <div className="text-center">
-            <div className="bg-white rounded-2xl p-4 shadow-lg inline-block">
-              <div className="flex justify-center gap-6 text-sm">
-                <a href="/empleados" className="text-gray-600 hover:text-red-600 transition-colors font-medium">
-                  Empleados
-                </a>
-                <span className="text-gray-300">•</span>
-                <a href="/proximos" className="text-gray-600 hover:text-red-600 transition-colors font-medium">
-                  Próximos
-                </a>
-                <span className="text-gray-300">•</span>
-                <a href="/admin" className="text-gray-600 hover:text-red-600 transition-colors font-medium">
-                  Admin
-                </a>
+          {/* Logo */}
+          <div className="text-center mb-16">
+            <img src="/logo-rojo.png" alt="ZOCO" className="h-32 md:h-40 mx-auto drop-shadow-lg" />
+          </div>
+
+          {/* Contenido Principal */}
+          <div className="max-w-2xl mx-auto">
+            {/* Botón Principal */}
+            <div className="text-center mb-12">
+              <Button
+                onClick={() => setShowModal(true)}
+                disabled={generandoTicket}
+                className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-16 py-8 text-4xl md:text-5xl font-bold rounded-3xl shadow-2xl transform hover:scale-105 transition-all duration-300"
+                style={{ minHeight: "120px", minWidth: "300px" }}
+              >
+                {generandoTicket ? (
+                  <div className="flex items-center gap-4">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                    Generando...
+                  </div>
+                ) : (
+                  "SACAR NÚMERO"
+                )}
+              </Button>
+            </div>
+
+            {/* Frase de Bienvenida */}
+            <div className="text-center mb-12">
+              <div className="bg-white rounded-2xl p-6 shadow-lg max-w-lg mx-auto">
+                <p className="text-gray-700 text-lg md:text-xl font-medium">{fraseAleatoria}</p>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Footer */}
+      <footer className="text-center py-6 border-t border-white/30 bg-white/20">
+        <div className="text-sm text-gray-600">
+          <p className="font-semibold">Develop by: Karim - V6.0</p>
+          <p className="text-xs mt-1">Sistema de Turnos ZOCO • {new Date().getFullYear()}</p>
+        </div>
+      </footer>
 
       {/* Modal de Nombre */}
       <NombreModal
