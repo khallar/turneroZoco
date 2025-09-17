@@ -44,8 +44,7 @@ export function NombreModal({ isOpen, onClose, onConfirm, loading = false }: Nom
             <div className="bg-white/20 rounded-full p-3 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
               <User className="h-8 w-8 text-white" />
             </div>
-            <h2 className="text-2xl font-bold text-white mb-2">Información del Cliente</h2>
-            <p className="text-white/90 text-sm">Ingresa tu nombre para generar el ticket</p>
+            <h3 className="text-2xl font-bold text-white mb-2">Ingresa tu nombre para generar el ticket</h3>
           </div>
         </div>
 
