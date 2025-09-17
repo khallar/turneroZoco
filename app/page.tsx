@@ -198,7 +198,12 @@ export default function HomePage() {
             <CardContent>
               {ultimoTicket ? (
                 <div className="space-y-4">
-                  <TicketDisplay numero={ultimoTicket.numero} nombre={ultimoTicket.nombre} fecha={ultimoTicket.fecha} />
+                  <TicketDisplay
+                    numero={ultimoTicket.numero}
+                    nombre={ultimoTicket.nombre}
+                    fecha={ultimoTicket.fecha}
+                    showActions={true}
+                  />
                   <div className="text-center no-print">
                     <Button onClick={handleImprimirTicket} variant="outline" className="w-full bg-transparent">
                       <Printer className="h-4 w-4 mr-2" />

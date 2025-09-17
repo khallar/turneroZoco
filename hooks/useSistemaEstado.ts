@@ -160,6 +160,14 @@ export function useSistemaEstado() {
     }
   }, [cargarEstado])
 
+  // Función recargar que acepta parámetros opcionales para compatibilidad con admin
+  const recargar = useCallback(
+    async (force?: boolean, includeCache?: boolean) => {
+      return await cargarEstado()
+    },
+    [cargarEstado],
+  )
+
   // Cargar estado inicial
   useEffect(() => {
     cargarEstado()
@@ -183,6 +191,6 @@ export function useSistemaEstado() {
     generarTicket,
     llamarSiguiente,
     reiniciarContador,
-    recargar: cargarEstado,
+    recargar,
   }
 }
