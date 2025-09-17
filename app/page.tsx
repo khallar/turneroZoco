@@ -189,19 +189,30 @@ export default function HomePage() {
 
             {/* Contenido del Ticket */}
             <div className="p-6 text-center relative z-10">
-              {/* Header con Logo */}
+              {/* Header con Logo - MEJORADO */}
               <div className="mb-4">
-                <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-4 mb-4 shadow-lg">
-                  <img src="/logo-rojo.png" alt="ZOCO" className="h-16 mx-auto" />
+                <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 mb-3 shadow-lg border border-white/50">
+                  <img
+                    src="/logo-rojo.png"
+                    alt="ZOCO"
+                    className="h-14 mx-auto object-contain"
+                    style={{
+                      filter: "brightness(1) saturate(1.2) contrast(1.1)",
+                    }}
+                  />
                 </div>
-                <h2 className="text-2xl font-bold text-gray-800">¡Tu Número de Atención!</h2>
+                <h2 className="text-xl font-bold text-gray-800">¡Tu Número de Atención!</h2>
               </div>
 
-              {/* Número Principal con Logo de fondo */}
+              {/* Número Principal con Logo de fondo - MEJORADO */}
               <div className="relative bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 mb-4 text-white shadow-xl overflow-hidden">
-                {/* Logo de fondo sutil */}
-                <div className="absolute inset-0 flex items-center justify-center opacity-10">
-                  <img src="/logo-rojo.png" alt="ZOCO Background" className="h-32 filter brightness-0 invert" />
+                {/* Logo de fondo sutil - MEJORADO */}
+                <div className="absolute inset-0 flex items-center justify-center opacity-8">
+                  <img
+                    src="/logo-rojo.png"
+                    alt="ZOCO Background"
+                    className="h-24 object-contain filter brightness-0 invert opacity-20"
+                  />
                 </div>
 
                 {/* Contenido principal */}
