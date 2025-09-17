@@ -40,8 +40,8 @@ export default function TicketDisplay({
     if (!ctx) return
 
     // Configurar el tamaño del canvas (ticket de 400x600px)
-    canvas.width = 400
-    canvas.height = 600
+    canvas.width = 350
+    canvas.height = 400
 
     // Fondo blanco
     ctx.fillStyle = "#ffffff"
