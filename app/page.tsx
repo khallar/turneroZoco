@@ -14,28 +14,26 @@ interface TicketInfo {
 }
 
 const frasesAleatorias = [
-"Tu turno está tan seguro como el WiFi con contraseña difícil 🔒📶",
-"Confirmado: este turno no se mancha ⚽😂",
-"¡Agendado! Ya podés presumir de tu puntualidad 🕒✨",
-"Tu turno está más firme que Fernet con coca 🍹😎",
-"Listo, ya tenés turno… ¡y sin venderle el alma al diablo! 😈✅",
-"Turno confirmado, ahora podés volver a mirar memes tranquilo 📱🤣",
-"Este turno viene con garantía extendida de buena onda ✨",
-"Tu turno ya es parte de la historia universal (bueno, casi) 📚🌍",
-"¡Turno reservado! Ahora falta que te reserves vos la alarma ⏰😂",
-"Confirmado: este turno tiene más estilo que tu foto de perfil 📸🔥"
-"¡Turno confirmado! Ahora no tenés excusa para olvidarte 😉",
-"Tu yo del futuro te va a agradecer este turno 🙌",
-"Turno reservado ✅ … ahora a respirar tranquilo 🧘‍♂️",
-"¡Lo lograste! El turno es tuyo 🏆",
-"Tu agenda acaba de ponerse más interesante 📅✨",
-"¡Bravo! Te ganaste un turno sin hacer fila 🎉",
-"Confirmado: ya sos parte del club de los organizados 😎",
-"¡Listo el pollo, confirmado el turno! 🍗✅",
-"Este turno viene con cero calorías, 100% satisfacción 😜",
-"¡Excelente elección! Tu turno ya está guardado bajo llave 🔑"
-
-  
+  "Tu turno está tan seguro como el WiFi con contraseña difícil 🔒📶",
+  "Confirmado: este turno no se mancha ⚽😂",
+  "¡Agendado! Ya podés presumir de tu puntualidad 🕒✨",
+  "Tu turno está más firme que Fernet con coca 🍹😎",
+  "Listo, ya tenés turno… ¡y sin venderle el alma al diablo! 😈✅",
+  "Turno confirmado, ahora podés volver a mirar memes tranquilo 📱🤣",
+  "Este turno viene con garantía extendida de buena onda ✨",
+  "Tu turno ya es parte de la historia universal (bueno, casi) 📚🌍",
+  "¡Turno reservado! Ahora falta que te reserves vos la alarma ⏰😂",
+  "Confirmado: este turno tiene más estilo que tu foto de perfil 📸🔥",
+  "¡Turno confirmado! Ahora no tenés excusa para olvidarte 😉",
+  "Tu yo del futuro te va a agradecer este turno 🙌",
+  "Turno reservado ✅ … ahora a respirar tranquilo 🧘‍♂️",
+  "¡Lo lograste! El turno es tuyo 🏆",
+  "Tu agenda acaba de ponerse más interesante 📅✨",
+  "¡Bravo! Te ganaste un turno sin hacer fila 🎉",
+  "Confirmado: ya sos parte del club de los organizados 😎",
+  "¡Listo el pollo, confirmado el turno! 🍗✅",
+  "Este turno viene con cero calorías, 100% satisfacción 😜",
+  "¡Excelente elección! Tu turno ya está guardado bajo llave 🔑",
 ]
 
 export default function HomePage() {
