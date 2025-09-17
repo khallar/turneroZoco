@@ -133,7 +133,7 @@ export default function EmpleadosPage() {
                     </div>
                   ) : hayMasNumeros ? (
                     <div className="flex items-center gap-4">
-                      <Play className="h-12 w-12" />
+                      <Play className="h-10 w-10" />
                       LLAMAR SIGUIENTE
                     </div>
                   ) : (
