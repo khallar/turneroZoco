@@ -28,19 +28,30 @@ import {
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 
 export default function PaginaAdmin() {
-  const {
-    estado,
-    estadisticas,
-    loading,
-    error,
-    cargarEstado,
-    ultimaSincronizacion,
-    obtenerBackups,
-    obtenerBackup,
-    isClient,
-    cacheStats,
-    invalidateCache,
-  } = useSistemaEstado("admin")
+  const { estado, loading, error, generarTicket, llamarSiguiente, reiniciarContador, recargar } = useSistemaEstado()
+
+  const [isClient, setIsClient] = useState(false)
+
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
+  const obtenerBackup = async (fecha: string) => {
+    try {
+      const response = await fetch(`/api/backup?fecha=${fecha}`)
+      if (!response.ok) throw new Error("Error al obtener backup")
+      const data = await response.json()
+      return data.backup
+    } catch (error) {
+      console.error("Error al obtener backup:", error)
+      return null
+    }
+  }
+
+  const invalidateCache = () => {
+    // Función placeholder para limpiar cache
+    console.log("Cache invalidated")
+  }
 
   const [backups, setBackups] = useState<any[]>([])
   const [backupSeleccionado, setBackupSeleccionado] = useState<any>(null)
@@ -75,7 +86,7 @@ export default function PaginaAdmin() {
 
   const cargarDatosAdmin = async () => {
     try {
-      await cargarEstado(true, true)
+      await recargar(true, true)
     } catch (error) {
       console.error("Error al cargar datos admin:", error)
     }
@@ -176,7 +187,7 @@ export default function PaginaAdmin() {
 
       if (response.ok) {
         invalidateCache()
-        await cargarDatosAdmin()
+        await recargar()
         alert("Todos los registros han sido eliminados exitosamente")
       } else {
         throw new Error("Error al eliminar registros")
@@ -205,7 +216,7 @@ export default function PaginaAdmin() {
 
       if (response.ok) {
         invalidateCache()
-        await cargarDatosAdmin()
+        await recargar()
         alert("Contador diario reiniciado exitosamente")
       } else {
         throw new Error("Error al reiniciar contador")
@@ -223,9 +234,9 @@ export default function PaginaAdmin() {
     const datos = {
       fecha: new Date().toISOString(),
       estado: estado,
-      estadisticas: estadisticas,
+      estadisticas: {},
       backups: backups,
-      cacheStats: cacheStats || { entries: [], totalEntries: 0 },
+      cacheStats: { entries: [], totalEntries: 0 },
       metricasAvanzadas: calcularMetricasAvanzadas(),
     }
 
@@ -400,11 +411,11 @@ export default function PaginaAdmin() {
     }
 
     // 10. Métricas de rendimiento del sistema - FIXED: Handle undefined cacheStats
-    const safeCache = cacheStats || { entries: [], totalEntries: 0 }
+    const safeCache = { entries: [], totalEntries: 0 }
     const metricsRendimiento = {
       cacheHitRate:
         safeCache.entries.length > 0 ? safeCache.entries.filter((e) => e.fresh).length / safeCache.entries.length : 0,
-      tiempoRespuestaPromedio: ultimaSincronizacion ? Date.now() - ultimaSincronizacion.getTime() : 0,
+      tiempoRespuestaPromedio: 0,
       disponibilidadSistema: error ? 0.95 : 1.0,
     }
 
@@ -701,17 +712,12 @@ export default function PaginaAdmin() {
             <div className="flex items-center gap-1">
               <Database className="h-4 w-4" />
               <span>
-                Última sync:{" "}
-                {ultimaSincronizacion
-                  ? ultimaSincronizacion.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
-                  : "Nunca"}
+                Última sync: {new Date().toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}
               </span>
             </div>
-            {cacheStats.totalEntries > 0 && (
+            {false && (
               <div className="flex items-center gap-1">
-                <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
-                  📦 Cache: {cacheStats.totalEntries} entradas
-                </span>
+                <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">📦 Cache: 0 entradas</span>
               </div>
             )}
           </div>
@@ -743,7 +749,7 @@ export default function PaginaAdmin() {
         </div>
 
         {/* Estadísticas de Cache - MINIMIZADO - FIXED */}
-        {cacheStats && cacheStats.totalEntries > 0 && (
+        {false && (
           <div className="mb-6 flex justify-center">
             <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2">
@@ -751,9 +757,9 @@ export default function PaginaAdmin() {
                 <span className="text-blue-800 font-medium">Cache:</span>
               </div>
               <div className="flex items-center gap-4">
-                <span className="text-blue-700">{cacheStats.totalEntries} entradas</span>
-                <span className="text-green-700">{cacheStats.entries.filter((e) => e.fresh).length} frescas</span>
-                <span className="text-purple-700">{cacheStats.subscribers || 0} suscriptores</span>
+                <span className="text-blue-700">0 entradas</span>
+                <span className="text-green-700">0 frescas</span>
+                <span className="text-purple-700">0 suscriptores</span>
                 <Button
                   onClick={invalidateCache}
                   size="sm"
