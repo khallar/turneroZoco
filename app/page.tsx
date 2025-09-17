@@ -125,17 +125,17 @@ export default function HomePage() {
 
           {/* Contenido Principal */}
           <div className="max-w-2xl mx-auto">
-            {/* Botón Principal */}
+            {/* Botón Principal - MÁS PEQUEÑO */}
             <div className="text-center mb-12">
               <Button
                 onClick={() => setShowModal(true)}
                 disabled={generandoTicket}
-                className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-16 py-8 text-4xl md:text-5xl font-bold rounded-3xl shadow-2xl transform hover:scale-105 transition-all duration-300"
-                style={{ minHeight: "120px", minWidth: "300px" }}
+                className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-8 py-6 text-2xl md:text-3xl font-bold rounded-2xl shadow-xl transform hover:scale-105 transition-all duration-300"
+                style={{ minHeight: "80px", minWidth: "250px" }}
               >
                 {generandoTicket ? (
-                  <div className="flex items-center gap-4">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                  <div className="flex items-center gap-3">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
                     Generando...
                   </div>
                 ) : (
