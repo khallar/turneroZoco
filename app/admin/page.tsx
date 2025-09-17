@@ -225,7 +225,7 @@ export default function PaginaAdmin() {
       estado: estado,
       estadisticas: estadisticas,
       backups: backups,
-      cacheStats: cacheStats,
+      cacheStats: cacheStats || { entries: [], totalEntries: 0 },
       metricasAvanzadas: calcularMetricasAvanzadas(),
     }
 
@@ -399,9 +399,11 @@ export default function PaginaAdmin() {
         Math.max(Object.keys(distribucionPorHora).length, 1),
     }
 
-    // 10. Métricas de rendimiento del sistema
+    // 10. Métricas de rendimiento del sistema - FIXED: Handle undefined cacheStats
+    const safeCache = cacheStats || { entries: [], totalEntries: 0 }
     const metricsRendimiento = {
-      cacheHitRate: cacheStats.entries.filter((e) => e.fresh).length / Math.max(cacheStats.entries.length, 1),
+      cacheHitRate:
+        safeCache.entries.length > 0 ? safeCache.entries.filter((e) => e.fresh).length / safeCache.entries.length : 0,
       tiempoRespuestaPromedio: ultimaSincronizacion ? Date.now() - ultimaSincronizacion.getTime() : 0,
       disponibilidadSistema: error ? 0.95 : 1.0,
     }
@@ -740,8 +742,8 @@ export default function PaginaAdmin() {
           </div>
         </div>
 
-        {/* Estadísticas de Cache - MINIMIZADO */}
-        {cacheStats.totalEntries > 0 && (
+        {/* Estadísticas de Cache - MINIMIZADO - FIXED */}
+        {cacheStats && cacheStats.totalEntries > 0 && (
           <div className="mb-6 flex justify-center">
             <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2">
@@ -751,7 +753,7 @@ export default function PaginaAdmin() {
               <div className="flex items-center gap-4">
                 <span className="text-blue-700">{cacheStats.totalEntries} entradas</span>
                 <span className="text-green-700">{cacheStats.entries.filter((e) => e.fresh).length} frescas</span>
-                <span className="text-purple-700">{cacheStats.subscribers} suscriptores</span>
+                <span className="text-purple-700">{cacheStats.subscribers || 0} suscriptores</span>
                 <Button
                   onClick={invalidateCache}
                   size="sm"
