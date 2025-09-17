@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
-import { Clock, Users, Timer, Home, UserCheck, Settings } from "lucide-react"
+import { Clock, Users, Timer } from "lucide-react"
 
 export default function ProximosPage() {
   const { estado, loading, error } = useSistemaEstado()
@@ -216,54 +216,6 @@ export default function ProximosPage() {
           <div className="mt-4 pt-4 border-t border-white/20 text-center">
             <p className="text-white/60 text-sm">Sistema Activo • Versión 5.2 • Actualizado: {horaActual}</p>
           </div>
-        </div>
-
-        {/* Navegación Mejorada */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <a
-            href="/"
-            className="group bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white p-6 rounded-2xl font-semibold transition-all duration-300 hover:scale-105 shadow-xl text-center"
-          >
-            <div className="flex flex-col items-center gap-3">
-              <div className="bg-white/20 rounded-full p-3 group-hover:bg-white/30 transition-colors">
-                <Home className="h-8 w-8" />
-              </div>
-              <div>
-                <div className="text-lg font-bold">Inicio</div>
-                <div className="text-sm text-blue-100">Generar Tickets</div>
-              </div>
-            </div>
-          </a>
-
-          <a
-            href="/empleados"
-            className="group bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white p-6 rounded-2xl font-semibold transition-all duration-300 hover:scale-105 shadow-xl text-center"
-          >
-            <div className="flex flex-col items-center gap-3">
-              <div className="bg-white/20 rounded-full p-3 group-hover:bg-white/30 transition-colors">
-                <UserCheck className="h-8 w-8" />
-              </div>
-              <div>
-                <div className="text-lg font-bold">Empleados</div>
-                <div className="text-sm text-green-100">Llamar Turnos</div>
-              </div>
-            </div>
-          </a>
-
-          <a
-            href="/admin"
-            className="group bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white p-6 rounded-2xl font-semibold transition-all duration-300 hover:scale-105 shadow-xl text-center"
-          >
-            <div className="flex flex-col items-center gap-3">
-              <div className="bg-white/20 rounded-full p-3 group-hover:bg-white/30 transition-colors">
-                <Settings className="h-8 w-8" />
-              </div>
-              <div>
-                <div className="text-lg font-bold">Administración</div>
-                <div className="text-sm text-purple-100">Panel de Control</div>
-              </div>
-            </div>
-          </a>
         </div>
 
         {/* Footer */}

@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
-import { Play, Users, ArrowLeft, Settings, Eye } from "lucide-react"
+import { Play, Users, ArrowLeft, Eye } from "lucide-react"
 
 const frasesEmpleados = [
   "¡Turno confirmado! Ahora no tenés excusa para olvidarte 😉",
@@ -119,12 +119,12 @@ export default function EmpleadosPage() {
                 <Button
                   onClick={handleLlamarSiguiente}
                   disabled={!hayMasNumeros || procesando}
-                  className={`px-16 py-8 text-4xl md:text-5xl font-bold rounded-3xl shadow-2xl transform hover:scale-105 transition-all duration-300 border-4 ${
+                  className={`px-8 py-4 text-2xl md:text-3xl font-bold rounded-3xl shadow-2xl transform hover:scale-105 transition-all duration-300 border-4 ${
                     hayMasNumeros
                       ? "bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white border-green-500 hover:border-green-600"
                       : "bg-gray-400 text-gray-600 border-gray-300 cursor-not-allowed"
                   }`}
-                  style={{ minHeight: "120px", minWidth: "300px" }}
+                  style={{ minHeight: "80px", minWidth: "200px" }}
                 >
                   {procesando ? (
                     <div className="flex items-center gap-4">
@@ -250,7 +250,7 @@ export default function EmpleadosPage() {
           </div>
 
           {/* Navegación */}
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
             <a
               href="/"
               className="group bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white p-4 rounded-2xl font-semibold transition-all duration-300 hover:scale-105 shadow-xl text-center"
@@ -268,16 +268,6 @@ export default function EmpleadosPage() {
               <div className="flex items-center justify-center gap-3">
                 <Eye className="h-5 w-5" />
                 <span>Ver Próximos</span>
-              </div>
-            </a>
-
-            <a
-              href="/admin"
-              className="group bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white p-4 rounded-2xl font-semibold transition-all duration-300 hover:scale-105 shadow-xl text-center"
-            >
-              <div className="flex items-center justify-center gap-3">
-                <Settings className="h-5 w-5" />
-                <span>Panel Admin</span>
               </div>
             </a>
           </div>
