@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
-import { Clock, Users } from "lucide-react"
+import { Clock, Users, Timer, Home, UserCheck, Settings } from "lucide-react"
 
 export default function ProximosPage() {
   const { estado, loading, error } = useSistemaEstado()
@@ -14,6 +14,33 @@ export default function ProximosPage() {
     }, 1000)
     return () => clearInterval(interval)
   }, [])
+
+  // Calcular tiempo promedio de demora
+  const calcularTiempoPromedio = () => {
+    if (!estado.tickets || estado.tickets.length === 0 || estado.numerosLlamados === 0) {
+      return "3-5 min"
+    }
+
+    const ahora = new Date()
+    const inicioOperaciones = new Date(estado.fechaInicio)
+    const tiempoOperacionMinutos = (ahora.getTime() - inicioOperaciones.getTime()) / (1000 * 60)
+
+    if (tiempoOperacionMinutos <= 0 || estado.numerosLlamados === 0) {
+      return "3-5 min"
+    }
+
+    const tiempoPromedioPorTicket = tiempoOperacionMinutos / estado.numerosLlamados
+
+    if (tiempoPromedioPorTicket < 1) {
+      return "< 1 min"
+    } else if (tiempoPromedioPorTicket < 60) {
+      return `${Math.round(tiempoPromedioPorTicket)} min`
+    } else {
+      const horas = Math.floor(tiempoPromedioPorTicket / 60)
+      const minutos = Math.round(tiempoPromedioPorTicket % 60)
+      return `${horas}h ${minutos}m`
+    }
+  }
 
   if (loading) {
     return (
@@ -64,6 +91,7 @@ export default function ProximosPage() {
   }
 
   const ticketsPendientes = estado.totalAtendidos - estado.numerosLlamados
+  const tiempoPromedio = calcularTiempoPromedio()
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900">
@@ -72,7 +100,7 @@ export default function ProximosPage() {
         <div className="text-center">
           <img src="/logo-rojo.png" alt="ZOCO" className="h-20 mx-auto mb-4 filter brightness-0 invert" />
           <h1 className="text-4xl font-bold text-white mb-2">Próximos Turnos</h1>
-          <div className="flex justify-center items-center gap-6 text-white/80">
+          <div className="flex justify-center items-center gap-8 text-white/80 flex-wrap">
             <div className="flex items-center gap-2">
               <Clock className="h-5 w-5" />
               <span className="text-lg font-medium">{horaActual}</span>
@@ -80,6 +108,10 @@ export default function ProximosPage() {
             <div className="flex items-center gap-2">
               <Users className="h-5 w-5" />
               <span className="text-lg font-medium">{ticketsPendientes} en espera</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Timer className="h-5 w-5" />
+              <span className="text-lg font-medium">Promedio: {tiempoPromedio}</span>
             </div>
           </div>
         </div>
@@ -138,11 +170,17 @@ export default function ProximosPage() {
                     </div>
                     <div className="text-right">
                       <div
-                        className={`px-4 py-2 rounded-full text-sm font-bold ${
+                        className={`px-4 py-2 rounded-full text-sm font-bold mb-2 ${
                           index === 0 ? "bg-white text-green-600" : "bg-white/20 text-white"
                         }`}
                       >
                         {index === 0 ? "SIGUIENTE" : `+${item.posicion}`}
+                      </div>
+                      <div className="text-white/70 text-xs flex items-center gap-1">
+                        <Timer className="h-3 w-3" />
+                        <span>
+                          ≈ {Math.round(Number.parseFloat(tiempoPromedio.replace(/[^\d.]/g, "")) * item.posicion)} min
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -160,15 +198,19 @@ export default function ProximosPage() {
         </div>
 
         {/* Información del Sistema */}
-        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 shadow-xl border border-white/20">
-          <div className="grid grid-cols-2 gap-6 text-center">
+        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 shadow-xl border border-white/20 mb-8">
+          <div className="grid grid-cols-3 gap-4 text-center">
             <div>
-              <div className="text-3xl font-bold text-white">{estado.totalAtendidos}</div>
-              <p className="text-white/80">Total Emitidos Hoy</p>
+              <div className="text-2xl font-bold text-white">{estado.totalAtendidos}</div>
+              <p className="text-white/80 text-sm">Total Emitidos</p>
             </div>
             <div>
-              <div className="text-3xl font-bold text-white">{estado.numerosLlamados}</div>
-              <p className="text-white/80">Total Atendidos</p>
+              <div className="text-2xl font-bold text-white">{estado.numerosLlamados}</div>
+              <p className="text-white/80 text-sm">Total Atendidos</p>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">{tiempoPromedio}</div>
+              <p className="text-white/80 text-sm">Tiempo Promedio</p>
             </div>
           </div>
           <div className="mt-4 pt-4 border-t border-white/20 text-center">
@@ -176,28 +218,57 @@ export default function ProximosPage() {
           </div>
         </div>
 
-        {/* Navegación */}
-        <div className="text-center mt-8 pb-8">
-          <div className="space-x-6">
-            <a
-              href="/"
-              className="inline-block bg-white/20 hover:bg-white/30 text-white px-6 py-3 rounded-xl font-semibold transition-colors backdrop-blur-sm"
-            >
-              🏠 Inicio
-            </a>
-            <a
-              href="/empleados"
-              className="inline-block bg-white/20 hover:bg-white/30 text-white px-6 py-3 rounded-xl font-semibold transition-colors backdrop-blur-sm"
-            >
-              👥 Empleados
-            </a>
-            <a
-              href="/admin"
-              className="inline-block bg-white/20 hover:bg-white/30 text-white px-6 py-3 rounded-xl font-semibold transition-colors backdrop-blur-sm"
-            >
-              ⚙️ Admin
-            </a>
-          </div>
+        {/* Navegación Mejorada */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <a
+            href="/"
+            className="group bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white p-6 rounded-2xl font-semibold transition-all duration-300 hover:scale-105 shadow-xl text-center"
+          >
+            <div className="flex flex-col items-center gap-3">
+              <div className="bg-white/20 rounded-full p-3 group-hover:bg-white/30 transition-colors">
+                <Home className="h-8 w-8" />
+              </div>
+              <div>
+                <div className="text-lg font-bold">Inicio</div>
+                <div className="text-sm text-blue-100">Generar Tickets</div>
+              </div>
+            </div>
+          </a>
+
+          <a
+            href="/empleados"
+            className="group bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white p-6 rounded-2xl font-semibold transition-all duration-300 hover:scale-105 shadow-xl text-center"
+          >
+            <div className="flex flex-col items-center gap-3">
+              <div className="bg-white/20 rounded-full p-3 group-hover:bg-white/30 transition-colors">
+                <UserCheck className="h-8 w-8" />
+              </div>
+              <div>
+                <div className="text-lg font-bold">Empleados</div>
+                <div className="text-sm text-green-100">Llamar Turnos</div>
+              </div>
+            </div>
+          </a>
+
+          <a
+            href="/admin"
+            className="group bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white p-6 rounded-2xl font-semibold transition-all duration-300 hover:scale-105 shadow-xl text-center"
+          >
+            <div className="flex flex-col items-center gap-3">
+              <div className="bg-white/20 rounded-full p-3 group-hover:bg-white/30 transition-colors">
+                <Settings className="h-8 w-8" />
+              </div>
+              <div>
+                <div className="text-lg font-bold">Administración</div>
+                <div className="text-sm text-purple-100">Panel de Control</div>
+              </div>
+            </div>
+          </a>
+        </div>
+
+        {/* Footer */}
+        <div className="text-center pb-8">
+          <p className="text-white/40 text-sm">Desarrollado por Karim • Sistema de Turnos ZOCO</p>
         </div>
       </div>
     </div>
