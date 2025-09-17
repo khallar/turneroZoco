@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { TicketDisplay } from "@/components/TicketDisplay"
+import TicketDisplay from "@/components/TicketDisplay"
 import { NombreModal } from "@/components/NombreModal"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 import { Printer, Users, Clock, TrendingUp } from "lucide-react"
