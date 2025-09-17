@@ -14,7 +14,7 @@ interface TicketInfo {
 }
 
 const frasesAleatorias = [
-  "Tu turno está tan seguro como el WiFi con contraseña difícil 🔒📶",
+"Tu turno está tan seguro como el WiFi con contraseña difícil 🔒📶",
 "Confirmado: este turno no se mancha ⚽😂",
 "¡Agendado! Ya podés presumir de tu puntualidad 🕒✨",
 "Tu turno está más firme que Fernet con coca 🍹😎",
