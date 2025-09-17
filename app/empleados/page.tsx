@@ -6,16 +6,16 @@ import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 import { Play, RotateCcw } from "lucide-react"
 
 const frasesEmpleados = [
-  "¡Excelente trabajo! Sigamos brindando el mejor servicio",
-  "Tu dedicación hace la diferencia en cada cliente",
-  "Gracias por tu profesionalismo y compromiso",
-  "¡Eres parte fundamental del éxito de ZOCO!",
-  "Tu atención al cliente es excepcional",
-  "Sigamos trabajando juntos por la excelencia",
-  "¡Cada cliente atendido es una sonrisa más!",
-  "Tu eficiencia y calidez nos distinguen",
-  "Gracias por hacer de ZOCO un lugar especial",
-  "¡Continuemos ofreciendo un servicio de calidad!",
+ "¡Turno confirmado! Ahora no tenés excusa para olvidarte 😉",
+"Tu yo del futuro te va a agradecer este turno 🙌",
+"Turno reservado ✅ … ahora a respirar tranquilo 🧘‍♂️",
+"¡Lo lograste! El turno es tuyo 🏆",
+"Tu agenda acaba de ponerse más interesante 📅✨",
+"¡Bravo! Te ganaste un turno sin hacer fila 🎉",
+"Confirmado: ya sos parte del club de los organizados 😎",
+"¡Listo el pollo, confirmado el turno! 🍗✅",
+"Este turno viene con cero calorías, 100% satisfacción 😜",
+"¡Excelente elección! Tu turno ya está guardado bajo llave 🔑",
 ]
 
 export default function EmpleadosPage() {
