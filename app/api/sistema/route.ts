@@ -1,5 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { leerEstadoSistema, escribirEstadoSistema, generarTicketAtomico, verificarConexionDB } from "@/lib/database"
+import {
+  leerEstadoSistema,
+  escribirEstadoSistema,
+  generarTicketAtomico,
+  verificarConexionDB,
+  crearBackupDiario,
+} from "@/lib/database"
 
 interface TicketInfo {
   numero: number
@@ -141,26 +147,70 @@ export async function POST(request: NextRequest) {
       case "reiniciar": {
         console.log("🔄 Reiniciando contador...")
 
-        const fechaHoy = new Date().toISOString().split("T")[0]
-        const estadoReiniciado = {
-          numeroActual: 1,
-          ultimoNumero: 0,
-          totalAtendidos: 0,
-          numerosLlamados: 0,
-          fechaInicio: fechaHoy,
-          ultimoReinicio: new Date().toISOString(),
-          lastSync: Date.now(),
+        try {
+          // PASO 1: Crear backup automático del día actual ANTES de reiniciar
+          console.log("📦 Creando backup automático antes del reinicio...")
+
+          const estadoActualCompleto = await leerEstadoSistema()
+
+          // Solo crear backup si hay datos que respaldar
+          if (estadoActualCompleto.totalAtendidos > 0) {
+            await crearBackupDiario(estadoActualCompleto)
+            console.log("✅ Backup automático creado exitosamente antes del reinicio")
+          } else {
+            console.log("ℹ️ No hay datos para respaldar (0 tickets), omitiendo backup")
+          }
+
+          // PASO 2: Proceder con el reinicio normal
+          const fechaHoy = new Date().toISOString().split("T")[0]
+          const estadoReiniciado = {
+            numeroActual: 1,
+            ultimoNumero: 0,
+            totalAtendidos: 0,
+            numerosLlamados: 0,
+            fechaInicio: fechaHoy,
+            ultimoReinicio: new Date().toISOString(),
+            lastSync: Date.now(),
+          }
+
+          await escribirEstadoSistema(estadoReiniciado)
+
+          console.log("✅ Sistema reiniciado exitosamente con backup automático")
+
+          return NextResponse.json({
+            success: true,
+            estado: estadoReiniciado,
+            message: "Sistema reiniciado exitosamente. Backup automático creado.",
+            backupCreado: estadoActualCompleto.totalAtendidos > 0,
+            ticketsRespaldados: estadoActualCompleto.totalAtendidos,
+          })
+        } catch (backupError) {
+          console.error("⚠️ Error al crear backup automático, pero continuando con reinicio:", backupError)
+
+          // Si falla el backup, continuar con el reinicio pero informar del error
+          const fechaHoy = new Date().toISOString().split("T")[0]
+          const estadoReiniciado = {
+            numeroActual: 1,
+            ultimoNumero: 0,
+            totalAtendidos: 0,
+            numerosLlamados: 0,
+            fechaInicio: fechaHoy,
+            ultimoReinicio: new Date().toISOString(),
+            lastSync: Date.now(),
+          }
+
+          await escribirEstadoSistema(estadoReiniciado)
+
+          console.log("✅ Sistema reiniciado (backup falló pero reinicio exitoso)")
+
+          return NextResponse.json({
+            success: true,
+            estado: estadoReiniciado,
+            message: "Sistema reiniciado exitosamente. Advertencia: No se pudo crear el backup automático.",
+            backupCreado: false,
+            backupError: backupError instanceof Error ? backupError.message : "Error desconocido",
+          })
         }
-
-        await escribirEstadoSistema(estadoReiniciado)
-
-        console.log("✅ Sistema reiniciado exitosamente")
-
-        return NextResponse.json({
-          success: true,
-          estado: estadoReiniciado,
-          message: "Sistema reiniciado exitosamente",
-        })
       }
 
       default:

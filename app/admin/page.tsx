@@ -207,7 +207,11 @@ export default function PaginaAdmin() {
     try {
       const success = await reiniciarContador()
       if (success) {
-        alert("✅ Contador diario reiniciado exitosamente")
+        // Recargar backups para mostrar el nuevo backup creado
+        await cargarBackups()
+        alert(
+          "✅ Contador diario reiniciado exitosamente\n📦 Backup automático del día anterior creado\n🔄 Historial actualizado",
+        )
       } else {
         throw new Error("Error al reiniciar contador")
       }
@@ -1453,10 +1457,13 @@ export default function PaginaAdmin() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-gray-700 mb-4">
-                  ¿Está seguro de que desea reiniciar el contador diario? Los datos actuales se respaldarán
-                  automáticamente.
-                </p>
+                <p className="text-gray-700 mb-4">¿Está seguro de que desea reiniciar el contador diario?</p>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm text-blue-700">
+                    📦 <strong>Backup automático:</strong> Los datos actuales se respaldarán automáticamente antes del
+                    reinicio y aparecerán en el historial de días anteriores.
+                  </p>
+                </div>
                 <div className="flex gap-4">
                   <Button
                     onClick={() => setMostrarConfirmacionReinicio(false)}
@@ -1471,7 +1478,7 @@ export default function PaginaAdmin() {
                     className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
                     disabled={procesandoAccion}
                   >
-                    {procesandoAccion ? "Reiniciando..." : "Reiniciar"}
+                    {procesandoAccion ? "Reiniciando..." : "Reiniciar con Backup"}
                   </Button>
                 </div>
               </CardContent>
