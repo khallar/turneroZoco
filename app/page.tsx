@@ -37,7 +37,7 @@ const frasesAleatorias = [
 ]
 
 export default function HomePage() {
-  const { estado, loading, error, generarTicket } = useSistemaEstado()
+  const { estado, loading, error, generarTicket, notificacionAutomatica } = useSistemaEstado()
   const [showModal, setShowModal] = useState(false)
   const [ultimoTicket, setUltimoTicket] = useState<TicketInfo | null>(null)
   const [showTicket, setShowTicket] = useState(false)
@@ -98,6 +98,26 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 flex flex-col">
+      {/* 🤖 Notificación Automática */}
+      {notificacionAutomatica && (
+        <div className="fixed top-4 right-4 z-50 max-w-sm">
+          <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-xl shadow-2xl border border-blue-400 animate-scaleIn">
+            <div className="flex items-start justify-between">
+              <div className="flex items-start gap-3">
+                <div className="text-2xl">🤖</div>
+                <div>
+                  <h4 className="font-bold text-sm mb-1">Sistema Automático</h4>
+                  <p className="text-xs leading-relaxed whitespace-pre-line">{notificacionAutomatica}</p>
+                </div>
+              </div>
+              <button onClick={() => window.location.reload()} className="text-white/80 hover:text-white ml-2">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1">
         <div className="container mx-auto px-4 py-8">
           {/* Header con estadísticas */}
@@ -157,7 +177,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="text-center py-6 border-t border-white/30 bg-white/20">
         <div className="text-sm text-gray-600">
-          <p className="font-semibold">Develop by: Karim - V6.0</p>
+          <p className="font-semibold">Develop by: Karim - V6.1 🤖 Backup Automático</p>
           <p className="text-xs mt-1">Sistema de Turnos ZOCO • {new Date().getFullYear()}</p>
         </div>
       </footer>

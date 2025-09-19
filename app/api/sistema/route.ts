@@ -25,7 +25,7 @@ interface EstadoSistema {
   lastSync?: number
 }
 
-// Función para verificar si debe reiniciarse
+// Función para verificar si debe reiniciarse automáticamente
 function debeReiniciarse(estado: EstadoSistema): boolean {
   try {
     const ahora = new Date()
@@ -47,12 +47,89 @@ function debeReiniciarse(estado: EstadoSistema): boolean {
   }
 }
 
+// NUEVA FUNCIÓN: Realizar backup y reinicio automático
+async function realizarBackupYReinicioAutomatico(
+  estadoActual: EstadoSistema & { tickets: TicketInfo[] },
+): Promise<EstadoSistema> {
+  console.log("🤖 Iniciando proceso automático de backup y reinicio diario...")
+
+  try {
+    // PASO 1: Crear backup automático del día anterior
+    if (estadoActual.totalAtendidos > 0) {
+      console.log("📦 Creando backup automático del día anterior...")
+      await crearBackupDiario(estadoActual)
+      console.log("✅ Backup automático creado exitosamente")
+    } else {
+      console.log("ℹ️ No hay datos para respaldar (0 tickets), omitiendo backup")
+    }
+
+    // PASO 2: Reiniciar para el nuevo día
+    const fechaHoy = new Date().toISOString().split("T")[0]
+    const estadoReiniciado = {
+      numeroActual: 1,
+      ultimoNumero: 0,
+      totalAtendidos: 0,
+      numerosLlamados: 0,
+      fechaInicio: fechaHoy,
+      ultimoReinicio: new Date().toISOString(),
+      lastSync: Date.now(),
+    }
+
+    await escribirEstadoSistema(estadoReiniciado)
+
+    console.log("🎉 Proceso automático completado exitosamente:")
+    console.log(`   📦 Backup creado: ${estadoActual.totalAtendidos > 0 ? "SÍ" : "NO"}`)
+    console.log(`   🔄 Contador reiniciado para: ${fechaHoy}`)
+    console.log(`   📊 Tickets respaldados: ${estadoActual.totalAtendidos}`)
+
+    return estadoReiniciado
+  } catch (error) {
+    console.error("⚠️ Error en proceso automático, pero continuando con reinicio:", error)
+
+    // Si falla el backup, continuar con el reinicio
+    const fechaHoy = new Date().toISOString().split("T")[0]
+    const estadoReiniciado = {
+      numeroActual: 1,
+      ultimoNumero: 0,
+      totalAtendidos: 0,
+      numerosLlamados: 0,
+      fechaInicio: fechaHoy,
+      ultimoReinicio: new Date().toISOString(),
+      lastSync: Date.now(),
+    }
+
+    await escribirEstadoSistema(estadoReiniciado)
+
+    console.log("✅ Reinicio automático completado (backup falló)")
+    return estadoReiniciado
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     console.log("📖 GET /api/sistema - Obteniendo estado del sistema...")
 
     const estadoCompleto = await leerEstadoSistema()
 
+    // 🤖 VERIFICACIÓN AUTOMÁTICA: Comprobar si necesita reinicio diario
+    if (debeReiniciarse(estadoCompleto)) {
+      console.log("🤖 Detectado cambio de día - Ejecutando backup y reinicio automático...")
+
+      const estadoReiniciado = await realizarBackupYReinicioAutomatico(estadoCompleto)
+
+      console.log("✅ Proceso automático completado, devolviendo nuevo estado")
+
+      return NextResponse.json({
+        success: true,
+        estado: { ...estadoReiniciado, tickets: [] }, // Nuevo día = sin tickets
+        automaticReset: true,
+        backupCreated: estadoCompleto.totalAtendidos > 0,
+        previousDayTickets: estadoCompleto.totalAtendidos,
+        message: "Nuevo día detectado - Backup automático creado y contador reiniciado",
+      })
+    }
+
+    // Día normal - devolver estado actual
     console.log("✅ Estado obtenido exitosamente:", {
       numeroActual: estadoCompleto.numeroActual,
       totalAtendidos: estadoCompleto.totalAtendidos,
@@ -101,6 +178,13 @@ export async function POST(request: NextRequest) {
       case "generar_ticket": {
         console.log("🎫 Generando ticket para:", nombre)
 
+        // 🤖 VERIFICACIÓN AUTOMÁTICA antes de generar ticket
+        const estadoActual = await leerEstadoSistema()
+        if (debeReiniciarse(estadoActual)) {
+          console.log("🤖 Detectado cambio de día antes de generar ticket - Ejecutando proceso automático...")
+          await realizarBackupYReinicioAutomatico(estadoActual)
+        }
+
         const ticket = await generarTicketAtomico(nombre || "Cliente ZOCO")
 
         console.log("✅ Ticket generado:", ticket)
@@ -115,7 +199,22 @@ export async function POST(request: NextRequest) {
       case "llamar_siguiente": {
         console.log("📢 Llamando siguiente número...")
 
+        // 🤖 VERIFICACIÓN AUTOMÁTICA antes de llamar siguiente
         const estadoActual = await leerEstadoSistema()
+        if (debeReiniciarse(estadoActual)) {
+          console.log("🤖 Detectado cambio de día antes de llamar siguiente - Ejecutando proceso automático...")
+          const estadoReiniciado = await realizarBackupYReinicioAutomatico(estadoActual)
+
+          return NextResponse.json(
+            {
+              success: false,
+              error: "No hay números para llamar - Nuevo día iniciado",
+              automaticReset: true,
+              message: "Se detectó un nuevo día. El sistema se ha reiniciado automáticamente.",
+            },
+            { status: 400 },
+          )
+        }
 
         if (estadoActual.numerosLlamados >= estadoActual.totalAtendidos) {
           return NextResponse.json(
@@ -145,18 +244,18 @@ export async function POST(request: NextRequest) {
       }
 
       case "reiniciar": {
-        console.log("🔄 Reiniciando contador...")
+        console.log("🔄 Reinicio manual solicitado...")
 
         try {
-          // PASO 1: Crear backup automático del día actual ANTES de reiniciar
-          console.log("📦 Creando backup automático antes del reinicio...")
+          // PASO 1: Crear backup manual del día actual ANTES de reiniciar
+          console.log("📦 Creando backup manual antes del reinicio...")
 
           const estadoActualCompleto = await leerEstadoSistema()
 
           // Solo crear backup si hay datos que respaldar
           if (estadoActualCompleto.totalAtendidos > 0) {
             await crearBackupDiario(estadoActualCompleto)
-            console.log("✅ Backup automático creado exitosamente antes del reinicio")
+            console.log("✅ Backup manual creado exitosamente antes del reinicio")
           } else {
             console.log("ℹ️ No hay datos para respaldar (0 tickets), omitiendo backup")
           }
@@ -175,17 +274,18 @@ export async function POST(request: NextRequest) {
 
           await escribirEstadoSistema(estadoReiniciado)
 
-          console.log("✅ Sistema reiniciado exitosamente con backup automático")
+          console.log("✅ Reinicio manual completado exitosamente con backup")
 
           return NextResponse.json({
             success: true,
             estado: estadoReiniciado,
-            message: "Sistema reiniciado exitosamente. Backup automático creado.",
+            message: "Sistema reiniciado exitosamente. Backup manual creado.",
             backupCreado: estadoActualCompleto.totalAtendidos > 0,
             ticketsRespaldados: estadoActualCompleto.totalAtendidos,
+            manualReset: true,
           })
         } catch (backupError) {
-          console.error("⚠️ Error al crear backup automático, pero continuando con reinicio:", backupError)
+          console.error("⚠️ Error al crear backup manual, pero continuando con reinicio:", backupError)
 
           // Si falla el backup, continuar con el reinicio pero informar del error
           const fechaHoy = new Date().toISOString().split("T")[0]
@@ -201,14 +301,15 @@ export async function POST(request: NextRequest) {
 
           await escribirEstadoSistema(estadoReiniciado)
 
-          console.log("✅ Sistema reiniciado (backup falló pero reinicio exitoso)")
+          console.log("✅ Reinicio manual completado (backup falló)")
 
           return NextResponse.json({
             success: true,
             estado: estadoReiniciado,
-            message: "Sistema reiniciado exitosamente. Advertencia: No se pudo crear el backup automático.",
+            message: "Sistema reiniciado exitosamente. Advertencia: No se pudo crear el backup manual.",
             backupCreado: false,
             backupError: backupError instanceof Error ? backupError.message : "Error desconocido",
+            manualReset: true,
           })
         }
       }

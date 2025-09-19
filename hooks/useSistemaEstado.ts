@@ -32,6 +32,7 @@ export function useSistemaEstado() {
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [notificacionAutomatica, setNotificacionAutomatica] = useState<string | null>(null)
 
   const cargarEstado = useCallback(async () => {
     try {
@@ -46,6 +47,20 @@ export function useSistemaEstado() {
 
       if (data.success) {
         setEstado(data.estado)
+
+        // 🤖 Mostrar notificación si hubo reinicio automático
+        if (data.automaticReset) {
+          const mensaje = data.backupCreated
+            ? `🤖 Nuevo día detectado!\n📦 Backup automático creado (${data.previousDayTickets} tickets respaldados)\n🔄 Contador reiniciado automáticamente`
+            : `🤖 Nuevo día detectado!\n🔄 Contador reiniciado automáticamente`
+
+          setNotificacionAutomatica(mensaje)
+
+          // Auto-ocultar notificación después de 8 segundos
+          setTimeout(() => {
+            setNotificacionAutomatica(null)
+          }, 8000)
+        }
       } else {
         throw new Error(data.error || "Error desconocido")
       }
@@ -107,10 +122,6 @@ export function useSistemaEstado() {
         }),
       })
 
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`)
-      }
-
       const data = await response.json()
 
       if (data.success) {
@@ -118,6 +129,17 @@ export function useSistemaEstado() {
         await cargarEstado()
         return true
       } else {
+        // 🤖 Manejar reinicio automático
+        if (data.automaticReset) {
+          setNotificacionAutomatica(data.message || "Sistema reiniciado automáticamente")
+          await cargarEstado()
+
+          // Auto-ocultar notificación después de 6 segundos
+          setTimeout(() => {
+            setNotificacionAutomatica(null)
+          }, 6000)
+        }
+
         throw new Error(data.error || "Error al llamar siguiente")
       }
     } catch (error) {
@@ -173,13 +195,13 @@ export function useSistemaEstado() {
     cargarEstado()
   }, [cargarEstado])
 
-  // Auto-refresh cada 30 segundos
+  // 🤖 Auto-refresh cada 30 segundos para detectar cambios automáticos
   useEffect(() => {
     const interval = setInterval(() => {
       if (!loading) {
         cargarEstado()
       }
-    }, 30000)
+    }, 30000) // Cada 30 segundos
 
     return () => clearInterval(interval)
   }, [loading, cargarEstado])
@@ -192,5 +214,6 @@ export function useSistemaEstado() {
     llamarSiguiente,
     reiniciarContador,
     recargar,
+    notificacionAutomatica, // 🤖 Nueva propiedad para notificaciones automáticas
   }
 }
