@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { NombreModal } from "@/components/NombreModal"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
-import { X, Clock, Users } from "lucide-react"
+import { X, Clock, Users, Eye } from "lucide-react"
 
 interface TicketInfo {
   numero: number
@@ -60,9 +60,8 @@ export default function HomePage() {
     }
   }
 
-  const cerrarTicket = () => {
-    setShowTicket(false)
-    setUltimoTicket(null)
+  const irAProximos = () => {
+    window.location.href = "/proximos"
   }
 
   if (loading) {
@@ -201,7 +200,7 @@ export default function HomePage() {
 
             {/* Botón Cerrar */}
             <button
-              onClick={cerrarTicket}
+              onClick={irAProximos}
               className="absolute top-4 right-4 bg-white/80 hover:bg-white rounded-full p-2 transition-colors z-20 shadow-lg"
             >
               <X className="h-5 w-5 text-gray-600" />
@@ -278,12 +277,13 @@ export default function HomePage() {
                 </p>
               </div>
 
-              {/* Botón de Cerrar */}
+              {/* Botón de Ir a Próximos - MODIFICADO */}
               <Button
-                onClick={cerrarTicket}
-                className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white py-3 text-lg rounded-xl shadow-lg transform hover:scale-105 transition-all duration-300"
+                onClick={irAProximos}
+                className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white py-3 text-lg rounded-xl shadow-lg transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
               >
-                ✅ Entendido
+                <Eye className="h-5 w-5" />
+                Ver mi Posición en la Fila
               </Button>
             </div>
           </div>
