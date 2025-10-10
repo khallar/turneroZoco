@@ -210,7 +210,7 @@ export default function HomePage() {
             <div className="p-6 text-center relative z-10">
               {/* Header con Logo - MEJORADO */}
               <div className="mb-4">
-                <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 mb-3 shadow-lg border border-white/50">
+                <div className="backdrop-blur-sm rounded-2xl p-3 mb-3 shadow-lg border border-white/50 bg-destructive">
                   <img
                     src="/logo-rojo.png"
                     alt="ZOCO"
