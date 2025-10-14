@@ -16,23 +16,22 @@ export async function GET(request: NextRequest) {
 
     const authHeader = request.headers.get("authorization")
     const cronSecret = process.env.CRON_SECRET
-
-    // Vercel Cron envía este header especial
     const vercelCronHeader = request.headers.get("x-vercel-cron")
+    const adminTestHeader = request.headers.get("x-admin-test")
 
     console.log("🔐 Verificando autenticación...")
     console.log("   - CRON_SECRET configurado:", cronSecret ? "✅ SÍ" : "❌ NO")
     console.log("   - Authorization header:", authHeader ? "✅ Presente" : "❌ Ausente")
     console.log("   - Vercel Cron header:", vercelCronHeader ? "✅ Presente" : "❌ Ausente")
+    console.log("   - Admin Test header:", adminTestHeader ? "✅ Presente" : "❌ Ausente")
 
     // Verificar si es una llamada legítima
     const isVercelCron = vercelCronHeader !== null
-    const referer = request.headers.get("referer")
-    const isManualTest = referer && (referer.includes("/admin/cron") || referer.includes("localhost"))
+    const isAdminTest = adminTestHeader === "true"
 
     if (isVercelCron) {
       console.log("✅ Llamada de Vercel Cron detectada - autenticación automática")
-    } else if (isManualTest) {
+    } else if (isAdminTest) {
       console.log("🧪 Prueba manual desde admin detectada - permitiendo acceso")
     } else if (cronSecret) {
       // Solo para llamadas externas, verificar el token
@@ -54,7 +53,6 @@ export async function GET(request: NextRequest) {
       console.log("⚠️ CRON_SECRET no configurado - endpoint público")
       console.log("💡 Recomendación: Configura CRON_SECRET en Vercel para mayor seguridad")
     }
-    // </CHANGE>
 
     // Obtener el estado completo del sistema
     console.log("📖 Leyendo estado del sistema...")

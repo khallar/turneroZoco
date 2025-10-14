@@ -42,6 +42,9 @@ export default function CronAdminPage() {
       console.log("🧪 Probando endpoint de cron...")
       const response = await fetch("/api/cron/backup-diario", {
         method: "GET",
+        headers: {
+          "x-admin-test": "true",
+        },
       })
 
       const data = await response.json()
