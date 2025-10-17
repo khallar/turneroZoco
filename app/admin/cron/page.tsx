@@ -201,7 +201,7 @@ export default function CronAdminPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Horario (Argentina):</span>
-                    <span className="font-semibold text-green-600">21:00 hs</span>
+                    <span className="font-semibold text-green-600">00:00 hs (medianoche)</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Días:</span>
@@ -247,7 +247,7 @@ export default function CronAdminPage() {
           <CardContent>
             <div className="space-y-4">
               <p className="text-gray-600">
-                Ejecuta el endpoint manualmente para verificar que funciona correctamente antes de esperar a las 21:00
+                Ejecuta el endpoint manualmente para verificar que funciona correctamente antes de esperar a las 00:00
                 hs.
               </p>
 
