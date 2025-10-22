@@ -11,6 +11,10 @@ interface TicketInfo {
   nombre: string
   fecha: string
   timestamp: number
+  premio?: {
+    ganador: boolean
+    mensaje?: string
+  }
 }
 
 const frasesAleatorias = [
@@ -193,6 +197,16 @@ export default function HomePage() {
       {showTicket && ultimoTicket && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
           <div className="bg-gradient-to-br from-red-50 via-white to-orange-50 rounded-3xl shadow-2xl max-w-sm w-full mx-4 animate-scaleIn border-4 border-red-200 relative overflow-hidden">
+            {ultimoTicket.premio?.ganador && (
+              <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+                <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-yellow-200 via-orange-200 to-red-200 opacity-30 animate-pulse"></div>
+                <div className="absolute top-10 left-10 text-6xl animate-bounce">🎉</div>
+                <div className="absolute top-20 right-10 text-6xl animate-bounce delay-100">🎁</div>
+                <div className="absolute bottom-20 left-20 text-6xl animate-bounce delay-200">⭐</div>
+                <div className="absolute bottom-10 right-20 text-6xl animate-bounce delay-300">🎊</div>
+              </div>
+            )}
+
             {/* Elementos decorativos de fondo */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-red-100 rounded-full opacity-30 -translate-y-16 translate-x-16"></div>
             <div className="absolute bottom-0 left-0 w-24 h-24 bg-orange-100 rounded-full opacity-40 translate-y-12 -translate-x-12"></div>
@@ -208,7 +222,14 @@ export default function HomePage() {
 
             {/* Contenido del Ticket */}
             <div className="p-6 text-center relative z-10">
-              {/* Header con Logo - MEJORADO */}
+              {ultimoTicket.premio?.ganador && (
+                <div className="mb-4 bg-gradient-to-r from-yellow-400 via-orange-400 to-red-400 text-white p-4 rounded-2xl shadow-xl animate-pulse">
+                  <div className="text-4xl mb-2">🎉 ¡FELICITACIONES! 🎉</div>
+                  <div className="text-lg font-bold">¡GANASTE UN PREMIO!</div>
+                </div>
+              )}
+
+              {/* Header con Logo */}
               <div className="mb-4">
                 <div className="backdrop-blur-sm rounded-2xl p-3 mb-3 shadow-lg border border-white/50 bg-destructive">
                   <img
@@ -220,12 +241,20 @@ export default function HomePage() {
                     }}
                   />
                 </div>
-                <h2 className="text-xl font-bold text-gray-800">¡Tu Número de Atención!</h2>
+                <h2 className="text-xl font-bold text-gray-800">
+                  {ultimoTicket.premio?.ganador ? "¡Tu Número Ganador!" : "¡Tu Número de Atención!"}
+                </h2>
               </div>
 
-              {/* Número Principal con Logo de fondo - MEJORADO */}
-              <div className="relative bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 mb-4 text-white shadow-xl overflow-hidden">
-                {/* Logo de fondo sutil - MEJORADO */}
+              {/* Número Principal con Logo de fondo */}
+              <div
+                className={`relative rounded-2xl p-6 mb-4 text-white shadow-xl overflow-hidden ${
+                  ultimoTicket.premio?.ganador
+                    ? "bg-gradient-to-r from-yellow-500 via-orange-500 to-red-500"
+                    : "bg-gradient-to-r from-red-500 to-red-600"
+                }`}
+              >
+                {/* Logo de fondo sutil */}
                 <div className="absolute inset-0 flex items-center justify-center opacity-8">
                   <img
                     src="/logo-rojo.png"
@@ -248,6 +277,14 @@ export default function HomePage() {
                 <div className="absolute top-2 right-2 w-8 h-8 bg-white/10 rounded-full"></div>
                 <div className="absolute bottom-2 left-2 w-6 h-6 bg-white/10 rounded-full"></div>
               </div>
+
+              {ultimoTicket.premio?.ganador && ultimoTicket.premio.mensaje && (
+                <div className="bg-gradient-to-r from-yellow-100 to-orange-100 border-2 border-yellow-400 rounded-xl p-4 mb-4 shadow-lg">
+                  <div className="text-2xl mb-2">🎁</div>
+                  <p className="text-lg font-bold text-gray-800">{ultimoTicket.premio.mensaje}</p>
+                  <p className="text-sm text-gray-600 mt-2">Mostrá este ticket al empleado para reclamar tu premio</p>
+                </div>
+              )}
 
               {/* Información de Fecha y Hora */}
               <div className="bg-white/70 backdrop-blur-sm rounded-xl p-3 mb-4 shadow-lg border border-gray-200">
@@ -277,7 +314,7 @@ export default function HomePage() {
                 </p>
               </div>
 
-              {/* Botón de Ir a Próximos - MODIFICADO */}
+              {/* Botón de Ir a Próximos */}
               <Button
                 onClick={irAProximos}
                 className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white py-3 text-lg rounded-xl shadow-lg transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
