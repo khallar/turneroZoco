@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Sistema de Turnos ZOCO",
   description: "Sistema de gestión de turnos para ZOCO",
-    generator: 'v0.app'
+  generator: "v0.app",
 }
 
 export default function RootLayout({
@@ -17,8 +17,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="es">
-      <body className={inter.className}>{children}</body>
+    <html lang="es" className="bg-white">
+      <body className={`${inter.className} bg-background text-foreground min-h-screen`}>{children}</body>
     </html>
   )
 }
