@@ -220,7 +220,7 @@ export default function ProximosPage() {
 
         {/* Footer */}
         <div className="text-center pb-8">
-          <p className="text-white/40 text-sm">Desarrollado por Karim • Sistema de Turnos ZOCO</p>
+          <p className="text-white/40 text-sm">Desarrollado por Karim • Sistema de Turnos ZOCO • V 7.1</p>
         </div>
       </div>
     </div>

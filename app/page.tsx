@@ -180,7 +180,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="text-center py-6 border-t border-white/30 bg-white/20">
         <div className="text-sm text-gray-600">
-          <p className="font-semibold">Develop by: Karim - V6.1 🤖 Backup Automático</p>
+          <p className="font-semibold">Develop by: Karim - V7.1 🤖 Backup Automático</p>
           <p className="text-xs mt-1">Sistema de Turnos ZOCO • {new Date().getFullYear()}</p>
         </div>
       </footer>
