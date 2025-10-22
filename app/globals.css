@@ -6,28 +6,20 @@
   :root {
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
-
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
-
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-
     --primary: 222.2 47.4% 11.2%;
     --primary-foreground: 210 40% 98%;
-
     --secondary: 210 40% 96%;
     --secondary-foreground: 222.2 47.4% 11.2%;
-
     --muted: 210 40% 96%;
     --muted-foreground: 215.4 16.3% 46.9%;
-
     --accent: 210 40% 96%;
     --accent-foreground: 222.2 47.4% 11.2%;
-
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
@@ -37,33 +29,27 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
+    --font-inter: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", "Arial",
+      sans-serif;
   }
 
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
-
     --card: 222.2 84% 4.9%;
     --card-foreground: 210 40% 98%;
-
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
-
     --primary: 210 40% 98%;
     --primary-foreground: 222.2 47.4% 11.2%;
-
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
-
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
-
     --accent: 217.2 32.6% 17.5%;
     --accent-foreground: 210 40% 98%;
-
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
@@ -80,22 +66,26 @@
     @apply border-border;
   }
 
+  /* Use Inter font from variable instead of system fonts */
   html {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", "Arial", sans-serif;
+    font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", "Arial",
+      sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-weight: 500;
+    background-color: white;
   }
 
   body {
-    @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", "Arial", sans-serif;
+    font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", "Arial",
+      sans-serif;
     font-weight: 500;
     line-height: 1.6;
-    color: rgb(31 41 55); /* Texto más oscuro por defecto */
+    color: rgb(31 41 55);
+    background-color: white;
   }
 
-  /* Mejorar legibilidad de textos - hacer todo más grueso */
+  /* Simplified font weight system using Inter */
   h1 {
     font-weight: 800;
     line-height: 1.2;
@@ -130,13 +120,11 @@
     color: rgb(31 41 55);
   }
 
-  /* Botones más gruesos y legibles */
   button {
     font-weight: 700;
     letter-spacing: 0.01em;
   }
 
-  /* Inputs y forms más legibles */
   input,
   textarea,
   select {
@@ -149,7 +137,6 @@
     color: rgb(17 24 39);
   }
 
-  /* Mejorar clases de Tailwind para que sean más gruesas */
   .text-sm {
     font-weight: 500;
     color: rgb(55 65 81);
@@ -188,7 +175,6 @@
     font-weight: 900;
   }
 
-  /* Redefinir pesos de fuente para que sean más gruesos */
   .font-normal {
     font-weight: 500;
   }
@@ -209,7 +195,6 @@
     font-weight: 900;
   }
 
-  /* Mejorar colores de texto para mejor contraste */
   .text-gray-900 {
     color: rgb(17 24 39);
     font-weight: 600;
@@ -240,25 +225,21 @@
     font-weight: 500;
   }
 
-  /* Mejorar títulos de cards */
   .card-title {
     font-weight: 700;
     color: rgb(17 24 39);
   }
 
-  /* Mejorar textos de botones */
   .btn,
   .button {
     font-weight: 700;
     letter-spacing: 0.025em;
   }
 
-  /* Hacer que los números se vean más gruesos */
   .font-mono {
     font-weight: 700;
   }
 
-  /* Mejorar legibilidad en móviles */
   @media (max-width: 768px) {
     body {
       font-size: 16px;
@@ -289,30 +270,23 @@
     }
   }
 
-  /* Asegurar que los textos importantes se destaquen */
   strong,
   b {
     font-weight: 700;
     color: rgb(17 24 39);
   }
 
-  /* Mejorar enlaces */
   a {
     font-weight: 600;
   }
 
-  /* Mejorar listas */
   ul,
-  ol {
-    font-weight: 500;
-  }
-
+  ol,
   li {
     font-weight: 500;
   }
 }
 
-/* Animaciones personalizadas */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -343,7 +317,6 @@
   animation: scaleIn 0.4s ease-out;
 }
 
-/* Clases utilitarias para texto extra grueso */
 .text-extra-bold {
   font-weight: 900;
 }
@@ -353,7 +326,6 @@
   text-shadow: 0 0 1px rgba(0, 0, 0, 0.1);
 }
 
-/* Mejorar contraste en elementos específicos del sistema */
 .ticket-number {
   font-weight: 900;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
@@ -369,7 +341,6 @@
   color: rgb(17 24 39);
 }
 
-/* Estilos para impresión */
 @media print {
   .no-print {
     display: none !important;
