@@ -24,8 +24,19 @@ import {
   Download,
   Archive,
   Plus,
+  LineChart,
 } from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
+import {
+  LineChart as RechartsLineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts"
 
 export default function PaginaAdmin() {
   const { estado, loading, error, generarTicket, llamarSiguiente, reiniciarContador, recargar } = useSistemaEstado()
@@ -64,6 +75,9 @@ export default function PaginaAdmin() {
   const [loadingBackups, setLoadingBackups] = useState(true)
   const [errorBackups, setErrorBackups] = useState<string | null>(null)
   const [creandoBackupPrueba, setCreandoBackupPrueba] = useState(false)
+
+  // Nuevo estado para controlar la visibilidad del gráfico de evolución
+  const [mostrarGraficoEvolucion, setMostrarGraficoEvolucion] = useState(true)
 
   useEffect(() => {
     if (isClient) {
@@ -290,7 +304,7 @@ export default function PaginaAdmin() {
     if (!estado.tickets || estado.tickets.length === 0) {
       return {
         distribucionPorHora: {},
-        nombresComunes: {},
+        nombresComunes: [],
         tiempoEntreTickets: 0,
         velocidadAtencion: 0,
         tiempoEsperaReal: 0,
@@ -437,8 +451,39 @@ export default function PaginaAdmin() {
     }
   }
 
+  const prepararDatosGraficoEvolucion = () => {
+    if (backups.length === 0) return []
+
+    // Tomar los últimos 30 días activos (que tienen backups)
+    const ultimos30Dias = backups.slice(-30).reverse() // Más recientes primero
+
+    return ultimos30Dias
+      .map((backup) => {
+        const fecha = new Date(backup.fecha)
+        const emitidos = backup.resumen?.totalTicketsEmitidos || 0
+        const atendidos = backup.resumen?.totalTicketsAtendidos || 0
+        const eficiencia = emitidos > 0 ? Math.round((atendidos / emitidos) * 100) : 0
+        const tiempoEsperaReal = backup.resumen?.tiempoPromedioEsperaReal || 0
+
+        return {
+          fecha: backup.fecha,
+          fechaCorta: `${fecha.getDate()}/${fecha.getMonth() + 1}`,
+          diaSemana: fecha.toLocaleDateString("es-AR", { weekday: "short" }),
+          emitidos,
+          atendidos,
+          pendientes: emitidos - atendidos,
+          eficiencia,
+          tiempoEsperaReal,
+        }
+      })
+      .reverse() // Volver a orden cronológico (más antiguos primero)
+  }
+
   const estadisticasAdminCalculadas = calcularEstadisticasAdmin()
   const metricasAvanzadas = calcularMetricasAvanzadas()
+
+  // Preparar datos para el gráfico de evolución
+  const datosGraficoEvolucion = prepararDatosGraficoEvolucion()
 
   // Agregar función para descargar datos de un día específico
   const descargarDatosDia = async (backup: any) => {
@@ -1061,6 +1106,199 @@ export default function PaginaAdmin() {
               </div>
             ) : backups.length > 0 ? (
               <div className="space-y-4">
+                {datosGraficoEvolucion.length > 0 && (
+                  <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-lg border-2 border-indigo-200">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="font-bold text-indigo-800 text-lg flex items-center gap-2">
+                        <LineChart className="h-6 w-6" />📈 Evolución de los Últimos{" "}
+                        {Math.min(datosGraficoEvolucion.length, 30)} Días Activos
+                      </h4>
+                      <Button
+                        onClick={() => setMostrarGraficoEvolucion(!mostrarGraficoEvolucion)}
+                        variant="outline"
+                        size="sm"
+                      >
+                        {mostrarGraficoEvolucion ? "Ocultar" : "Mostrar"} Gráfico
+                      </Button>
+                    </div>
+
+                    {/* Información del horario de atención */}
+                    <div className="bg-white p-3 rounded-lg border border-indigo-200 mb-4">
+                      <p className="text-sm text-indigo-700">
+                        <Clock className="inline h-4 w-4 mr-1" />
+                        <strong>Horario de atención:</strong> 9:30 - 12:30 y 15:00 - 20:00 (Lunes a Sábado)
+                      </p>
+                      <p className="text-xs text-indigo-600 mt-1">
+                        Las métricas mostradas corresponden solo a los días con actividad registrada
+                      </p>
+                    </div>
+
+                    {mostrarGraficoEvolucion && (
+                      <div className="bg-white p-4 rounded-lg">
+                        <div className="mb-6">
+                          <h5 className="font-semibold text-gray-700 mb-3 text-center">Tickets Emitidos por Día</h5>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <RechartsLineChart data={datosGraficoEvolucion}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                              <XAxis
+                                dataKey="fechaCorta"
+                                tick={{ fontSize: 12 }}
+                                angle={-45}
+                                textAnchor="end"
+                                height={60}
+                              />
+                              <YAxis tick={{ fontSize: 12 }} />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: "white",
+                                  border: "1px solid #ccc",
+                                  borderRadius: "8px",
+                                  padding: "10px",
+                                }}
+                                labelFormatter={(label) => {
+                                  const dato = datosGraficoEvolucion.find((d) => d.fechaCorta === label)
+                                  return dato ? `${dato.diaSemana} ${dato.fecha}` : label
+                                }}
+                              />
+                              <Legend />
+                              <Line
+                                type="monotone"
+                                dataKey="emitidos"
+                                stroke="#3b82f6"
+                                strokeWidth={2}
+                                name="Tickets Emitidos"
+                                dot={{ fill: "#3b82f6", r: 4 }}
+                                activeDot={{ r: 6 }}
+                              />
+                            </RechartsLineChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        {/* Gráfico de Tiempo de Espera Real */}
+                        <div>
+                          <h5 className="font-semibold text-gray-700 mb-3 text-center">
+                            Tiempo de Espera Real Promedio (minutos)
+                          </h5>
+                          <ResponsiveContainer width="100%" height={250}>
+                            <RechartsLineChart data={datosGraficoEvolucion}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                              <XAxis
+                                dataKey="fechaCorta"
+                                tick={{ fontSize: 12 }}
+                                angle={-45}
+                                textAnchor="end"
+                                height={60}
+                              />
+                              <YAxis
+                                tick={{ fontSize: 12 }}
+                                label={{ value: "min", angle: -90, position: "insideLeft" }}
+                              />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: "white",
+                                  border: "1px solid #ccc",
+                                  borderRadius: "8px",
+                                  padding: "10px",
+                                }}
+                                labelFormatter={(label) => {
+                                  const dato = datosGraficoEvolucion.find((d) => d.fechaCorta === label)
+                                  return dato ? `${dato.diaSemana} ${dato.fecha}` : label
+                                }}
+                                formatter={(value: number) => [`${value} min`, "Tiempo Espera"]}
+                              />
+                              <Legend />
+                              <Line
+                                type="monotone"
+                                dataKey="tiempoEsperaReal"
+                                stroke="#f59e0b"
+                                strokeWidth={2}
+                                name="Tiempo Espera Real"
+                                dot={{ fill: "#f59e0b", r: 4 }}
+                                activeDot={{ r: 6 }}
+                              />
+                            </RechartsLineChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-4">
+                          <div className="bg-blue-50 p-3 rounded-lg text-center">
+                            <div className="text-2xl font-bold text-blue-600">
+                              {Math.round(
+                                datosGraficoEvolucion.reduce((sum, d) => sum + d.emitidos, 0) /
+                                  datosGraficoEvolucion.length,
+                              )}
+                            </div>
+                            <p className="text-xs text-blue-700">Promedio Emitidos/Día</p>
+                          </div>
+                          <div className="bg-green-50 p-3 rounded-lg text-center">
+                            <div className="text-2xl font-bold text-green-600">
+                              {Math.round(
+                                datosGraficoEvolucion.reduce((sum, d) => sum + d.atendidos, 0) /
+                                  datosGraficoEvolucion.length,
+                              )}
+                            </div>
+                            <p className="text-xs text-green-700">Promedio Atendidos/Día</p>
+                          </div>
+                          <div className="bg-orange-50 p-3 rounded-lg text-center">
+                            <div className="text-2xl font-bold text-orange-600">
+                              {Math.round(
+                                (datosGraficoEvolucion.reduce((sum, d) => sum + d.tiempoEsperaReal, 0) /
+                                  datosGraficoEvolucion.length) *
+                                  10,
+                              ) / 10}
+                            </div>
+                            <p className="text-xs text-orange-700">Espera Promedio (min)</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 bg-gradient-to-r from-cyan-50 to-blue-50 p-4 rounded-lg border border-cyan-200">
+                          <h5 className="font-semibold text-cyan-800 mb-2 flex items-center gap-2">
+                            <TrendingUp className="h-5 w-5" />
+                            Análisis de Tendencia
+                          </h5>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                            <div>
+                              <span className="text-cyan-700 font-medium">Mejor día:</span>
+                              <p className="text-cyan-900 font-bold">
+                                {datosGraficoEvolucion.reduce((max, d) => (d.emitidos > max.emitidos ? d : max)).fecha}{" "}
+                                (
+                                {
+                                  datosGraficoEvolucion.reduce((max, d) => (d.emitidos > max.emitidos ? d : max))
+                                    .emitidos
+                                }{" "}
+                                tickets)
+                              </p>
+                            </div>
+                            <div>
+                              <span className="text-cyan-700 font-medium">Menor espera:</span>
+                              <p className="text-cyan-900 font-bold">
+                                {
+                                  datosGraficoEvolucion
+                                    .filter((d) => d.tiempoEsperaReal > 0)
+                                    .reduce(
+                                      (min, d) => (d.tiempoEsperaReal < min.tiempoEsperaReal ? d : min),
+                                      datosGraficoEvolucion[0],
+                                    ).fecha
+                                }{" "}
+                                (
+                                {
+                                  datosGraficoEvolucion
+                                    .filter((d) => d.tiempoEsperaReal > 0)
+                                    .reduce(
+                                      (min, d) => (d.tiempoEsperaReal < min.tiempoEsperaReal ? d : min),
+                                      datosGraficoEvolucion[0],
+                                    ).tiempoEsperaReal
+                                }{" "}
+                                min)
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Resumen del historial */}
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
                   <h4 className="font-semibold text-blue-800 mb-3">📊 Resumen del Historial</h4>
