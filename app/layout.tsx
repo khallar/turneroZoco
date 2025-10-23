@@ -25,30 +25,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="es" style={{ backgroundColor: "#ffffff" }}>
-      <head>
-        <style
-          dangerouslySetInnerHTML={{
-            __html: `
-            * { box-sizing: border-box; margin: 0; padding: 0; }
-            html, body { 
-              background-color: #ffffff !important; 
-              color: #111827 !important;
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-              min-height: 100vh;
-              -webkit-font-smoothing: antialiased;
-              -moz-osx-font-smoothing: grayscale;
-            }
-          `,
-          }}
-        />
-      </head>
-      <body
-        className={`${inter.className} antialiased bg-white text-gray-900 min-h-screen`}
-        style={{ backgroundColor: "#ffffff", color: "#111827", minHeight: "100vh" }}
-      >
-        {children}
-      </body>
+    <html lang="es" className="bg-white">
+      <body className={`${inter.className} antialiased bg-white text-gray-900 min-h-screen`}>{children}</body>
     </html>
   )
 }
