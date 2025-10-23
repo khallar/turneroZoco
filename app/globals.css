@@ -5,30 +5,73 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 0 0% 0%;
+    --foreground: 222.2 84% 4.9%;
+
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 0%;
+    --card-foreground: 222.2 84% 4.9%;
+
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 0%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 45%;
-    --accent: 0 0% 96%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 90%;
-    --input: 0 0% 90%;
-    --ring: 0 0% 9%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
     --radius: 0.5rem;
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
   }
 }
 
@@ -38,10 +81,311 @@
   }
 
   html {
-    @apply bg-white;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", "Arial", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-weight: 500;
   }
 
   body {
-    @apply bg-white text-gray-900 antialiased min-h-screen;
+    @apply bg-background text-foreground;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", "Arial", sans-serif;
+    font-weight: 500;
+    line-height: 1.6;
+    color: rgb(31 41 55); /* Texto más oscuro por defecto */
+  }
+
+  /* Mejorar legibilidad de textos - hacer todo más grueso */
+  h1 {
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: -0.025em;
+    color: rgb(17 24 39);
+  }
+
+  h2 {
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+    color: rgb(17 24 39);
+  }
+
+  h3 {
+    font-weight: 700;
+    line-height: 1.3;
+    color: rgb(17 24 39);
+  }
+
+  h4,
+  h5,
+  h6 {
+    font-weight: 600;
+    line-height: 1.4;
+    color: rgb(17 24 39);
+  }
+
+  p {
+    font-weight: 500;
+    line-height: 1.7;
+    color: rgb(31 41 55);
+  }
+
+  /* Botones más gruesos y legibles */
+  button {
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+
+  /* Inputs y forms más legibles */
+  input,
+  textarea,
+  select {
+    font-weight: 500;
+    color: rgb(17 24 39);
+  }
+
+  label {
+    font-weight: 600;
+    color: rgb(17 24 39);
+  }
+
+  /* Mejorar clases de Tailwind para que sean más gruesas */
+  .text-sm {
+    font-weight: 500;
+    color: rgb(55 65 81);
+  }
+
+  .text-xs {
+    font-weight: 500;
+    color: rgb(75 85 99);
+  }
+
+  .text-lg {
+    font-weight: 600;
+  }
+
+  .text-xl {
+    font-weight: 600;
+  }
+
+  .text-2xl {
+    font-weight: 700;
+  }
+
+  .text-3xl {
+    font-weight: 700;
+  }
+
+  .text-4xl {
+    font-weight: 800;
+  }
+
+  .text-5xl {
+    font-weight: 800;
+  }
+
+  .text-6xl {
+    font-weight: 900;
+  }
+
+  /* Redefinir pesos de fuente para que sean más gruesos */
+  .font-normal {
+    font-weight: 500;
+  }
+
+  .font-medium {
+    font-weight: 600;
+  }
+
+  .font-semibold {
+    font-weight: 700;
+  }
+
+  .font-bold {
+    font-weight: 800;
+  }
+
+  .font-extrabold {
+    font-weight: 900;
+  }
+
+  /* Mejorar colores de texto para mejor contraste */
+  .text-gray-900 {
+    color: rgb(17 24 39);
+    font-weight: 600;
+  }
+
+  .text-gray-800 {
+    color: rgb(31 41 55);
+    font-weight: 600;
+  }
+
+  .text-gray-700 {
+    color: rgb(55 65 81);
+    font-weight: 500;
+  }
+
+  .text-gray-600 {
+    color: rgb(75 85 99);
+    font-weight: 500;
+  }
+
+  .text-gray-500 {
+    color: rgb(107 114 128);
+    font-weight: 500;
+  }
+
+  .text-gray-400 {
+    color: rgb(156 163 175);
+    font-weight: 500;
+  }
+
+  /* Mejorar títulos de cards */
+  .card-title {
+    font-weight: 700;
+    color: rgb(17 24 39);
+  }
+
+  /* Mejorar textos de botones */
+  .btn,
+  .button {
+    font-weight: 700;
+    letter-spacing: 0.025em;
+  }
+
+  /* Hacer que los números se vean más gruesos */
+  .font-mono {
+    font-weight: 700;
+  }
+
+  /* Mejorar legibilidad en móviles */
+  @media (max-width: 768px) {
+    body {
+      font-size: 16px;
+      font-weight: 500;
+    }
+
+    h1 {
+      font-weight: 900;
+    }
+
+    h2,
+    h3 {
+      font-weight: 800;
+    }
+
+    button {
+      font-weight: 800;
+    }
+
+    .text-sm {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .text-xs {
+      font-size: 12px;
+      font-weight: 600;
+    }
+  }
+
+  /* Asegurar que los textos importantes se destaquen */
+  strong,
+  b {
+    font-weight: 700;
+    color: rgb(17 24 39);
+  }
+
+  /* Mejorar enlaces */
+  a {
+    font-weight: 600;
+  }
+
+  /* Mejorar listas */
+  ul,
+  ol {
+    font-weight: 500;
+  }
+
+  li {
+    font-weight: 500;
+  }
+}
+
+/* Animaciones personalizadas */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.4s ease-out;
+}
+
+/* Clases utilitarias para texto extra grueso */
+.text-extra-bold {
+  font-weight: 900;
+}
+
+.text-super-bold {
+  font-weight: 800;
+  text-shadow: 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+/* Mejorar contraste en elementos específicos del sistema */
+.ticket-number {
+  font-weight: 900;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.system-title {
+  font-weight: 800;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.important-text {
+  font-weight: 700;
+  color: rgb(17 24 39);
+}
+
+/* Estilos para impresión */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  .bg-red-600 {
+    background-color: #dc2626 !important;
+    -webkit-print-color-adjust: exact;
   }
 }

@@ -5,10 +5,6 @@ interface TicketInfo {
   nombre: string
   fecha: string
   timestamp: number
-  premio?: {
-    ganador: boolean
-    mensaje?: string
-  }
 }
 
 // EstadoSistema ahora NO contendrá el array 'tickets' directamente
@@ -334,20 +330,11 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
       const fecha = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })
       const timestamp = Date.now()
 
-      const { verificarPremio } = await import("./premios")
-      const resultadoPremio = await verificarPremio(numeroAsignado, fechaHoy)
-
       const nuevoTicket: TicketInfo = {
         numero: numeroAsignado,
         nombre: nombre.trim(),
         fecha,
         timestamp,
-        premio: resultadoPremio.ganador
-          ? {
-              ganador: true,
-              mensaje: resultadoPremio.premio?.mensaje,
-            }
-          : undefined,
       }
 
       // Actualizar la metadata del estado
@@ -366,10 +353,6 @@ export async function generarTicketAtomico(nombre: string): Promise<TicketInfo> 
         .exec()
 
       console.log("✅ Ticket generado exitosamente:", nuevoTicket)
-      if (resultadoPremio.ganador) {
-        console.log("🎉 ¡PREMIO GANADO!", resultadoPremio.premio?.mensaje)
-      }
-
       return nuevoTicket
     },
     2, // Reducir reintentos de 3 a 2

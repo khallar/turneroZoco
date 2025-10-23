@@ -2,9 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/backup-diario",
-      "schedule": "0 0 * * *"
+      "schedule": "0 0 * * 2-0"
     }
-  ],
-  "buildCommand": "next build",
-  "outputDirectory": ".next"
+  ]
 }
