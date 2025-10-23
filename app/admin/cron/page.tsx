@@ -201,7 +201,7 @@ export default function CronAdminPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Horario (Argentina):</span>
-                    <span className="font-semibold text-green-600">00:00 hs (medianoche)</span>
+                    <span className="font-semibold text-green-600">21:00 hs</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Días:</span>
@@ -247,7 +247,7 @@ export default function CronAdminPage() {
           <CardContent>
             <div className="space-y-4">
               <p className="text-gray-600">
-                Ejecuta el endpoint manualmente para verificar que funciona correctamente antes de esperar a las 00:00
+                Ejecuta el endpoint manualmente para verificar que funciona correctamente antes de esperar a las 21:00
                 hs.
               </p>
 
@@ -336,10 +336,10 @@ export default function CronAdminPage() {
           </CardContent>
         </Card>
 
-        {/* Guía de Verificación en Vercel */}
+        {/* Guía de Verificación */}
         <Card>
           <CardHeader>
-            <CardTitle>📋 Cómo Configurar CRON_SECRET en Vercel</CardTitle>
+            <CardTitle>📋 Cómo Verificar que el Cron Está Activo</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -370,9 +370,9 @@ export default function CronAdminPage() {
                     2
                   </div>
                   <div>
-                    <h4 className="font-semibold mb-1">Settings → Environment Variables</h4>
+                    <h4 className="font-semibold mb-1">Busca "Cron Jobs"</h4>
                     <p className="text-sm text-gray-600">
-                      Busca la sección "Environment Variables" en el menú de Settings
+                      En el menú lateral, busca la sección "Cron Jobs" o "Settings → Cron Jobs"
                     </p>
                   </div>
                 </div>
@@ -382,21 +382,12 @@ export default function CronAdminPage() {
                     3
                   </div>
                   <div>
-                    <h4 className="font-semibold mb-1">Agregar Variable</h4>
-                    <div className="bg-gray-50 p-3 rounded border mt-2 space-y-2 text-sm">
-                      <div>
-                        <span className="font-semibold">Name:</span>{" "}
-                        <span className="font-mono bg-white px-2 py-1 rounded">CRON_SECRET</span>
-                      </div>
-                      <div>
-                        <span className="font-semibold">Value:</span>{" "}
-                        <span className="text-gray-600">Tu clave secreta (ej: "mi-clave-super-secreta-123")</span>
-                      </div>
-                      <div>
-                        <span className="font-semibold">Environments:</span>{" "}
-                        <span className="text-gray-600">✓ Production</span>
-                      </div>
-                    </div>
+                    <h4 className="font-semibold mb-1">Verifica el Estado</h4>
+                    <p className="text-sm text-gray-600">
+                      Deberías ver:{" "}
+                      <span className="font-mono bg-gray-100 px-2 py-1 rounded">/api/cron/backup-diario</span> con
+                      estado "Active"
+                    </p>
                   </div>
                 </div>
 
@@ -405,20 +396,25 @@ export default function CronAdminPage() {
                     4
                   </div>
                   <div>
-                    <h4 className="font-semibold mb-1">Redeploy</h4>
+                    <h4 className="font-semibold mb-1">Revisa los Logs</h4>
                     <p className="text-sm text-gray-600">
-                      Haz un nuevo deploy para que la variable tome efecto (Deployments → ⋯ → Redeploy)
+                      Ve a Functions → Busca <span className="font-mono">/api/cron/backup-diario</span> → Revisa los
+                      logs de ejecución
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-semibold text-blue-800 mb-2">💡 Nota Importante</h4>
-                <p className="text-sm text-blue-700">
-                  El CRON_SECRET es <strong>opcional</strong>. Si no lo configuras, el endpoint funcionará igual pero
-                  será público. Para pruebas está bien, pero para producción se recomienda configurarlo.
-                </p>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <h4 className="font-semibold text-red-800 mb-2">⚠️ Si NO aparece el Cron Job:</h4>
+                <ol className="text-sm text-red-700 space-y-1 list-decimal list-inside">
+                  <li>
+                    Verifica que <span className="font-mono">vercel.json</span> esté en la raíz del proyecto
+                  </li>
+                  <li>Asegúrate de que el archivo se haya incluido en el último deploy</li>
+                  <li>Haz un nuevo deploy y espera 2-3 minutos</li>
+                  <li>Refresca el Dashboard de Vercel</li>
+                </ol>
               </div>
             </div>
           </CardContent>
