@@ -37,6 +37,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts"
+import styles from "./page.module.css"
 
 export const dynamic = "force-dynamic"
 
@@ -713,76 +714,54 @@ export default function PaginaAdmin() {
 
   if (loading || !isClient) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 flex items-center justify-center p-4">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-red-600 mx-auto mb-4"></div>
-          <p className="text-lg text-gray-600">Cargando panel de administración (Cache Optimizado)...</p>
+      <div className={styles.loading}>
+        <div className={styles.loadingContent}>
+          <div className={styles.spinner}></div>
+          <p className={styles.loadingText}>Cargando panel de administración...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 p-4">
-      <div className="max-w-6xl mx-auto">
+    <div className={styles.container}>
+      <div className={styles.maxWidth}>
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="mb-6">
-            <img
-              src="/logo-rojo.png"
-              alt="Logo Sistema de Atención"
-              className="h-24 md:h-32 mx-auto"
-              style={{
-                filter:
-                  "brightness(0) saturate(100%) invert(15%) sepia(95%) saturate(6932%) hue-rotate(359deg) brightness(94%) contrast(112%)",
-              }}
-            />
+        <div className={styles.header}>
+          <div>
+            <img src="/logo-rojo.png" alt="Logo Sistema de Atención" className={styles.logo} />
           </div>
-          <h1 className="text-3xl md:text-5xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-3">
+          <h1 className={styles.title}>
             <Shield className="h-8 w-8 md:h-12 md:w-12 text-red-600" />
             Panel de Administración
           </h1>
-          <p className="text-lg text-gray-600 mb-4">Control total del sistema de atención (Cache Optimizado)</p>
+          <p className={styles.subtitle}>Control total del sistema de atención</p>
 
-          {/* Información de estado optimizada */}
-          <div className="flex justify-center items-center gap-4 text-sm text-gray-500 mb-6">
-            <div className="flex items-center gap-1">
+          {/* Información de estado */}
+          <div className={styles.statusInfo}>
+            <div className={styles.statusItem}>
               <Clock className="h-4 w-4" />
               <span>{horaActual.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}</span>
             </div>
-            <div className="flex items-center gap-1">
+            <div className={styles.statusItem}>
               <Database className="h-4 w-4" />
               <span>
                 Última sync: {new Date().toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}
               </span>
             </div>
-            {false && (
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">📦 Cache: 0 entradas</span>
-              </div>
-            )}
           </div>
 
           {/* Botones de navegación */}
-          <div className="flex justify-center gap-4">
-            <a
-              href="/"
-              className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
+          <div className={styles.navButtons}>
+            <a href="/" className={`${styles.navButton} ${styles.navButtonBlue}`}>
               <ArrowLeft className="mr-2 h-4 w-4" />
               Volver a Tickets
             </a>
-            <a
-              href="/empleados"
-              className="inline-flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
+            <a href="/empleados" className={`${styles.navButton} ${styles.navButtonGreen}`}>
               <Users className="mr-2 h-4 w-4" />
               Panel Empleados
             </a>
-            <a
-              href="/proximos"
-              className="inline-flex items-center justify-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-            >
+            <a href="/proximos" className={`${styles.navButton} ${styles.navButtonPurple}`}>
               <Eye className="mr-2 h-4 w-4" />
               Ver Próximos
             </a>
@@ -790,50 +769,42 @@ export default function PaginaAdmin() {
         </div>
 
         {/* Estadísticas Principales del Día */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Tickets Hoy</CardTitle>
+        <div className={styles.statsGrid}>
+          <div className={`${styles.statCard} ${styles.statCardBlue}`}>
+            <div className={styles.statHeader}>
+              <span className={styles.statTitle}>Tickets Hoy</span>
               <Users className="h-4 w-4" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{estado?.totalAtendidos}</div>
-              <p className="text-xs opacity-80">Emitidos en el día</p>
-            </CardContent>
-          </Card>
+            </div>
+            <div className={styles.statValue}>{estado?.totalAtendidos}</div>
+            <p className={styles.statLabel}>Emitidos en el día</p>
+          </div>
 
-          <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Atendidos</CardTitle>
+          <div className={`${styles.statCard} ${styles.statCardGreen}`}>
+            <div className={styles.statHeader}>
+              <span className={styles.statTitle}>Atendidos</span>
               <CheckCircle className="h-4 w-4" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{estado?.numerosLlamados}</div>
-              <p className="text-xs opacity-80">Tickets procesados</p>
-            </CardContent>
-          </Card>
+            </div>
+            <div className={styles.statValue}>{estado?.numerosLlamados}</div>
+            <p className={styles.statLabel}>Tickets procesados</p>
+          </div>
 
-          <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">En Espera</CardTitle>
+          <div className={`${styles.statCard} ${styles.statCardOrange}`}>
+            <div className={styles.statHeader}>
+              <span className={styles.statTitle}>En Espera</span>
               <Clock className="h-4 w-4" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{estado?.totalAtendidos - estado?.numerosLlamados}</div>
-              <p className="text-xs opacity-80">Pendientes</p>
-            </CardContent>
-          </Card>
+            </div>
+            <div className={styles.statValue}>{estado?.totalAtendidos - estado?.numerosLlamados}</div>
+            <p className={styles.statLabel}>Pendientes</p>
+          </div>
 
-          <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Eficiencia</CardTitle>
+          <div className={`${styles.statCard} ${styles.statCardPurple}`}>
+            <div className={styles.statHeader}>
+              <span className={styles.statTitle}>Eficiencia</span>
               <TrendingUp className="h-4 w-4" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{estadisticasAdminCalculadas.eficienciaGeneral}%</div>
-              <p className="text-xs opacity-80">Tasa de atención</p>
-            </CardContent>
-          </Card>
+            </div>
+            <div className={styles.statValue}>{estadisticasAdminCalculadas.eficienciaGeneral}%</div>
+            <p className={styles.statLabel}>Tasa de atención</p>
+          </div>
         </div>
 
         {/* BOTÓN DE REINICIAR DÍA - AGREGADO */}
