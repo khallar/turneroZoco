@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { NombreModal } from "@/components/NombreModal"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 import { X, Clock, Users, Eye } from "lucide-react"
+import styles from "./page.module.css"
 
 export const dynamic = "force-dynamic"
 
@@ -72,10 +73,10 @@ export default function HomePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-red-600 mx-auto mb-6"></div>
-          <p className="text-2xl text-gray-700 font-medium">Cargando...</p>
+      <div className={styles.loading}>
+        <div className={styles.loadingContent}>
+          <div className={styles.loadingSpinner}></div>
+          <p className={styles.loadingText}>Cargando...</p>
         </div>
       </div>
     )
@@ -83,17 +84,14 @@ export default function HomePage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-100 to-red-200 flex items-center justify-center p-4">
-        <div className="bg-white p-12 rounded-3xl shadow-2xl max-w-md w-full text-center">
-          <div className="text-red-600 mb-6 text-8xl">⚠️</div>
-          <h2 className="text-3xl font-bold mb-4 text-gray-800">Error</h2>
-          <p className="text-gray-600 mb-8 text-lg">{error}</p>
-          <Button
-            onClick={() => window.location.reload()}
-            className="bg-red-600 hover:bg-red-700 text-white px-8 py-4 text-xl rounded-2xl"
-          >
+      <div className={styles.error}>
+        <div className={styles.errorCard}>
+          <div className={styles.errorIcon}>⚠️</div>
+          <h2 className={styles.errorTitle}>Error</h2>
+          <p className={styles.errorMessage}>{error}</p>
+          <button onClick={() => window.location.reload()} className={styles.errorButton}>
             Reintentar
-          </Button>
+          </button>
         </div>
       </div>
     )
@@ -102,77 +100,72 @@ export default function HomePage() {
   const ticketsPendientes = estado.totalAtendidos - estado.numerosLlamados
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-100 flex flex-col">
-      {/* 🤖 Notificación Automática */}
+    <div className={styles.pageContainer}>
+      {/* Notificación Automática */}
       {notificacionAutomatica && (
-        <div className="fixed top-4 right-4 z-50 max-w-sm">
-          <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-xl shadow-2xl border border-blue-400 animate-scaleIn">
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-3">
-                <div className="text-2xl">🤖</div>
+        <div className={styles.notification}>
+          <div className={styles.notificationCard}>
+            <div className={styles.notificationContent}>
+              <div className={styles.notificationInner}>
+                <div className={styles.notificationIcon}>🤖</div>
                 <div>
-                  <h4 className="font-bold text-sm mb-1">Sistema Automático</h4>
-                  <p className="text-xs leading-relaxed whitespace-pre-line">{notificacionAutomatica}</p>
+                  <h4 className={styles.notificationTitle}>Sistema Automático</h4>
+                  <p className={styles.notificationText}>{notificacionAutomatica}</p>
                 </div>
               </div>
-              <button onClick={() => window.location.reload()} className="text-white/80 hover:text-white ml-2">
-                <X className="h-4 w-4" />
+              <button onClick={() => window.location.reload()} className={styles.closeButton}>
+                <X style={{ height: "1rem", width: "1rem" }} />
               </button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="flex-1">
-        <div className="container mx-auto px-4 py-8">
+      <div className={styles.contentWrapper}>
+        <div className="container" style={{ padding: "2rem 1rem" }}>
           {/* Header con estadísticas */}
-          <div className="text-center mb-8">
-            <div className="flex justify-center gap-6 mb-6">
-              <div className="bg-white rounded-xl px-4 py-2 shadow-md">
-                <div className="flex items-center gap-2 text-sm">
-                  <Users className="h-4 w-4 text-red-600" />
-                  <span className="font-semibold text-gray-700">{estado.totalAtendidos} tickets hoy</span>
+          <div className={styles.header}>
+            <div className={styles.statsContainer}>
+              <div className={styles.statCard}>
+                <div className={styles.statContent}>
+                  <Users style={{ height: "1rem", width: "1rem", color: "#dc2626" }} />
+                  <span className={styles.statLabel}>{estado.totalAtendidos} tickets hoy</span>
                 </div>
               </div>
-              <div className="bg-white rounded-xl px-4 py-2 shadow-md">
-                <div className="flex items-center gap-2 text-sm">
-                  <Clock className="h-4 w-4 text-orange-600" />
-                  <span className="font-semibold text-gray-700">{ticketsPendientes} en espera</span>
+              <div className={styles.statCard}>
+                <div className={styles.statContent}>
+                  <Clock style={{ height: "1rem", width: "1rem", color: "#ea580c" }} />
+                  <span className={styles.statLabel}>{ticketsPendientes} en espera</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Logo */}
-          <div className="text-center mb-16">
-            <img src="/logo-rojo.png" alt="ZOCO" className="h-32 md:h-40 mx-auto drop-shadow-lg" />
+          <div className={styles.logoContainer}>
+            <img src="/logo-rojo.png" alt="ZOCO" className={styles.logo} />
           </div>
 
           {/* Contenido Principal */}
-          <div className="max-w-2xl mx-auto">
-            {/* Botón Principal - MÁS PEQUEÑO */}
-            <div className="text-center mb-12">
-              <Button
-                onClick={() => setShowModal(true)}
-                disabled={generandoTicket}
-                className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-8 py-6 text-2xl md:text-3xl font-bold rounded-2xl shadow-xl transform hover:scale-105 transition-all duration-300"
-                style={{ minHeight: "80px", minWidth: "250px" }}
-              >
+          <div className={styles.mainContent}>
+            {/* Botón Principal */}
+            <div className={styles.buttonContainer}>
+              <button onClick={() => setShowModal(true)} disabled={generandoTicket} className={styles.primaryButton}>
                 {generandoTicket ? (
-                  <div className="flex items-center gap-3">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                  <div className={styles.buttonLoading}>
+                    <div className={styles.spinner}></div>
                     Generando...
                   </div>
                 ) : (
                   "SACAR NÚMERO"
                 )}
-              </Button>
+              </button>
             </div>
 
             {/* Frase de Bienvenida */}
-            <div className="text-center mb-12">
-              <div className="bg-white rounded-2xl p-6 shadow-lg max-w-lg mx-auto">
-                <p className="text-gray-700 text-lg md:text-xl font-medium">{fraseAleatoria}</p>
+            <div className={styles.phraseContainer}>
+              <div className={styles.phraseCard}>
+                <p className={styles.phraseText}>{fraseAleatoria}</p>
               </div>
             </div>
           </div>
@@ -180,10 +173,10 @@ export default function HomePage() {
       </div>
 
       {/* Footer */}
-      <footer className="text-center py-6 border-t border-white/30 bg-white/20">
-        <div className="text-sm text-gray-600">
-          <p className="font-semibold">Develop by: Karim - V7.1 🤖 Backup Automático</p>
-          <p className="text-xs mt-1">Sistema de Turnos ZOCO • {new Date().getFullYear()}</p>
+      <footer className={styles.footer}>
+        <div className={styles.footerText}>
+          <p className={styles.footerTitle}>Develop by: Karim - V7.1 🤖 Backup Automático</p>
+          <p className={styles.footerSubtitle}>Sistema de Turnos ZOCO • {new Date().getFullYear()}</p>
         </div>
       </footer>
 
