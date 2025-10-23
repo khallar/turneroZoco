@@ -12,6 +12,10 @@ const nextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error'] } : false,
   },
+  experimental: {
+    optimizeCss: true,
+  },
+  output: 'standalone',
 }
 
 export default nextConfig

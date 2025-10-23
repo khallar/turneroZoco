@@ -7,6 +7,7 @@ const inter = Inter({
   subsets: ["latin"],
   display: "swap",
   weight: ["400", "500", "600", "700", "800", "900"],
+  variable: "--font-inter",
 })
 
 console.log("[v0] Layout loading - Inter font className:", inter.className)
@@ -30,8 +31,17 @@ export default function RootLayout({
   console.log("[v0] RootLayout rendering")
 
   return (
-    <html lang="es" className="bg-white">
-      <body className={`${inter.className} antialiased bg-white text-gray-900 min-h-screen`}>{children}</body>
+    <html lang="es" className={`${inter.variable} bg-white`}>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta charSet="utf-8" />
+      </head>
+      <body
+        className={`${inter.className} antialiased bg-white text-gray-900 min-h-screen`}
+        style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}
+      >
+        {children}
+      </body>
     </html>
   )
 }
