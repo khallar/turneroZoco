@@ -118,8 +118,6 @@
   --animate-accordion-up: accordion-up 0.2s ease-out;
   --animate-scale-in: scaleIn 0.3s ease-out;
   --animate-fade-in: fadeIn 0.5s ease-in;
-  --animate-spin: spin 1s linear infinite;
-  --animate-bounce: bounce 1s infinite;
 
   @keyframes accordion-down {
     from {
@@ -158,29 +156,11 @@
       opacity: 1;
     }
   }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  @keyframes bounce {
-    0%,
-    100% {
-      transform: translateY(-25%);
-      animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
-    }
-    50% {
-      transform: none;
-      animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
-    }
-  }
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
   body {
     @apply bg-background text-foreground antialiased;
