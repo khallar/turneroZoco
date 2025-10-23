@@ -1,0 +1,437 @@
+.ticketOverlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 1rem;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.ticketCard {
+  background: linear-gradient(135deg, #fef2f2 0%, #ffffff 50%, #fff7ed 100%);
+  border-radius: 1.5rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  max-width: 28rem;
+  width: 100%;
+  margin: 0 1rem;
+  animation: scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  border: 4px solid #fecaca;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Winner overlay effects */
+.winnerOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.winnerGradient {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 50%, #fecaca 100%);
+  opacity: 0.3;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.winnerEmoji {
+  position: absolute;
+  font-size: 4rem;
+  animation: bounce 1s ease-in-out infinite;
+}
+
+.winnerEmoji1 {
+  top: 2.5rem;
+  left: 2.5rem;
+}
+.winnerEmoji2 {
+  top: 5rem;
+  right: 2.5rem;
+  animation-delay: 0.1s;
+}
+.winnerEmoji3 {
+  bottom: 5rem;
+  left: 5rem;
+  animation-delay: 0.2s;
+}
+.winnerEmoji4 {
+  bottom: 2.5rem;
+  right: 5rem;
+  animation-delay: 0.3s;
+}
+
+/* Decorative background elements */
+.decorativeCircle {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.3;
+}
+
+.decorativeCircle1 {
+  top: 0;
+  right: 0;
+  width: 8rem;
+  height: 8rem;
+  background-color: #fecaca;
+  transform: translate(4rem, -4rem);
+}
+
+.decorativeCircle2 {
+  bottom: 0;
+  left: 0;
+  width: 6rem;
+  height: 6rem;
+  background-color: #fed7aa;
+  opacity: 0.4;
+  transform: translate(-3rem, 3rem);
+}
+
+.decorativeCircle3 {
+  top: 50%;
+  left: 50%;
+  width: 10rem;
+  height: 10rem;
+  background-color: #fef2f2;
+  opacity: 0.2;
+  transform: translate(-50%, -50%);
+}
+
+/* Close button */
+.closeButton {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  border-radius: 50%;
+  padding: 0.5rem;
+  transition: all 0.3s ease;
+  z-index: 20;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  border: none;
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background-color: rgba(255, 255, 255, 1);
+  transform: scale(1.1);
+}
+
+.closeIcon {
+  height: 1.25rem;
+  width: 1.25rem;
+  color: #4b5563;
+}
+
+/* Ticket content */
+.ticketContent {
+  padding: 1.5rem;
+  text-align: center;
+  position: relative;
+  z-index: 10;
+}
+
+/* Winner banner */
+.winnerBanner {
+  margin-bottom: 1rem;
+  background: linear-gradient(90deg, #fbbf24 0%, #f97316 50%, #dc2626 100%);
+  color: white;
+  padding: 1rem;
+  border-radius: 1rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.winnerBannerEmoji {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.winnerBannerTitle {
+  font-size: 1.125rem;
+  font-weight: bold;
+}
+
+/* Logo section */
+.logoSection {
+  margin-bottom: 1rem;
+}
+
+.logoWrapper {
+  backdrop-filter: blur(8px);
+  border-radius: 1rem;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background-color: #dc2626;
+}
+
+.ticketLogo {
+  height: 3.5rem;
+  margin: 0 auto;
+  object-fit: contain;
+  filter: brightness(1) saturate(1.2) contrast(1.1);
+}
+
+.ticketTitle {
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: #1f2937;
+}
+
+/* Number display */
+.numberDisplay {
+  position: relative;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  color: white;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.numberDisplayNormal {
+  background: linear-gradient(90deg, #dc2626 0%, #b91c1c 100%);
+}
+
+.numberDisplayWinner {
+  background: linear-gradient(90deg, #eab308 0%, #f97316 50%, #dc2626 100%);
+}
+
+.numberBackground {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.08;
+}
+
+.numberBackgroundLogo {
+  height: 6rem;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+  opacity: 0.2;
+}
+
+.numberContent {
+  position: relative;
+  z-index: 10;
+}
+
+.ticketNumber {
+  font-size: 3.75rem;
+  font-weight: 900;
+  margin-bottom: 0.75rem;
+  filter: drop-shadow(0 4px 3px rgba(0, 0, 0, 0.07));
+  line-height: 1;
+}
+
+.ticketName {
+  background-color: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(8px);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  font-size: 1.25rem;
+  font-weight: bold;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.numberDecorative {
+  position: absolute;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+}
+
+.numberDecorative1 {
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 2rem;
+  height: 2rem;
+}
+
+.numberDecorative2 {
+  bottom: 0.5rem;
+  left: 0.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+/* Prize message */
+.prizeMessage {
+  background: linear-gradient(90deg, #fef3c7 0%, #fed7aa 100%);
+  border: 2px solid #fbbf24;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.prizeEmoji {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.prizeText {
+  font-size: 1.125rem;
+  font-weight: bold;
+  color: #1f2937;
+}
+
+.prizeSubtext {
+  font-size: 0.875rem;
+  color: #4b5563;
+  margin-top: 0.5rem;
+}
+
+/* Date and time info */
+.dateTimeInfo {
+  background-color: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+}
+
+.dateLabel {
+  font-size: 0.875rem;
+  color: #4b5563;
+  margin-bottom: 0.25rem;
+}
+
+.dateValue {
+  font-weight: bold;
+  color: #1f2937;
+}
+
+.timeValue {
+  font-weight: bold;
+  color: #1f2937;
+  font-size: 1.125rem;
+}
+
+/* Instructions */
+.instructions {
+  background-color: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid #e5e7eb;
+}
+
+.instructionsText {
+  font-size: 0.875rem;
+  color: #374151;
+  line-height: 1.625;
+}
+
+.instructionsHighlight {
+  font-weight: 600;
+  color: #dc2626;
+}
+
+/* View position button */
+.viewPositionButton {
+  width: 100%;
+  background: linear-gradient(90deg, #9333ea 0%, #7e22ce 100%);
+  color: white;
+  padding: 0.75rem;
+  font-size: 1.125rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 15px -3px rgba(147, 51, 234, 0.3);
+  transform: translateY(0);
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.viewPositionButton:hover {
+  background: linear-gradient(90deg, #7e22ce 0%, #6b21a8 100%);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 20px 25px -5px rgba(147, 51, 234, 0.4);
+}
+
+.viewPositionIcon {
+  height: 1.25rem;
+  width: 1.25rem;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .ticketCard {
+    margin: 0 0.5rem;
+  }
+
+  .ticketNumber {
+    font-size: 3rem;
+  }
+
+  .ticketName {
+    font-size: 1rem;
+    padding: 0.5rem 1rem;
+  }
+
+  .winnerEmoji {
+    font-size: 3rem;
+  }
+}

@@ -1,11 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
 import { NombreModal } from "@/components/NombreModal"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 import { X, Clock, Users, Eye } from "lucide-react"
 import styles from "./page.module.css"
+import ticketStyles from "./ticket.module.css"
 
 export const dynamic = "force-dynamic"
 
@@ -190,101 +190,72 @@ export default function HomePage() {
 
       {/* Modal de Ticket Generado */}
       {showTicket && ultimoTicket && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-          <div className="bg-gradient-to-br from-red-50 via-white to-orange-50 rounded-3xl shadow-2xl max-w-sm w-full mx-4 animate-scaleIn border-4 border-red-200 relative overflow-hidden">
+        <div className={ticketStyles.ticketOverlay}>
+          <div className={ticketStyles.ticketCard}>
             {ultimoTicket.premio?.ganador && (
-              <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-                <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-yellow-200 via-orange-200 to-red-200 opacity-30 animate-pulse"></div>
-                <div className="absolute top-10 left-10 text-6xl animate-bounce">🎉</div>
-                <div className="absolute top-20 right-10 text-6xl animate-bounce delay-100">🎁</div>
-                <div className="absolute bottom-20 left-20 text-6xl animate-bounce delay-200">⭐</div>
-                <div className="absolute bottom-10 right-20 text-6xl animate-bounce delay-300">🎊</div>
+              <div className={ticketStyles.winnerOverlay}>
+                <div className={ticketStyles.winnerGradient}></div>
+                <div className={`${ticketStyles.winnerEmoji} ${ticketStyles.winnerEmoji1}`}>🎉</div>
+                <div className={`${ticketStyles.winnerEmoji} ${ticketStyles.winnerEmoji2}`}>🎁</div>
+                <div className={`${ticketStyles.winnerEmoji} ${ticketStyles.winnerEmoji3}`}>⭐</div>
+                <div className={`${ticketStyles.winnerEmoji} ${ticketStyles.winnerEmoji4}`}>🎊</div>
               </div>
             )}
 
-            {/* Elementos decorativos de fondo */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-red-100 rounded-full opacity-30 -translate-y-16 translate-x-16"></div>
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-orange-100 rounded-full opacity-40 translate-y-12 -translate-x-12"></div>
-            <div className="absolute top-1/2 left-1/2 w-40 h-40 bg-red-50 rounded-full opacity-20 -translate-x-1/2 -translate-y-1/2"></div>
+            <div className={`${ticketStyles.decorativeCircle} ${ticketStyles.decorativeCircle1}`}></div>
+            <div className={`${ticketStyles.decorativeCircle} ${ticketStyles.decorativeCircle2}`}></div>
+            <div className={`${ticketStyles.decorativeCircle} ${ticketStyles.decorativeCircle3}`}></div>
 
-            {/* Botón Cerrar */}
-            <button
-              onClick={irAProximos}
-              className="absolute top-4 right-4 bg-white/80 hover:bg-white rounded-full p-2 transition-colors z-20 shadow-lg"
-            >
-              <X className="h-5 w-5 text-gray-600" />
+            <button onClick={irAProximos} className={ticketStyles.closeButton}>
+              <X className={ticketStyles.closeIcon} />
             </button>
 
-            {/* Contenido del Ticket */}
-            <div className="p-6 text-center relative z-10">
+            <div className={ticketStyles.ticketContent}>
               {ultimoTicket.premio?.ganador && (
-                <div className="mb-4 bg-gradient-to-r from-yellow-400 via-orange-400 to-red-400 text-white p-4 rounded-2xl shadow-xl animate-pulse">
-                  <div className="text-4xl mb-2">🎉 ¡FELICITACIONES! 🎉</div>
-                  <div className="text-lg font-bold">¡GANASTE UN PREMIO!</div>
+                <div className={ticketStyles.winnerBanner}>
+                  <div className={ticketStyles.winnerBannerEmoji}>🎉 ¡FELICITACIONES! 🎉</div>
+                  <div className={ticketStyles.winnerBannerTitle}>¡GANASTE UN PREMIO!</div>
                 </div>
               )}
 
-              {/* Header con Logo */}
-              <div className="mb-4">
-                <div className="backdrop-blur-sm rounded-2xl p-3 mb-3 shadow-lg border border-white/50 bg-destructive">
-                  <img
-                    src="/logo-rojo.png"
-                    alt="ZOCO"
-                    className="h-14 mx-auto object-contain"
-                    style={{
-                      filter: "brightness(1) saturate(1.2) contrast(1.1)",
-                    }}
-                  />
+              <div className={ticketStyles.logoSection}>
+                <div className={ticketStyles.logoWrapper}>
+                  <img src="/logo-rojo.png" alt="ZOCO" className={ticketStyles.ticketLogo} />
                 </div>
-                <h2 className="text-xl font-bold text-gray-800">
+                <h2 className={ticketStyles.ticketTitle}>
                   {ultimoTicket.premio?.ganador ? "¡Tu Número Ganador!" : "¡Tu Número de Atención!"}
                 </h2>
               </div>
 
-              {/* Número Principal con Logo de fondo */}
               <div
-                className={`relative rounded-2xl p-6 mb-4 text-white shadow-xl overflow-hidden ${
-                  ultimoTicket.premio?.ganador
-                    ? "bg-gradient-to-r from-yellow-500 via-orange-500 to-red-500"
-                    : "bg-gradient-to-r from-red-500 to-red-600"
+                className={`${ticketStyles.numberDisplay} ${
+                  ultimoTicket.premio?.ganador ? ticketStyles.numberDisplayWinner : ticketStyles.numberDisplayNormal
                 }`}
               >
-                {/* Logo de fondo sutil */}
-                <div className="absolute inset-0 flex items-center justify-center opacity-8">
-                  <img
-                    src="/logo-rojo.png"
-                    alt="ZOCO Background"
-                    className="h-24 object-contain filter brightness-0 invert opacity-20"
-                  />
+                <div className={ticketStyles.numberBackground}>
+                  <img src="/logo-rojo.png" alt="ZOCO Background" className={ticketStyles.numberBackgroundLogo} />
                 </div>
 
-                {/* Contenido principal */}
-                <div className="relative z-10">
-                  <div className="text-6xl font-black mb-3 drop-shadow-lg">
-                    {ultimoTicket.numero.toString().padStart(3, "0")}
-                  </div>
-                  <div className="bg-white/20 backdrop-blur-sm rounded-xl py-3 px-6 text-xl font-bold border border-white/30">
-                    {ultimoTicket.nombre}
-                  </div>
+                <div className={ticketStyles.numberContent}>
+                  <div className={ticketStyles.ticketNumber}>{ultimoTicket.numero.toString().padStart(3, "0")}</div>
+                  <div className={ticketStyles.ticketName}>{ultimoTicket.nombre}</div>
                 </div>
 
-                {/* Elementos decorativos en el número */}
-                <div className="absolute top-2 right-2 w-8 h-8 bg-white/10 rounded-full"></div>
-                <div className="absolute bottom-2 left-2 w-6 h-6 bg-white/10 rounded-full"></div>
+                <div className={`${ticketStyles.numberDecorative} ${ticketStyles.numberDecorative1}`}></div>
+                <div className={`${ticketStyles.numberDecorative} ${ticketStyles.numberDecorative2}`}></div>
               </div>
 
               {ultimoTicket.premio?.ganador && ultimoTicket.premio.mensaje && (
-                <div className="bg-gradient-to-r from-yellow-100 to-orange-100 border-2 border-yellow-400 rounded-xl p-4 mb-4 shadow-lg">
-                  <div className="text-2xl mb-2">🎁</div>
-                  <p className="text-lg font-bold text-gray-800">{ultimoTicket.premio.mensaje}</p>
-                  <p className="text-sm text-gray-600 mt-2">Mostrá este ticket al empleado para reclamar tu premio</p>
+                <div className={ticketStyles.prizeMessage}>
+                  <div className={ticketStyles.prizeEmoji}>🎁</div>
+                  <p className={ticketStyles.prizeText}>{ultimoTicket.premio.mensaje}</p>
+                  <p className={ticketStyles.prizeSubtext}>Mostrá este ticket al empleado para reclamar tu premio</p>
                 </div>
               )}
 
-              {/* Información de Fecha y Hora */}
-              <div className="bg-white/70 backdrop-blur-sm rounded-xl p-3 mb-4 shadow-lg border border-gray-200">
-                <div className="text-sm text-gray-600 mb-1">📅 Generado el:</div>
-                <div className="font-bold text-gray-800">
+              <div className={ticketStyles.dateTimeInfo}>
+                <div className={ticketStyles.dateLabel}>📅 Generado el:</div>
+                <div className={ticketStyles.dateValue}>
                   {new Date().toLocaleDateString("es-AR", {
                     weekday: "long",
                     year: "numeric",
@@ -292,7 +263,7 @@ export default function HomePage() {
                     day: "numeric",
                   })}
                 </div>
-                <div className="font-bold text-gray-800 text-lg">
+                <div className={ticketStyles.timeValue}>
                   🕐{" "}
                   {new Date().toLocaleTimeString("es-AR", {
                     hour: "2-digit",
@@ -301,22 +272,17 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Instrucciones */}
-              <div className="bg-white/70 backdrop-blur-sm rounded-xl p-3 mb-4 border border-gray-200">
-                <p className="text-sm text-gray-700 leading-relaxed">
-                  📍 Por favor, <span className="font-semibold text-red-600">avance al centro del salón</span> para ser
-                  llamado cuando llegue su turno
+              <div className={ticketStyles.instructions}>
+                <p className={ticketStyles.instructionsText}>
+                  📍 Por favor, <span className={ticketStyles.instructionsHighlight}>avance al centro del salón</span>{" "}
+                  para ser llamado cuando llegue su turno
                 </p>
               </div>
 
-              {/* Botón de Ir a Próximos */}
-              <Button
-                onClick={irAProximos}
-                className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white py-3 text-lg rounded-xl shadow-lg transform hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2"
-              >
-                <Eye className="h-5 w-5" />
+              <button onClick={irAProximos} className={ticketStyles.viewPositionButton}>
+                <Eye className={ticketStyles.viewPositionIcon} />
                 Ver mi Posición en la Fila
-              </Button>
+              </button>
             </div>
           </div>
         </div>
