@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
       sistema: {
         version: "5.2",
         timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
+        runtime: process.env.VERCEL_ENV || "development",
       },
     }
 
