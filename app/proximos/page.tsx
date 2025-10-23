@@ -85,6 +85,7 @@ export default function ProximosPage() {
           numero: numeroProximo,
           nombre: ticket.nombre,
           posicion: i,
+          premio: ticket.premio,
         })
       }
     }
@@ -146,16 +147,24 @@ export default function ProximosPage() {
                   key={item.numero}
                   className={`${styles.nextCard} ${
                     index === 0 ? styles.first : index === 1 ? styles.second : index === 2 ? styles.third : styles.other
-                  }`}
+                  } ${item.premio?.ganador ? styles.prizeCard : ""}`}
                 >
                   <div className={styles.nextCardLeft}>
                     <div className={styles.nextCardNumber}>
                       <span className={styles.nextCardNumberText}>{item.numero.toString().padStart(3, "0")}</span>
                     </div>
                     <div>
-                      <p className={styles.nextCardName}>{item.nombre}</p>
+                      <p className={styles.nextCardName}>
+                        {item.nombre}
+                        {item.premio?.ganador && (
+                          <span className={styles.prizeIcon} title="¡Ticket con premio!">
+                            🏆
+                          </span>
+                        )}
+                      </p>
                       <p className={styles.nextCardPosition}>
                         {index === 0 ? "🥇 Siguiente" : `Posición ${item.posicion}`}
+                        {item.premio?.ganador && <span className={styles.prizeLabel}>¡CON PREMIO!</span>}
                       </p>
                     </div>
                   </div>

@@ -162,7 +162,7 @@ export default function EmpleadosPage() {
                             : index === 2
                               ? styles.proximoItemThird
                               : ""
-                      }`}
+                      } ${ticket.premio?.ganador ? styles.proximoItemPrize : ""}`}
                     >
                       <div className={styles.proximoContent}>
                         <div className={styles.proximoLeft}>
@@ -182,15 +182,15 @@ export default function EmpleadosPage() {
                           <div className={styles.proximoInfo}>
                             <p className={styles.proximoNombre}>
                               {ticket.nombre.length > 20 ? ticket.nombre.substring(0, 20) + "..." : ticket.nombre}
-                              {ticket.premio?.ganador && <span title="¡Ticket con premio!">🎁</span>}
+                              {ticket.premio?.ganador && (
+                                <span className={styles.prizeIcon} title="¡Ticket con premio!">
+                                  🏆
+                                </span>
+                              )}
                             </p>
                             <p className={styles.proximoPosicion}>
                               {index === 0 ? "🥇 Siguiente" : `Posición ${ticket.posicion}`}
-                              {ticket.premio?.ganador && (
-                                <span style={{ marginLeft: "0.5rem", color: "#ea580c", fontWeight: "bold" }}>
-                                  ¡CON PREMIO!
-                                </span>
-                              )}
+                              {ticket.premio?.ganador && <span className={styles.prizeLabel}>¡CON PREMIO!</span>}
                             </p>
                           </div>
                         </div>
