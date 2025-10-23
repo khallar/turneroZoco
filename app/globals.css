@@ -66,10 +66,8 @@
     @apply border-border;
   }
 
-  /* Use Inter font from variable instead of system fonts */
+  /* Removed CSS variable references, font loads directly from Next.js */
   html {
-    font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", "Arial",
-      sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-weight: 500;
@@ -77,8 +75,6 @@
   }
 
   body {
-    font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", "Arial",
-      sans-serif;
     font-weight: 500;
     line-height: 1.6;
     color: rgb(31 41 55);
