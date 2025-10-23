@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 import { Play, Users, ArrowLeft, Eye } from "lucide-react"
 
+export const dynamic = "force-dynamic"
+
 const frasesEmpleados = [
   "¡Turno confirmado! Ahora no tenés excusa para olvidarte 😉",
   "Tu yo del futuro te va a agradecer este turno 🙌",

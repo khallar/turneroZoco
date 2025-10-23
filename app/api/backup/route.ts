@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { leerEstadoSistema, crearBackupDiario, obtenerBackups } from "@/lib/database"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 export async function POST(request: NextRequest) {
   try {
     console.log("📦 Iniciando creación de backup manual...")

@@ -2,6 +2,9 @@ import { type NextRequest, NextResponse } from "next/server"
 import { obtenerPremiosDia, guardarPremiosDia, obtenerEstadisticasPremios } from "@/lib/premios"
 import { getTodayDateString } from "@/lib/database"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)

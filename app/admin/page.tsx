@@ -38,6 +38,8 @@ import {
   ResponsiveContainer,
 } from "recharts"
 
+export const dynamic = "force-dynamic"
+
 export default function PaginaAdmin() {
   const { estado, loading, error, generarTicket, llamarSiguiente, reiniciarContador, recargar } = useSistemaEstado()
 

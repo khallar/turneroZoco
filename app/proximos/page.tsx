@@ -4,6 +4,8 @@ import { useState, useEffect } from "react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 import { Clock, Users, Timer } from "lucide-react"
 
+export const dynamic = "force-dynamic"
+
 export default function ProximosPage() {
   const { estado, loading, error } = useSistemaEstado()
   const [horaActual, setHoraActual] = useState<string>("")

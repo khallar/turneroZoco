@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { leerEstadoSistema, verificarConexionDB } from "@/lib/database"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 export async function GET(request: NextRequest) {
   try {
     console.log("🔍 Iniciando debug del sistema...")

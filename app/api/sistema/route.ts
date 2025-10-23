@@ -7,6 +7,9 @@ import {
   crearBackupDiario,
 } from "@/lib/database"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 interface TicketInfo {
   numero: number
   nombre: string

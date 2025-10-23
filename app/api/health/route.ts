@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { checkUpstashHealth } from "@/lib/upstash-health"
 
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
+
 export async function GET(request: NextRequest) {
   try {
     const health = await checkUpstashHealth()

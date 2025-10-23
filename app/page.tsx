@@ -6,6 +6,8 @@ import { NombreModal } from "@/components/NombreModal"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 import { X, Clock, Users, Eye } from "lucide-react"
 
+export const dynamic = "force-dynamic"
+
 interface TicketInfo {
   numero: number
   nombre: string
