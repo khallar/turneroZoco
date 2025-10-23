@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
+  Shield,
   RotateCcw,
   BarChart3,
   Calendar,
@@ -11,8 +12,12 @@ import {
   Clock,
   TrendingUp,
   AlertTriangle,
+  Database,
   RefreshCw,
+  ArrowLeft,
   Timer,
+  CheckCircle,
+  Eye,
   PieChart,
   Target,
   Zap,
@@ -727,14 +732,7 @@ export default function PaginaAdmin() {
             <img src="/logo-rojo.png" alt="Logo Sistema de Atención" className={styles.logo} />
           </div>
           <h1 className={styles.title}>
-            <svg className={styles.titleIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-              />
-            </svg>
+            <Shield className="h-8 w-8 md:h-12 md:w-12 text-red-600" />
             Panel de Administración
           </h1>
           <p className={styles.subtitle}>Control total del sistema de atención</p>
@@ -742,21 +740,11 @@ export default function PaginaAdmin() {
           {/* Información de estado */}
           <div className={styles.statusInfo}>
             <div className={styles.statusItem}>
-              <svg className={styles.statusIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" />
-              </svg>
+              <Clock className="h-4 w-4" />
               <span>{horaActual.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}</span>
             </div>
             <div className={styles.statusItem}>
-              <svg className={styles.statusIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"
-                />
-              </svg>
+              <Database className="h-4 w-4" />
               <span>
                 Última sync: {new Date().toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}
               </span>
@@ -766,37 +754,15 @@ export default function PaginaAdmin() {
           {/* Botones de navegación */}
           <div className={styles.navButtons}>
             <a href="/" className={`${styles.navButton} ${styles.navButtonBlue}`}>
-              <svg className={styles.navIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
+              <ArrowLeft className="mr-2 h-4 w-4" />
               Volver a Tickets
             </a>
             <a href="/empleados" className={`${styles.navButton} ${styles.navButtonGreen}`}>
-              <svg className={styles.navIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-                />
-              </svg>
+              <Users className="mr-2 h-4 w-4" />
               Panel Empleados
             </a>
             <a href="/proximos" className={`${styles.navButton} ${styles.navButtonPurple}`}>
-              <svg className={styles.navIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                />
-              </svg>
+              <Eye className="mr-2 h-4 w-4" />
               Ver Próximos
             </a>
           </div>
@@ -807,14 +773,7 @@ export default function PaginaAdmin() {
           <div className={`${styles.statCard} ${styles.statCardBlue}`}>
             <div className={styles.statHeader}>
               <span className={styles.statTitle}>Tickets Hoy</span>
-              <svg className={styles.statIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-                />
-              </svg>
+              <Users className="h-4 w-4" />
             </div>
             <div className={styles.statValue}>{estado?.totalAtendidos}</div>
             <p className={styles.statLabel}>Emitidos en el día</p>
@@ -823,14 +782,7 @@ export default function PaginaAdmin() {
           <div className={`${styles.statCard} ${styles.statCardGreen}`}>
             <div className={styles.statHeader}>
               <span className={styles.statTitle}>Atendidos</span>
-              <svg className={styles.statIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+              <CheckCircle className="h-4 w-4" />
             </div>
             <div className={styles.statValue}>{estado?.numerosLlamados}</div>
             <p className={styles.statLabel}>Tickets procesados</p>
@@ -839,10 +791,7 @@ export default function PaginaAdmin() {
           <div className={`${styles.statCard} ${styles.statCardOrange}`}>
             <div className={styles.statHeader}>
               <span className={styles.statTitle}>En Espera</span>
-              <svg className={styles.statIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <circle cx="12" cy="12" r="10" strokeWidth={2} />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" />
-              </svg>
+              <Clock className="h-4 w-4" />
             </div>
             <div className={styles.statValue}>{estado?.totalAtendidos - estado?.numerosLlamados}</div>
             <p className={styles.statLabel}>Pendientes</p>
@@ -851,9 +800,7 @@ export default function PaginaAdmin() {
           <div className={`${styles.statCard} ${styles.statCardPurple}`}>
             <div className={styles.statHeader}>
               <span className={styles.statTitle}>Eficiencia</span>
-              <svg className={styles.statIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-              </svg>
+              <TrendingUp className="h-4 w-4" />
             </div>
             <div className={styles.statValue}>{estadisticasAdminCalculadas.eficienciaGeneral}%</div>
             <p className={styles.statLabel}>Tasa de atención</p>
@@ -1790,10 +1737,10 @@ export default function PaginaAdmin() {
         )}
 
         {/* Footer */}
-        <footer className={styles.footer}>
-          <div className={styles.footerText}>
-            <p>Develop by: Karim :) | Versión 8.0 | Panel Admin Vanilla CSS</p>
-            <p>Actualización inteligente cada 120s | Sin dependencias externas</p>
+        <footer className="text-center mt-8 pt-4 border-t border-gray-200">
+          <div className="text-xs text-gray-400">
+            <p>Develop by: Karim :) | Versión 7.1 | Panel Admin con Reinicio de Contador</p>
+            <p>Actualización inteligente cada 120s | Cache compartido entre páginas</p>
           </div>
         </footer>
       </div>
