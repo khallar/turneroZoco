@@ -1,0 +1,176 @@
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 1rem;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.card {
+  width: 100%;
+  max-width: 28rem;
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  animation: scaleIn 0.3s ease-out;
+}
+
+.cardContent {
+  padding: 2rem;
+  text-align: center;
+}
+
+.ticketInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.numero {
+  font-size: 3.75rem;
+  font-weight: 700;
+  color: #dc2626;
+}
+
+.nombre {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.fecha {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  font-size: 0.875rem;
+}
+
+.buttonPrimary {
+  flex: 1;
+  background: #16a34a;
+  color: white;
+}
+
+.buttonPrimary:hover {
+  background: #15803d;
+}
+
+.buttonOutline {
+  background: white;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+
+.buttonOutline:hover {
+  background: #f9fafb;
+}
+
+.buttonClose {
+  margin-top: 1rem;
+  width: 100%;
+  background: transparent;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+
+.buttonClose:hover {
+  background: #f9fafb;
+}
+
+.ticketStatic {
+  background: white;
+  border: 2px dashed #d1d5db;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.ticketTitle {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 1rem;
+}
+
+.numeroStatic {
+  font-size: 3.75rem;
+  font-weight: 700;
+  color: #dc2626;
+  border: 4px solid #dc2626;
+  border-radius: 0.5rem;
+  padding: 1rem 0;
+  margin-bottom: 1rem;
+}
+
+.nombreBadge {
+  background: #16a34a;
+  color: white;
+  font-weight: 700;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  margin-bottom: 1rem;
+}
+
+.divider {
+  border-top: 1px dashed #d1d5db;
+  padding-top: 1rem;
+  margin-top: 1rem;
+}
+
+.ticketFooter {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.ticketFooter p {
+  margin-bottom: 0.25rem;
+}
+
+.ticketBrand {
+  font-size: 0.75rem;
+  color: #dc2626;
+  font-weight: 700;
+  margin-top: 0.5rem;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

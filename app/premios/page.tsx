@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Switch } from "@/components/ui/switch"
 import { ArrowLeft, Gift, Save, TrendingUp } from "lucide-react"
 import type { ConfiguracionPremios, Premio } from "@/lib/premios"
 import styles from "./page.module.css"
@@ -146,10 +145,14 @@ export default function PremiosPage() {
                   <Gift className="h-6 w-6" />
                   Premio {index + 1}
                 </span>
-                <Switch
-                  checked={premio.activo}
-                  onCheckedChange={(checked) => actualizarPremio(index, "activo", checked)}
-                />
+                <label className={styles.switch}>
+                  <input
+                    type="checkbox"
+                    checked={premio.activo}
+                    onChange={(e) => actualizarPremio(index, "activo", e.target.checked)}
+                  />
+                  <span className={styles.slider}></span>
+                </label>
               </div>
               <div className={styles.premioContent}>
                 {/* Mensaje del Premio */}

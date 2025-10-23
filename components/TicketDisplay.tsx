@@ -1,9 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Share2, Download } from "lucide-react"
+import styles from "./TicketDisplay.module.css"
 
 interface TicketDisplayProps {
   numero: number
@@ -150,63 +149,63 @@ export default function TicketDisplay({
   // Si es un modal (tiene onClose), renderizar como modal
   if (onClose) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <Card className={`w-full max-w-md bg-white ${className}`}>
-          <CardContent className="p-8 text-center">
-            <div className="space-y-4">
-              <div className="text-6xl font-bold text-red-600">{numero.toString().padStart(3, "0")}</div>
-              <div className="text-xl font-semibold text-gray-800">{nombre}</div>
-              <div className="text-sm text-gray-500">{fecha}</div>
+      <div className={styles.modal}>
+        <div className={`${styles.card} ${className}`}>
+          <div className={styles.cardContent}>
+            <div className={styles.ticketInfo}>
+              <div className={styles.numero}>{numero.toString().padStart(3, "0")}</div>
+              <div className={styles.nombre}>{nombre}</div>
+              <div className={styles.fecha}>{fecha}</div>
             </div>
-            <div className="flex gap-2 justify-center mt-4">
-              <Button
+            <div className={styles.actions}>
+              <button
                 onClick={esMobile ? () => {} : generarImagenTicket}
-                className="flex-1 bg-green-600 hover:bg-green-700"
+                className={`${styles.button} ${styles.buttonPrimary}`}
               >
-                <Download className="mr-2 h-4 w-4" />
+                <Download className="h-4 w-4" />
                 {esMobile ? "Guardar Imagen" : "Descargar Ticket"}
-              </Button>
-              <Button onClick={compartirTicket} variant="outline">
-                <Share2 className="mr-2 h-4 w-4" />
+              </button>
+              <button onClick={compartirTicket} className={`${styles.button} ${styles.buttonOutline}`}>
+                <Share2 className="h-4 w-4" />
                 Compartir
-              </Button>
+              </button>
             </div>
-            <Button onClick={onClose} className="mt-4 w-full bg-transparent" variant="outline">
+            <button onClick={onClose} className={`${styles.button} ${styles.buttonClose}`}>
               Cerrar
-            </Button>
-          </CardContent>
-        </Card>
+            </button>
+          </div>
+        </div>
       </div>
     )
   }
 
   // Renderizado normal (no modal)
   return (
-    <div className={`bg-white border-2 border-dashed border-gray-300 rounded-lg p-6 text-center ${className}`}>
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold text-gray-700">NÚMERO DE ATENCIÓN</h3>
-        <div className="text-6xl font-bold text-red-600 border-4 border-red-600 rounded-lg py-4">
-          {numero.toString().padStart(3, "0")}
-        </div>
-        <div className="bg-green-600 text-white font-bold py-2 px-4 rounded">{nombre}</div>
-        <div className="text-sm text-gray-500">{fecha}</div>
-        <div className="border-t border-dashed border-gray-300 pt-4">
-          <p className="text-xs text-gray-500">Conserve este ticket</p>
-          <p className="text-xs text-gray-500">Será llamado por su número o nombre</p>
-          <p className="text-xs text-red-600 font-bold mt-2">ZOCO - Sistema de Atención</p>
+    <div className={`${styles.ticketStatic} ${className}`}>
+      <div className={styles.ticketInfo}>
+        <h3 className={styles.ticketTitle}>NÚMERO DE ATENCIÓN</h3>
+        <div className={styles.numeroStatic}>{numero.toString().padStart(3, "0")}</div>
+        <div className={styles.nombreBadge}>{nombre}</div>
+        <div className={styles.fecha}>{fecha}</div>
+        <div className={styles.divider}>
+          <div className={styles.ticketFooter}>
+            <p>Conserve este ticket</p>
+            <p>Será llamado por su número o nombre</p>
+            <p className={styles.ticketBrand}>ZOCO - Sistema de Atención</p>
+          </div>
         </div>
       </div>
 
       {showActions && (
-        <div className="flex gap-2 justify-center mt-4">
-          <Button onClick={generarImagenTicket} size="sm" className="bg-green-600 hover:bg-green-700">
-            <Download className="mr-2 h-4 w-4" />
+        <div className={styles.actions}>
+          <button onClick={generarImagenTicket} className={`${styles.button} ${styles.buttonPrimary}`}>
+            <Download className="h-4 w-4" />
             Descargar
-          </Button>
-          <Button onClick={compartirTicket} variant="outline" size="sm">
-            <Share2 className="mr-2 h-4 w-4" />
+          </button>
+          <button onClick={compartirTicket} className={`${styles.button} ${styles.buttonOutline}`}>
+            <Share2 className="h-4 w-4" />
             Compartir
-          </Button>
+          </button>
         </div>
       )}
     </div>

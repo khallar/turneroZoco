@@ -1,0 +1,406 @@
+.container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #eff6ff 0%, #e0e7ff 100%);
+  padding: 1.5rem;
+}
+
+.maxWidth {
+  max-width: 56rem;
+  margin: 0 auto;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.title {
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  color: #6b7280;
+  font-size: 1rem;
+}
+
+.nav {
+  margin-bottom: 2rem;
+}
+
+.navLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.navLink:hover {
+  color: #1d4ed8;
+}
+
+.card {
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 2rem;
+}
+
+.cardHeader {
+  padding: 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.cardTitleLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cardContent {
+  padding: 1.5rem;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  font-size: 0.875rem;
+}
+
+.buttonPrimary {
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  color: white;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 1.125rem;
+}
+
+.buttonPrimary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3);
+}
+
+.buttonPrimary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.buttonOutline {
+  background: white;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+
+.buttonOutline:hover {
+  background: #f9fafb;
+}
+
+.buttonSmall {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.infoBox {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.infoHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.infoList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.infoItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.infoItem:last-child {
+  border-bottom: none;
+}
+
+.infoLabel {
+  color: #6b7280;
+}
+
+.infoValue {
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.infoValueSuccess {
+  color: #16a34a;
+}
+
+.infoValueError {
+  color: #dc2626;
+}
+
+.debugSection {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.debugLabel {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-bottom: 0.5rem;
+}
+
+.debugPre {
+  font-size: 0.75rem;
+  background: #f9fafb;
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  overflow: auto;
+  max-height: 16rem;
+}
+
+.warningBox {
+  background: #fef3c7;
+  border: 1px solid #fde047;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.warningTitle {
+  font-weight: 600;
+  color: #92400e;
+  margin-bottom: 0.5rem;
+}
+
+.warningText {
+  font-size: 0.875rem;
+  color: #78350f;
+  margin-bottom: 0.75rem;
+}
+
+.warningInner {
+  background: white;
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+}
+
+.warningInnerTitle {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}
+
+.warningList {
+  font-size: 0.75rem;
+  color: #6b7280;
+  list-style: decimal inside;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.loadingCenter {
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid #e5e7eb;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loadingText {
+  color: #6b7280;
+}
+
+.blueBox {
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.blueTitle {
+  font-weight: 600;
+  color: #1e40af;
+  margin-bottom: 0.5rem;
+}
+
+.blueList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.blueItem {
+  display: flex;
+  justify-content: space-between;
+}
+
+.blueLabel {
+  color: #6b7280;
+}
+
+.blueValue {
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.successBox {
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.successTitle {
+  font-weight: 600;
+  color: #166534;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.errorBox {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.errorTitle {
+  font-weight: 600;
+  color: #991b1b;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.errorText {
+  color: #b91c1c;
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.step {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.stepNumber {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  background: #dbeafe;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.stepContent h4 {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.stepContent p {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.stepBox {
+  background: #f9fafb;
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid #e5e7eb;
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.stepBox > div {
+  margin-bottom: 0.5rem;
+}
+
+.stepBox > div:last-child {
+  margin-bottom: 0;
+}
+
+.stepLabel {
+  font-weight: 600;
+}
+
+.stepCode {
+  font-family: monospace;
+  background: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+}
+
+.footer {
+  margin-top: 2rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.footer p {
+  margin-top: 0.25rem;
+}
