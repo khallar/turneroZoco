@@ -9,6 +9,9 @@ const inter = Inter({
   weight: ["400", "500", "600", "700", "800", "900"],
 })
 
+console.log("[v0] Layout loading - Inter font className:", inter.className)
+console.log("[v0] Globals.css imported successfully")
+
 export const metadata: Metadata = {
   title: "Sistema de Turnos ZOCO",
   description: "Sistema de gestión de turnos para ZOCO",
@@ -24,6 +27,8 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  console.log("[v0] RootLayout rendering")
+
   return (
     <html lang="es" className="bg-white">
       <body className={`${inter.className} antialiased bg-white text-gray-900 min-h-screen`}>{children}</body>
