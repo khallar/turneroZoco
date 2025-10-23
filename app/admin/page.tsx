@@ -1135,11 +1135,8 @@ export default function PaginaAdmin() {
 
                     {mostrarGraficoEvolucion && (
                       <div className="bg-white p-4 rounded-lg">
-                        {/* Gráfico de Tickets Emitidos y Atendidos */}
                         <div className="mb-6">
-                          <h5 className="font-semibold text-gray-700 mb-3 text-center">
-                            Tickets Emitidos vs Atendidos
-                          </h5>
+                          <h5 className="font-semibold text-gray-700 mb-3 text-center">Tickets Emitidos por Día</h5>
                           <ResponsiveContainer width="100%" height={300}>
                             <RechartsLineChart data={datosGraficoEvolucion}>
                               <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
@@ -1171,60 +1168,6 @@ export default function PaginaAdmin() {
                                 strokeWidth={2}
                                 name="Tickets Emitidos"
                                 dot={{ fill: "#3b82f6", r: 4 }}
-                                activeDot={{ r: 6 }}
-                              />
-                              <Line
-                                type="monotone"
-                                dataKey="atendidos"
-                                stroke="#10b981"
-                                strokeWidth={2}
-                                name="Tickets Atendidos"
-                                dot={{ fill: "#10b981", r: 4 }}
-                                activeDot={{ r: 6 }}
-                              />
-                            </RechartsLineChart>
-                          </ResponsiveContainer>
-                        </div>
-
-                        {/* Gráfico de Eficiencia */}
-                        <div className="mb-6">
-                          <h5 className="font-semibold text-gray-700 mb-3 text-center">Eficiencia Diaria (%)</h5>
-                          <ResponsiveContainer width="100%" height={250}>
-                            <RechartsLineChart data={datosGraficoEvolucion}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                              <XAxis
-                                dataKey="fechaCorta"
-                                tick={{ fontSize: 12 }}
-                                angle={-45}
-                                textAnchor="end"
-                                height={60}
-                              />
-                              <YAxis
-                                tick={{ fontSize: 12 }}
-                                domain={[0, 100]}
-                                label={{ value: "%", angle: -90, position: "insideLeft" }}
-                              />
-                              <Tooltip
-                                contentStyle={{
-                                  backgroundColor: "white",
-                                  border: "1px solid #ccc",
-                                  borderRadius: "8px",
-                                  padding: "10px",
-                                }}
-                                labelFormatter={(label) => {
-                                  const dato = datosGraficoEvolucion.find((d) => d.fechaCorta === label)
-                                  return dato ? `${dato.diaSemana} ${dato.fecha}` : label
-                                }}
-                                formatter={(value: number) => [`${value}%`, "Eficiencia"]}
-                              />
-                              <Legend />
-                              <Line
-                                type="monotone"
-                                dataKey="eficiencia"
-                                stroke="#8b5cf6"
-                                strokeWidth={2}
-                                name="Eficiencia"
-                                dot={{ fill: "#8b5cf6", r: 4 }}
                                 activeDot={{ r: 6 }}
                               />
                             </RechartsLineChart>
@@ -1277,8 +1220,7 @@ export default function PaginaAdmin() {
                           </ResponsiveContainer>
                         </div>
 
-                        {/* Estadísticas del período */}
-                        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-4">
                           <div className="bg-blue-50 p-3 rounded-lg text-center">
                             <div className="text-2xl font-bold text-blue-600">
                               {Math.round(
@@ -1297,16 +1239,6 @@ export default function PaginaAdmin() {
                             </div>
                             <p className="text-xs text-green-700">Promedio Atendidos/Día</p>
                           </div>
-                          <div className="bg-purple-50 p-3 rounded-lg text-center">
-                            <div className="text-2xl font-bold text-purple-600">
-                              {Math.round(
-                                datosGraficoEvolucion.reduce((sum, d) => sum + d.eficiencia, 0) /
-                                  datosGraficoEvolucion.length,
-                              )}
-                              %
-                            </div>
-                            <p className="text-xs text-purple-700">Eficiencia Promedio</p>
-                          </div>
                           <div className="bg-orange-50 p-3 rounded-lg text-center">
                             <div className="text-2xl font-bold text-orange-600">
                               {Math.round(
@@ -1319,13 +1251,12 @@ export default function PaginaAdmin() {
                           </div>
                         </div>
 
-                        {/* Análisis de tendencia */}
                         <div className="mt-4 bg-gradient-to-r from-cyan-50 to-blue-50 p-4 rounded-lg border border-cyan-200">
                           <h5 className="font-semibold text-cyan-800 mb-2 flex items-center gap-2">
                             <TrendingUp className="h-5 w-5" />
                             Análisis de Tendencia
                           </h5>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                             <div>
                               <span className="text-cyan-700 font-medium">Mejor día:</span>
                               <p className="text-cyan-900 font-bold">
@@ -1336,21 +1267,6 @@ export default function PaginaAdmin() {
                                     .emitidos
                                 }{" "}
                                 tickets)
-                              </p>
-                            </div>
-                            <div>
-                              <span className="text-cyan-700 font-medium">Mayor eficiencia:</span>
-                              <p className="text-cyan-900 font-bold">
-                                {
-                                  datosGraficoEvolucion.reduce((max, d) => (d.eficiencia > max.eficiencia ? d : max))
-                                    .fecha
-                                }{" "}
-                                (
-                                {
-                                  datosGraficoEvolucion.reduce((max, d) => (d.eficiencia > max.eficiencia ? d : max))
-                                    .eficiencia
-                                }
-                                %)
                               </p>
                             </div>
                             <div>
@@ -1850,7 +1766,7 @@ export default function PaginaAdmin() {
         {/* Footer */}
         <footer className="text-center mt-8 pt-4 border-t border-gray-200">
           <div className="text-xs text-gray-400">
-            <p>Develop by: Karim :) | Versión 7.0 | Panel Admin con Reinicio de Contador</p>
+            <p>Develop by: Karim :) | Versión 7.1 | Panel Admin con Reinicio de Contador</p>
             <p>Actualización inteligente cada 120s | Cache compartido entre páginas</p>
           </div>
         </footer>

@@ -79,6 +79,7 @@ export default function EmpleadosPage() {
           numero: numeroProximo,
           nombre: ticket.nombre,
           posicion: i,
+          premio: ticket.premio,
         })
       }
     }
@@ -193,11 +194,19 @@ export default function EmpleadosPage() {
                                   {ticket.numero.toString().padStart(3, "0")}
                                 </div>
                                 <div>
-                                  <p className="font-semibold text-gray-800 capitalize">
+                                  <p className="font-semibold text-gray-800 capitalize flex items-center gap-2">
                                     {ticket.nombre.length > 20 ? ticket.nombre.substring(0, 20) + "..." : ticket.nombre}
+                                    {ticket.premio?.ganador && (
+                                      <span className="text-xl" title="¡Ticket con premio!">
+                                        🎁
+                                      </span>
+                                    )}
                                   </p>
                                   <p className="text-sm text-gray-500">
                                     {index === 0 ? "🥇 Siguiente" : `Posición ${ticket.posicion}`}
+                                    {ticket.premio?.ganador && (
+                                      <span className="ml-2 text-orange-600 font-bold">¡CON PREMIO!</span>
+                                    )}
                                   </p>
                                 </div>
                               </div>
