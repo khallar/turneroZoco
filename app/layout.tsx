@@ -31,17 +31,12 @@ export default function RootLayout({
   console.log("[v0] RootLayout rendering")
 
   return (
-    <html lang="es" className={`${inter.variable} bg-white`}>
+    <html lang="es" className={inter.variable}>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta charSet="utf-8" />
       </head>
-      <body
-        className={`${inter.className} antialiased bg-white text-gray-900 min-h-screen`}
-        style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}
-      >
-        {children}
-      </body>
+      <body className={`${inter.className} antialiased`}>{children}</body>
     </html>
   )
 }
