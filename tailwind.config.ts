@@ -8,33 +8,6 @@ const config: Config = {
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "*.{js,ts,jsx,tsx,mdx}",
   ],
-  safelist: [
-    "bg-white",
-    "bg-gray-50",
-    "bg-gray-100",
-    "bg-red-50",
-    "bg-red-100",
-    "bg-red-600",
-    "bg-orange-50",
-    "bg-orange-100",
-    "bg-blue-50",
-    "bg-blue-100",
-    "bg-blue-600",
-    "text-white",
-    "text-gray-900",
-    "text-gray-800",
-    "text-gray-700",
-    "text-red-600",
-    "text-blue-600",
-    "min-h-screen",
-    "antialiased",
-  ],
-  future: {
-    hoverOnlyWhenSupported: true,
-    removeDeprecatedGapUtilities: true,
-    purgeLayersByDefault: true,
-    disableColorOpacityUtilitiesByDefault: false,
-  },
   theme: {
     extend: {
       colors: {
