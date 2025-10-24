@@ -81,6 +81,7 @@ export default function PaginaAdmin() {
 
   // Nuevo estado para controlar la visibilidad del gráfico de evolución
   const [mostrarGraficoEvolucion, setMostrarGraficoEvolucion] = useState(true)
+  const [mostrarDetallesDias, setMostrarDetallesDias] = useState(false)
 
   useEffect(() => {
     if (isClient) {
@@ -1050,6 +1051,15 @@ export default function PaginaAdmin() {
                 Resumen del Historial - Último Mes
               </div>
               <div className="flex gap-2">
+                <Button
+                  onClick={() => setMostrarDetallesDias(!mostrarDetallesDias)}
+                  variant="outline"
+                  size="sm"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                >
+                  <Eye className="mr-2 h-4 w-4" />
+                  {mostrarDetallesDias ? "Ocultar Detalles" : "Más Detalles"}
+                </Button>
                 <Button onClick={cargarBackups} variant="outline" size="sm" disabled={loadingBackups}>
                   <RefreshCw className={`mr-2 h-4 w-4 ${loadingBackups ? "animate-spin" : ""}`} />
                   {loadingBackups ? "Cargando..." : "Actualizar"}
@@ -1199,530 +1209,534 @@ export default function PaginaAdmin() {
           </CardContent>
         </Card>
 
-        {/* Historial de Días Anteriores MEJORADO */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Historial Completo de Días Anteriores
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={cargarBackups} variant="outline" size="sm" disabled={loadingBackups}>
-                  <RefreshCw className={`mr-2 h-4 w-4 ${loadingBackups ? "animate-spin" : ""}`} />
-                  {loadingBackups ? "Cargando..." : "Actualizar"}
-                </Button>
-                <Button onClick={crearBackupPrueba} variant="outline" size="sm" disabled={creandoBackupPrueba}>
-                  <Plus className={`mr-2 h-4 w-4 ${creandoBackupPrueba ? "animate-spin" : ""}`} />
-                  {creandoBackupPrueba ? "Creando..." : "Crear Backup"}
-                </Button>
-              </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingBackups ? (
-              <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-lg text-gray-600">Cargando historial de backups...</p>
-                <p className="text-sm text-gray-500 mt-2">Esto puede tomar unos momentos</p>
-              </div>
-            ) : errorBackups ? (
-              <div className="text-center py-12">
-                <div className="text-6xl mb-4">⚠️</div>
-                <p className="text-xl text-red-600 mb-2">Error al cargar historial</p>
-                <p className="text-gray-500 mb-4">{errorBackups}</p>
-                <div className="space-y-2">
-                  <Button onClick={cargarBackups} variant="outline">
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Reintentar
+        {mostrarDetallesDias && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  Historial Completo de Días Anteriores
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={cargarBackups} variant="outline" size="sm" disabled={loadingBackups}>
+                    <RefreshCw className={`mr-2 h-4 w-4 ${loadingBackups ? "animate-spin" : ""}`} />
+                    {loadingBackups ? "Cargando..." : "Actualizar"}
                   </Button>
-                  <Button onClick={crearBackupPrueba} variant="outline">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Crear Backup de Prueba
+                  <Button onClick={crearBackupPrueba} variant="outline" size="sm" disabled={creandoBackupPrueba}>
+                    <Plus className={`mr-2 h-4 w-4 ${creandoBackupPrueba ? "animate-spin" : ""}`} />
+                    {creandoBackupPrueba ? "Creando..." : "Crear Backup"}
                   </Button>
                 </div>
-              </div>
-            ) : backups.length > 0 ? (
-              <div className="space-y-4">
-                {datosGraficoEvolucion.length > 0 && (
-                  <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-lg border-2 border-indigo-200">
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className="font-bold text-indigo-800 text-lg flex items-center gap-2">
-                        <LineChart className="h-6 w-6" />📈 Evolución de los Últimos{" "}
-                        {Math.min(datosGraficoEvolucion.length, 30)} Días Activos
-                      </h4>
-                      <Button
-                        onClick={() => setMostrarGraficoEvolucion(!mostrarGraficoEvolucion)}
-                        variant="outline"
-                        size="sm"
-                      >
-                        {mostrarGraficoEvolucion ? "Ocultar" : "Mostrar"} Gráfico
-                      </Button>
-                    </div>
-
-                    {/* Información del horario de atención */}
-                    <div className="bg-white p-3 rounded-lg border border-indigo-200 mb-4">
-                      <p className="text-sm text-indigo-700">
-                        <Clock className="inline h-4 w-4 mr-1" />
-                        <strong>Horario de atención:</strong> 9:30 - 12:30 y 15:00 - 20:00 (Lunes a Sábado)
-                      </p>
-                      <p className="text-xs text-indigo-600 mt-1">
-                        Las métricas mostradas corresponden solo a los días con actividad registrada
-                      </p>
-                    </div>
-
-                    {mostrarGraficoEvolucion && (
-                      <div className="bg-white p-4 rounded-lg">
-                        <div className="mb-6">
-                          <h5 className="font-semibold text-gray-700 mb-3 text-center">Tickets Emitidos por Día</h5>
-                          <ResponsiveContainer width="100%" height={300}>
-                            <RechartsLineChart data={datosGraficoEvolucion}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                              <XAxis
-                                dataKey="fechaCorta"
-                                tick={{ fontSize: 12 }}
-                                angle={-45}
-                                textAnchor="end"
-                                height={60}
-                              />
-                              <YAxis tick={{ fontSize: 12 }} />
-                              <Tooltip
-                                contentStyle={{
-                                  backgroundColor: "white",
-                                  border: "1px solid #ccc",
-                                  borderRadius: "8px",
-                                  padding: "10px",
-                                }}
-                                labelFormatter={(label) => {
-                                  const dato = datosGraficoEvolucion.find((d) => d.fechaCorta === label)
-                                  return dato ? `${dato.diaSemana} ${dato.fecha}` : label
-                                }}
-                              />
-                              <Legend />
-                              <Line
-                                type="monotone"
-                                dataKey="emitidos"
-                                stroke="#3b82f6"
-                                strokeWidth={2}
-                                name="Tickets Emitidos"
-                                dot={{ fill: "#3b82f6", r: 4 }}
-                                activeDot={{ r: 6 }}
-                              />
-                            </RechartsLineChart>
-                          </ResponsiveContainer>
-                        </div>
-
-                        {/* Gráfico de Tiempo de Espera Real */}
-                        <div>
-                          <h5 className="font-semibold text-gray-700 mb-3 text-center">
-                            Tiempo de Espera Real Promedio (minutos)
-                          </h5>
-                          <ResponsiveContainer width="100%" height={250}>
-                            <RechartsLineChart data={datosGraficoEvolucion}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                              <XAxis
-                                dataKey="fechaCorta"
-                                tick={{ fontSize: 12 }}
-                                angle={-45}
-                                textAnchor="end"
-                                height={60}
-                              />
-                              <YAxis
-                                tick={{ fontSize: 12 }}
-                                label={{ value: "min", angle: -90, position: "insideLeft" }}
-                              />
-                              <Tooltip
-                                contentStyle={{
-                                  backgroundColor: "white",
-                                  border: "1px solid #ccc",
-                                  borderRadius: "8px",
-                                  padding: "10px",
-                                }}
-                                labelFormatter={(label) => {
-                                  const dato = datosGraficoEvolucion.find((d) => d.fechaCorta === label)
-                                  return dato ? `${dato.diaSemana} ${dato.fecha}` : label
-                                }}
-                                formatter={(value: number) => [`${value} min`, "Tiempo Espera"]}
-                              />
-                              <Legend />
-                              <Line
-                                type="monotone"
-                                dataKey="tiempoEsperaReal"
-                                stroke="#f59e0b"
-                                strokeWidth={2}
-                                name="Tiempo Espera Real"
-                                dot={{ fill: "#f59e0b", r: 4 }}
-                                activeDot={{ r: 6 }}
-                              />
-                            </RechartsLineChart>
-                          </ResponsiveContainer>
-                        </div>
-
-                        <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-4">
-                          <div className="bg-blue-50 p-3 rounded-lg text-center">
-                            <div className="text-2xl font-bold text-blue-600">
-                              {Math.round(
-                                datosGraficoEvolucion.reduce((sum, d) => sum + d.emitidos, 0) /
-                                  datosGraficoEvolucion.length,
-                              )}
-                            </div>
-                            <p className="text-xs text-blue-700">Promedio Emitidos/Día</p>
-                          </div>
-                          <div className="bg-green-50 p-3 rounded-lg text-center">
-                            <div className="text-2xl font-bold text-green-600">
-                              {Math.round(
-                                datosGraficoEvolucion.reduce((sum, d) => sum + d.atendidos, 0) /
-                                  datosGraficoEvolucion.length,
-                              )}
-                            </div>
-                            <p className="text-xs text-green-700">Promedio Atendidos/Día</p>
-                          </div>
-                          <div className="bg-orange-50 p-3 rounded-lg text-center">
-                            <div className="text-2xl font-bold text-orange-600">
-                              {Math.round(
-                                (datosGraficoEvolucion.reduce((sum, d) => sum + d.tiempoEsperaReal, 0) /
-                                  datosGraficoEvolucion.length) *
-                                  10,
-                              ) / 10}
-                            </div>
-                            <p className="text-xs text-orange-700">Espera Promedio (min)</p>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 bg-gradient-to-r from-cyan-50 to-blue-50 p-4 rounded-lg border border-cyan-200">
-                          <h5 className="font-semibold text-cyan-800 mb-2 flex items-center gap-2">
-                            <TrendingUp className="h-5 w-5" />
-                            Análisis de Tendencia
-                          </h5>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                            <div>
-                              <span className="text-cyan-700 font-medium">Mejor día:</span>
-                              <p className="text-cyan-900 font-bold">
-                                {datosGraficoEvolucion.reduce((max, d) => (d.emitidos > max.emitidos ? d : max)).fecha}{" "}
-                                (
-                                {
-                                  datosGraficoEvolucion.reduce((max, d) => (d.emitidos > max.emitidos ? d : max))
-                                    .emitidos
-                                }{" "}
-                                tickets)
-                              </p>
-                            </div>
-                            <div>
-                              <span className="text-cyan-700 font-medium">Menor espera:</span>
-                              <p className="text-cyan-900 font-bold">
-                                {
-                                  datosGraficoEvolucion
-                                    .filter((d) => d.tiempoEsperaReal > 0)
-                                    .reduce(
-                                      (min, d) => (d.tiempoEsperaReal < min.tiempoEsperaReal ? d : min),
-                                      datosGraficoEvolucion[0],
-                                    ).fecha
-                                }{" "}
-                                (
-                                {
-                                  datosGraficoEvolucion
-                                    .filter((d) => d.tiempoEsperaReal > 0)
-                                    .reduce(
-                                      (min, d) => (d.tiempoEsperaReal < min.tiempoEsperaReal ? d : min),
-                                      datosGraficoEvolucion[0],
-                                    ).tiempoEsperaReal
-                                }{" "}
-                                min)
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Resumen del historial */}
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
-                  <h4 className="font-semibold text-blue-800 mb-3">📊 Resumen del Historial</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600">{backups.length}</div>
-                      <p className="text-blue-700">Días registrados</p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-green-600">
-                        {Math.round(
-                          backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) /
-                            backups.length,
-                        )}
-                      </div>
-                      <p className="text-green-700">Promedio tickets/día</p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-orange-600">
-                        {Math.max(...backups.map((backup) => backup.resumen?.totalTicketsEmitidos || 0))}
-                      </div>
-                      <p className="text-orange-700">Día más activo</p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-purple-600">
-                        {Math.round(
-                          backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0), 0) /
-                            backups.length,
-                        )}
-                      </div>
-                      <p className="text-purple-700">Promedio atendidos/día</p>
-                    </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loadingBackups ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-lg text-gray-600">Cargando historial de backups...</p>
+                  <p className="text-sm text-gray-500 mt-2">Esto puede tomar unos momentos</p>
+                </div>
+              ) : errorBackups ? (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">⚠️</div>
+                  <p className="text-xl text-red-600 mb-2">Error al cargar historial</p>
+                  <p className="text-gray-500 mb-4">{errorBackups}</p>
+                  <div className="space-y-2">
+                    <Button onClick={cargarBackups} variant="outline">
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Reintentar
+                    </Button>
+                    <Button onClick={crearBackupPrueba} variant="outline">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Crear Backup de Prueba
+                    </Button>
                   </div>
                 </div>
+              ) : backups.length > 0 ? (
+                <div className="space-y-4">
+                  {datosGraficoEvolucion.length > 0 && (
+                    <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-6 rounded-lg border-2 border-indigo-200">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-bold text-indigo-800 text-lg flex items-center gap-2">
+                          <LineChart className="h-6 w-6" />📈 Evolución de los Últimos{" "}
+                          {Math.min(datosGraficoEvolucion.length, 30)} Días Activos
+                        </h4>
+                        <Button
+                          onClick={() => setMostrarGraficoEvolucion(!mostrarGraficoEvolucion)}
+                          variant="outline"
+                          size="sm"
+                        >
+                          {mostrarGraficoEvolucion ? "Ocultar" : "Mostrar"} Gráfico
+                        </Button>
+                      </div>
 
-                {/* Lista de días con métricas MEJORADA */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {backups.map((backup, index) => {
-                    const emitidos = backup.resumen?.totalTicketsEmitidos || 0
-                    const atendidos = backup.resumen?.totalTicketsAtendidos || 0
-                    const eficiencia = emitidos > 0 ? Math.round((atendidos / emitidos) * 100) : 0
-                    const pendientes = emitidos - atendidos
-                    const esReciente = index < 3
-                    const esMejorDia =
-                      emitidos === Math.max(...backups.map((b) => b.resumen?.totalTicketsEmitidos || 0))
+                      {/* Información del horario de atención */}
+                      <div className="bg-white p-3 rounded-lg border border-indigo-200 mb-4">
+                        <p className="text-sm text-indigo-700">
+                          <Clock className="inline h-4 w-4 mr-1" />
+                          <strong>Horario de atención:</strong> 9:30 - 12:30 y 15:00 - 20:00 (Lunes a Sábado)
+                        </p>
+                        <p className="text-xs text-indigo-600 mt-1">
+                          Las métricas mostradas corresponden solo a los días con actividad registrada
+                        </p>
+                      </div>
 
-                    // NUEVAS MÉTRICAS SOLICITADAS
-                    const tiempoEsperaReal = backup.resumen?.tiempoPromedioEsperaReal || 0
-                    const horaPico = backup.resumen?.horaPico || { hora: 0, cantidad: 0, porcentaje: 0 }
+                      {mostrarGraficoEvolucion && (
+                        <div className="bg-white p-4 rounded-lg">
+                          <div className="mb-6">
+                            <h5 className="font-semibold text-gray-700 mb-3 text-center">Tickets Emitidos por Día</h5>
+                            <ResponsiveContainer width="100%" height={300}>
+                              <RechartsLineChart data={datosGraficoEvolucion}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                                <XAxis
+                                  dataKey="fechaCorta"
+                                  tick={{ fontSize: 12 }}
+                                  angle={-45}
+                                  textAnchor="end"
+                                  height={60}
+                                />
+                                <YAxis tick={{ fontSize: 12 }} />
+                                <Tooltip
+                                  contentStyle={{
+                                    backgroundColor: "white",
+                                    border: "1px solid #ccc",
+                                    borderRadius: "8px",
+                                    padding: "10px",
+                                  }}
+                                  labelFormatter={(label) => {
+                                    const dato = datosGraficoEvolucion.find((d) => d.fechaCorta === label)
+                                    return dato ? `${dato.diaSemana} ${dato.fecha}` : label
+                                  }}
+                                />
+                                <Legend />
+                                <Line
+                                  type="monotone"
+                                  dataKey="emitidos"
+                                  stroke="#3b82f6"
+                                  strokeWidth={2}
+                                  name="Tickets Emitidos"
+                                  dot={{ fill: "#3b82f6", r: 4 }}
+                                  activeDot={{ r: 6 }}
+                                />
+                              </RechartsLineChart>
+                            </ResponsiveContainer>
+                          </div>
 
-                    return (
-                      <div
-                        key={index}
-                        className={`p-4 rounded-lg border-2 transition-all duration-200 hover:shadow-lg ${
-                          esMejorDia
-                            ? "bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-300"
-                            : esReciente
-                              ? "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300"
-                              : "bg-gray-50 border-gray-300"
-                        }`}
-                      >
-                        <div className="flex justify-between items-start mb-3">
+                          {/* Gráfico de Tiempo de Espera Real */}
                           <div>
-                            <h4
-                              className={`font-bold text-lg ${
-                                esMejorDia ? "text-yellow-800" : esReciente ? "text-blue-800" : "text-gray-800"
-                              }`}
-                            >
-                              📅 {backup.fecha}
-                            </h4>
-                            <p className="text-xs text-gray-500">
-                              {new Date(backup.fecha).toLocaleDateString("es-AR", {
-                                weekday: "long",
-                                year: "numeric",
-                                month: "long",
-                                day: "numeric",
-                              })}
-                            </p>
+                            <h5 className="font-semibold text-gray-700 mb-3 text-center">
+                              Tiempo de Espera Real Promedio (minutos)
+                            </h5>
+                            <ResponsiveContainer width="100%" height={250}>
+                              <RechartsLineChart data={datosGraficoEvolucion}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                                <XAxis
+                                  dataKey="fechaCorta"
+                                  tick={{ fontSize: 12 }}
+                                  angle={-45}
+                                  textAnchor="end"
+                                  height={60}
+                                />
+                                <YAxis
+                                  tick={{ fontSize: 12 }}
+                                  label={{ value: "min", angle: -90, position: "insideLeft" }}
+                                />
+                                <Tooltip
+                                  contentStyle={{
+                                    backgroundColor: "white",
+                                    border: "1px solid #ccc",
+                                    borderRadius: "8px",
+                                    padding: "10px",
+                                  }}
+                                  labelFormatter={(label) => {
+                                    const dato = datosGraficoEvolucion.find((d) => d.fechaCorta === label)
+                                    return dato ? `${dato.diaSemana} ${dato.fecha}` : label
+                                  }}
+                                  formatter={(value: number) => [`${value} min`, "Tiempo Espera"]}
+                                />
+                                <Legend />
+                                <Line
+                                  type="monotone"
+                                  dataKey="tiempoEsperaReal"
+                                  stroke="#f59e0b"
+                                  strokeWidth={2}
+                                  name="Tiempo Espera Real"
+                                  dot={{ fill: "#f59e0b", r: 4 }}
+                                  activeDot={{ r: 6 }}
+                                />
+                              </RechartsLineChart>
+                            </ResponsiveContainer>
                           </div>
-                          {esMejorDia && (
-                            <div className="bg-yellow-500 text-white px-2 py-1 rounded-full text-xs font-bold">
-                              🏆 RÉCORD
+
+                          <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-4">
+                            <div className="bg-blue-50 p-3 rounded-lg text-center">
+                              <div className="text-2xl font-bold text-blue-600">
+                                {Math.round(
+                                  datosGraficoEvolucion.reduce((sum, d) => sum + d.emitidos, 0) /
+                                    datosGraficoEvolucion.length,
+                                )}
+                              </div>
+                              <p className="text-xs text-blue-700">Promedio Emitidos/Día</p>
                             </div>
-                          )}
-                          {esReciente && !esMejorDia && (
-                            <div className="bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">
-                              RECIENTE
+                            <div className="bg-green-50 p-3 rounded-lg text-center">
+                              <div className="text-2xl font-bold text-green-600">
+                                {Math.round(
+                                  datosGraficoEvolucion.reduce((sum, d) => sum + d.atendidos, 0) /
+                                    datosGraficoEvolucion.length,
+                                )}
+                              </div>
+                              <p className="text-xs text-green-700">Promedio Atendidos/Día</p>
                             </div>
+                            <div className="bg-orange-50 p-3 rounded-lg text-center">
+                              <div className="text-2xl font-bold text-orange-600">
+                                {Math.round(
+                                  (datosGraficoEvolucion.reduce((sum, d) => sum + d.tiempoEsperaReal, 0) /
+                                    datosGraficoEvolucion.length) *
+                                    10,
+                                ) / 10}
+                              </div>
+                              <p className="text-xs text-orange-700">Espera Promedio (min)</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 bg-gradient-to-r from-cyan-50 to-blue-50 p-4 rounded-lg border border-cyan-200">
+                            <h5 className="font-semibold text-cyan-800 mb-2 flex items-center gap-2">
+                              <TrendingUp className="h-5 w-5" />
+                              Análisis de Tendencia
+                            </h5>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <span className="text-cyan-700 font-medium">Mejor día:</span>
+                                <p className="text-cyan-900 font-bold">
+                                  {
+                                    datosGraficoEvolucion.reduce((max, d) => (d.emitidos > max.emitidos ? d : max))
+                                      .fecha
+                                  }{" "}
+                                  (
+                                  {
+                                    datosGraficoEvolucion.reduce((max, d) => (d.emitidos > max.emitidos ? d : max))
+                                      .emitidos
+                                  }{" "}
+                                  tickets)
+                                </p>
+                              </div>
+                              <div>
+                                <span className="text-cyan-700 font-medium">Menor espera:</span>
+                                <p className="text-cyan-900 font-bold">
+                                  {
+                                    datosGraficoEvolucion
+                                      .filter((d) => d.tiempoEsperaReal > 0)
+                                      .reduce(
+                                        (min, d) => (d.tiempoEsperaReal < min.tiempoEsperaReal ? d : min),
+                                        datosGraficoEvolucion[0],
+                                      ).fecha
+                                  }{" "}
+                                  (
+                                  {
+                                    datosGraficoEvolucion
+                                      .filter((d) => d.tiempoEsperaReal > 0)
+                                      .reduce(
+                                        (min, d) => (d.tiempoEsperaReal < min.tiempoEsperaReal ? d : min),
+                                        datosGraficoEvolucion[0],
+                                      ).tiempoEsperaReal
+                                  }{" "}
+                                  min)
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Resumen del historial */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+                    <h4 className="font-semibold text-blue-800 mb-3">📊 Resumen del Historial</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-600">{backups.length}</div>
+                        <p className="text-blue-700">Días registrados</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">
+                          {Math.round(
+                            backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) /
+                              backups.length,
                           )}
                         </div>
+                        <p className="text-green-700">Promedio tickets/día</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-orange-600">
+                          {Math.max(...backups.map((backup) => backup.resumen?.totalTicketsEmitidos || 0))}
+                        </div>
+                        <p className="text-orange-700">Día más activo</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-purple-600">
+                          {Math.round(
+                            backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0), 0) /
+                              backups.length,
+                          )}
+                        </div>
+                        <p className="text-purple-700">Promedio atendidos/día</p>
+                      </div>
+                    </div>
+                  </div>
 
-                        {/* Métricas principales del día */}
-                        <div className="space-y-2 mb-4">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">📊 Tickets emitidos:</span>
-                            <span className="font-bold text-blue-600">{emitidos}</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">✅ Atendidos:</span>
-                            <span className="font-bold text-green-600">{atendidos}</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">⏳ Pendientes:</span>
-                            <span className="font-bold text-orange-600">{pendientes}</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">📈 Eficiencia:</span>
-                            <span
-                              className={`font-bold ${
-                                eficiencia >= 90
-                                  ? "text-green-600"
-                                  : eficiencia >= 70
-                                    ? "text-yellow-600"
-                                    : "text-red-600"
-                              }`}
-                            >
-                              {eficiencia}%
-                            </span>
+                  {/* Lista de días con métricas MEJORADA */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {backups.map((backup, index) => {
+                      const emitidos = backup.resumen?.totalTicketsEmitidos || 0
+                      const atendidos = backup.resumen?.totalTicketsAtendidos || 0
+                      const eficiencia = emitidos > 0 ? Math.round((atendidos / emitidos) * 100) : 0
+                      const pendientes = emitidos - atendidos
+                      const esReciente = index < 3
+                      const esMejorDia =
+                        emitidos === Math.max(...backups.map((b) => b.resumen?.totalTicketsEmitidos || 0))
+
+                      // NUEVAS MÉTRICAS SOLICITADAS
+                      const tiempoEsperaReal = backup.resumen?.tiempoPromedioEsperaReal || 0
+                      const horaPico = backup.resumen?.horaPico || { hora: 0, cantidad: 0, porcentaje: 0 }
+
+                      return (
+                        <div
+                          key={index}
+                          className={`p-4 rounded-lg border-2 transition-all duration-200 hover:shadow-lg ${
+                            esMejorDia
+                              ? "bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-300"
+                              : esReciente
+                                ? "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300"
+                                : "bg-gray-50 border-gray-300"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <h4
+                                className={`font-bold text-lg ${
+                                  esMejorDia ? "text-yellow-800" : esReciente ? "text-blue-800" : "text-gray-800"
+                                }`}
+                              >
+                                📅 {backup.fecha}
+                              </h4>
+                              <p className="text-xs text-gray-500">
+                                {new Date(backup.fecha).toLocaleDateString("es-AR", {
+                                  weekday: "long",
+                                  year: "numeric",
+                                  month: "long",
+                                  day: "numeric",
+                                })}
+                              </p>
+                            </div>
+                            {esMejorDia && (
+                              <div className="bg-yellow-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                                🏆 RÉCORD
+                              </div>
+                            )}
+                            {esReciente && !esMejorDia && (
+                              <div className="bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                                RECIENTE
+                              </div>
+                            )}
                           </div>
 
-                          {/* NUEVAS MÉTRICAS SOLICITADAS */}
-                          <hr className="border-gray-300 my-2" />
-                          <div className="bg-blue-50 p-2 rounded text-xs">
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="text-blue-700 font-medium">⏱️ Espera Real:</span>
-                              <span className="font-bold text-blue-800">{tiempoEsperaReal} min</span>
+                          {/* Métricas principales del día */}
+                          <div className="space-y-2 mb-4">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">📊 Tickets emitidos:</span>
+                              <span className="font-bold text-blue-600">{emitidos}</span>
                             </div>
                             <div className="flex justify-between items-center">
-                              <span className="text-blue-700 font-medium">🔥 Hora Pico:</span>
-                              <span className="font-bold text-blue-800">
-                                {horaPico.hora}:00 ({horaPico.cantidad} tickets)
+                              <span className="text-sm text-gray-600">✅ Atendidos:</span>
+                              <span className="font-bold text-green-600">{atendidos}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">⏳ Pendientes:</span>
+                              <span className="font-bold text-orange-600">{pendientes}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-600">📈 Eficiencia:</span>
+                              <span
+                                className={`font-bold ${
+                                  eficiencia >= 90
+                                    ? "text-green-600"
+                                    : eficiencia >= 70
+                                      ? "text-yellow-600"
+                                      : "text-red-600"
+                                }`}
+                              >
+                                {eficiencia}%
                               </span>
+                            </div>
+
+                            {/* NUEVAS MÉTRICAS SOLICITADAS */}
+                            <hr className="border-gray-300 my-2" />
+                            <div className="bg-blue-50 p-2 rounded text-xs">
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-blue-700 font-medium">⏱️ Espera Real:</span>
+                                <span className="font-bold text-blue-800">{tiempoEsperaReal} min</span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-blue-700 font-medium">🔥 Hora Pico:</span>
+                                <span className="font-bold text-blue-800">
+                                  {horaPico.hora}:00 ({horaPico.cantidad} tickets)
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Barra de progreso */}
+                          <div className="mb-4">
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div
+                                className={`h-2 rounded-full transition-all duration-500 ${
+                                  eficiencia >= 90 ? "bg-green-500" : eficiencia >= 70 ? "bg-yellow-500" : "bg-red-500"
+                                }`}
+                                style={{ width: `${eficiencia}%` }}
+                              ></div>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1 text-center">Eficiencia del día</p>
+                          </div>
+
+                          {/* Rango de tickets */}
+                          {backup.resumen?.primerTicket && backup.resumen?.ultimoTicket && (
+                            <div className="bg-white p-2 rounded border mb-3">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-gray-600">Rango:</span>
+                                <span className="font-mono font-bold text-gray-800">
+                                  #{backup.resumen.primerTicket.toString().padStart(3, "0")} - #
+                                  {backup.resumen.ultimoTicket.toString().padStart(3, "0")}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Botones de acción mejorados */}
+                          <div className="space-y-2">
+                            <Button
+                              onClick={() => verBackup(backup.fecha)}
+                              variant="outline"
+                              size="sm"
+                              className="w-full hover:bg-blue-50"
+                            >
+                              👁️ Ver Detalles Completos
+                            </Button>
+
+                            {/* Botones de descarga mejorados */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <Button
+                                onClick={() => descargarDatosDia(backup)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                                size="sm"
+                              >
+                                📄 Descargar JSON
+                              </Button>
+                              <Button
+                                onClick={() => descargarDatosDia(backup)}
+                                className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                                size="sm"
+                              >
+                                📊 Descargar CSV
+                              </Button>
                             </div>
                           </div>
                         </div>
+                      )
+                    })}
+                  </div>
 
-                        {/* Barra de progreso */}
-                        <div className="mb-4">
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full transition-all duration-500 ${
-                                eficiencia >= 90 ? "bg-green-500" : eficiencia >= 70 ? "bg-yellow-500" : "bg-red-500"
-                              }`}
-                              style={{ width: `${eficiencia}%` }}
-                            ></div>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1 text-center">Eficiencia del día</p>
+                  {/* Comparativa con día actual */}
+                  <div className="bg-gradient-to-r from-green-50 to-teal-50 p-4 rounded-lg border border-green-200">
+                    <h4 className="font-semibold text-green-800 mb-3">📈 Comparativa con Hoy</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-green-600">{estado.totalAtendidos}</div>
+                        <p className="text-green-700">Tickets hoy</p>
+                        <p className="text-xs text-green-600">
+                          vs promedio:{" "}
+                          {estado.totalAtendidos >
+                          Math.round(
+                            backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) /
+                              backups.length,
+                          )
+                            ? "↗️"
+                            : "↘️"}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-blue-600">{estado.numerosLlamados}</div>
+                        <p className="text-blue-700">Atendidos hoy</p>
+                        <p className="text-xs text-blue-600">
+                          vs promedio:{" "}
+                          {estado.numerosLlamados >
+                          Math.round(
+                            backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0), 0) /
+                              backups.length,
+                          )
+                            ? "↗️"
+                            : "↘️"}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-orange-600">
+                          {Math.round((estado.numerosLlamados / Math.max(estado.totalAtendidos, 1)) * 100)}%
                         </div>
-
-                        {/* Rango de tickets */}
-                        {backup.resumen?.primerTicket && backup.resumen?.ultimoTicket && (
-                          <div className="bg-white p-2 rounded border mb-3">
-                            <div className="flex justify-between text-xs">
-                              <span className="text-gray-600">Rango:</span>
-                              <span className="font-mono font-bold text-gray-800">
-                                #{backup.resumen.primerTicket.toString().padStart(3, "0")} - #
-                                {backup.resumen.ultimoTicket.toString().padStart(3, "0")}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Botones de acción mejorados */}
-                        <div className="space-y-2">
-                          <Button
-                            onClick={() => verBackup(backup.fecha)}
-                            variant="outline"
-                            size="sm"
-                            className="w-full hover:bg-blue-50"
-                          >
-                            👁️ Ver Detalles Completos
-                          </Button>
-
-                          {/* Botones de descarga mejorados */}
-                          <div className="grid grid-cols-2 gap-2">
-                            <Button
-                              onClick={() => descargarDatosDia(backup)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
-                              size="sm"
-                            >
-                              📄 Descargar JSON
-                            </Button>
-                            <Button
-                              onClick={() => descargarDatosDia(backup)}
-                              className="bg-green-600 hover:bg-green-700 text-white text-xs"
-                              size="sm"
-                            >
-                              📊 Descargar CSV
-                            </Button>
-                          </div>
+                        <p className="text-orange-700">Eficiencia hoy</p>
+                        <p className="text-xs text-orange-600">
+                          vs promedio:{" "}
+                          {Math.round((estado.numerosLlamados / Math.max(estado.totalAtendidos, 1)) * 100) >
+                          Math.round(
+                            backups.reduce(
+                              (sum, backup) =>
+                                sum +
+                                ((backup.resumen?.totalTicketsAtendidos || 0) /
+                                  Math.max(backup.resumen?.totalTicketsEmitidos || 1, 1)) *
+                                  100,
+                              0,
+                            ) / backups.length,
+                          )
+                            ? "↗️"
+                            : "↘️"}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-purple-600">
+                          {new Date().getHours() > 0
+                            ? Math.round(estado.totalAtendidos / new Date().getHours())
+                            : estado.totalAtendidos}
                         </div>
+                        <p className="text-purple-700">Tickets/hora hoy</p>
+                        <p className="text-xs text-purple-600">Ritmo actual</p>
                       </div>
-                    )
-                  })}
-                </div>
-
-                {/* Comparativa con día actual */}
-                <div className="bg-gradient-to-r from-green-50 to-teal-50 p-4 rounded-lg border border-green-200">
-                  <h4 className="font-semibold text-green-800 mb-3">📈 Comparativa con Hoy</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-green-600">{estado.totalAtendidos}</div>
-                      <p className="text-green-700">Tickets hoy</p>
-                      <p className="text-xs text-green-600">
-                        vs promedio:{" "}
-                        {estado.totalAtendidos >
-                        Math.round(
-                          backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0) /
-                            backups.length,
-                        )
-                          ? "↗️"
-                          : "↘️"}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-blue-600">{estado.numerosLlamados}</div>
-                      <p className="text-blue-700">Atendidos hoy</p>
-                      <p className="text-xs text-blue-600">
-                        vs promedio:{" "}
-                        {estado.numerosLlamados >
-                        Math.round(
-                          backups.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsAtendidos || 0), 0) /
-                            backups.length,
-                        )
-                          ? "↗️"
-                          : "↘️"}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-orange-600">
-                        {Math.round((estado.numerosLlamados / Math.max(estado.totalAtendidos, 1)) * 100)}%
-                      </div>
-                      <p className="text-orange-700">Eficiencia hoy</p>
-                      <p className="text-xs text-orange-600">
-                        vs promedio:{" "}
-                        {Math.round((estado.numerosLlamados / Math.max(estado.totalAtendidos, 1)) * 100) >
-                        Math.round(
-                          backups.reduce(
-                            (sum, backup) =>
-                              sum +
-                              ((backup.resumen?.totalTicketsAtendidos || 0) /
-                                Math.max(backup.resumen?.totalTicketsEmitidos || 1, 1)) *
-                                100,
-                            0,
-                          ) / backups.length,
-                        )
-                          ? "↗️"
-                          : "↘️"}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-bold text-purple-600">
-                        {new Date().getHours() > 0
-                          ? Math.round(estado.totalAtendidos / new Date().getHours())
-                          : estado.totalAtendidos}
-                      </div>
-                      <p className="text-purple-700">Tickets/hora hoy</p>
-                      <p className="text-xs text-purple-600">Ritmo actual</p>
                     </div>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <div className="text-6xl mb-4">📊</div>
-                <p className="text-xl text-gray-500 mb-2">No hay historial disponible</p>
-                <p className="text-gray-400 mb-4">
-                  Los backups aparecerán aquí después del primer día de operación o cuando se cree un backup manual
-                </p>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                  <h4 className="font-semibold text-blue-800 mb-2">💡 ¿Por qué no veo días anteriores?</h4>
-                  <ul className="text-sm text-blue-700 text-left space-y-1">
-                    <li>• Los backups se crean automáticamente al final del día</li>
-                    <li>• También se crean al reiniciar el contador diario</li>
-                    <li>• Puedes crear un backup manual con el botón "Crear Backup"</li>
-                    <li>• Los datos aparecerán a partir de mañana si el sistema es nuevo</li>
-                  </ul>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">📊</div>
+                  <p className="text-xl text-gray-500 mb-2">No hay historial disponible</p>
+                  <p className="text-gray-400 mb-4">
+                    Los backups aparecerán aquí después del primer día de operación o cuando se cree un backup manual
+                  </p>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <h4 className="font-semibold text-blue-800 mb-2">💡 ¿Por qué no veo días anteriores?</h4>
+                    <ul className="text-sm text-blue-700 text-left space-y-1">
+                      <li>• Los backups se crean automáticamente al final del día</li>
+                      <li>• También se crean al reiniciar el contador diario</li>
+                      <li>• Puedes crear un backup manual con el botón "Crear Backup"</li>
+                      <li>• Los datos aparecerán a partir de mañana si el sistema es nuevo</li>
+                    </ul>
+                  </div>
+                  <Button onClick={crearBackupPrueba} className="bg-blue-600 hover:bg-blue-700 text-white">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Crear Backup del Día Actual
+                  </Button>
                 </div>
-                <Button onClick={crearBackupPrueba} className="bg-blue-600 hover:bg-blue-700 text-white">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Crear Backup del Día Actual
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* NUEVA SECCIÓN: Totales Históricos Consolidados */}
         {backups.length > 0 && (
