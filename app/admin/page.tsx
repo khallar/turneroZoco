@@ -68,7 +68,7 @@ export default function PaginaAdmin() {
       fecha: backup.fecha,
       emitidos: backup.resumen?.totalTicketsEmitidos || 0,
       atendidos: backup.resumen?.totalTicketsAtendidos || 0,
-      tiempoEspera: backup.resumen?.tiempoPromedioEsperaReal || 0,
+      tiempoEspera: backup.resumen?.tiempoEntreTickets || 0, // Changed from tiempoPromedioEsperaReal
     }))
 
     const csv = [
@@ -117,8 +117,9 @@ export default function PaginaAdmin() {
 
     if (filteredBackups.length === 0) return 0
 
+    // Usar tiempoEntreTickets que ya está calculado en el backup
     const tiemposEspera = filteredBackups
-      .map((backup) => backup.resumen?.tiempoPromedioEsperaReal || 0)
+      .map((backup) => backup.resumen?.tiempoEntreTickets || 0) // Changed from tiempoPromedioEsperaReal
       .filter((tiempo) => tiempo > 0)
 
     if (tiemposEspera.length === 0) return 0
@@ -167,7 +168,7 @@ export default function PaginaAdmin() {
       .reverse()
       .map((backup) => ({
         fecha: new Date(backup.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }),
-        tiempoEspera: backup.resumen?.tiempoPromedioEsperaReal || 0,
+        tiempoEspera: backup.resumen?.tiempoEntreTickets || 0, // Changed from tiempoPromedioEsperaReal
       }))
       .filter((item) => item.tiempoEspera > 0)
   }
@@ -364,38 +365,219 @@ export default function PaginaAdmin() {
                   </div>
                 </div>
 
-                <div style={{ width: "100%", height: "300px", padding: "1rem 0" }}>
-                  <svg width="100%" height="100%" viewBox="0 0 800 300">
+                <div style={{ width: "100%", height: "350px", padding: "1rem 0" }}>
+                  <svg width="100%" height="100%" viewBox="0 0 800 350" style={{ overflow: "visible" }}>
                     <defs>
                       <linearGradient id="blueGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.3" />
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.2" />
                         <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
                       </linearGradient>
                       <linearGradient id="greenGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" stopColor="#10b981" stopOpacity="0.3" />
+                        <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
                         <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
                       </linearGradient>
+                      <filter id="chartShadow">
+                        <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.3" />
+                      </filter>
                     </defs>
 
                     {/* Grid lines */}
                     {[0, 1, 2, 3, 4].map((i) => (
-                      <line
-                        key={i}
-                        x1="50"
-                        y1={50 + i * 50}
-                        x2="750"
-                        y2={50 + i * 50}
-                        stroke="#e5e7eb"
-                        strokeWidth="1"
-                      />
+                      <g key={i}>
+                        <line x1="80" y1={40 + i * 60} x2="750" y2={40 + i * 60} stroke="#e5e7eb" strokeWidth="1" />
+                        <text x="70" y={45 + i * 60} textAnchor="end" fill="#9ca3af" fontSize="12">
+                          {Math.round(
+                            (4 - i) * (Math.max(...datosGrafico.map((d) => Math.max(d.emitidos, d.atendidos))) / 4),
+                          )}
+                        </text>
+                      </g>
                     ))}
 
-                    {/* Data visualization would go here - simplified for vanilla CSS */}
-                    <text x="400" y="150" textAnchor="middle" fill="#9ca3af" fontSize="14">
-                      Gráfico de tendencia (
-                      {filterPeriod === "7days" ? "7 días" : filterPeriod === "30days" ? "30 días" : "Todo"})
+                    {/* X-axis labels */}
+                    {datosGrafico.map((dato, index) => {
+                      const x = 80 + (index * 670) / Math.max(datosGrafico.length - 1, 1)
+                      return (
+                        <text
+                          key={index}
+                          x={x}
+                          y="305"
+                          textAnchor="middle"
+                          fill="#6b7280"
+                          fontSize="11"
+                          transform={`rotate(-45, ${x}, 305)`}
+                        >
+                          {dato.fecha}
+                        </text>
+                      )
+                    })}
+
+                    {/* Area under emitidos line */}
+                    {datosGrafico.length > 1 && (
+                      <path
+                        d={`
+                          M 80,280
+                          ${datosGrafico
+                            .map((dato, index) => {
+                              const x = 80 + (index * 670) / Math.max(datosGrafico.length - 1, 1)
+                              const maxValue = Math.max(...datosGrafico.map((d) => Math.max(d.emitidos, d.atendidos)))
+                              const y = 280 - (dato.emitidos / maxValue) * 240
+                              return `L ${x},${y}`
+                            })
+                            .join(" ")}
+                          L ${80 + 670},280
+                          Z
+                        `}
+                        fill="url(#blueGradient)"
+                      />
+                    )}
+
+                    {/* Emitidos line */}
+                    {datosGrafico.length > 1 && (
+                      <path
+                        d={datosGrafico
+                          .map((dato, index) => {
+                            const x = 80 + (index * 670) / Math.max(datosGrafico.length - 1, 1)
+                            const maxValue = Math.max(...datosGrafico.map((d) => Math.max(d.emitidos, d.atendidos)))
+                            const y = 280 - (dato.emitidos / maxValue) * 240
+                            return `${index === 0 ? "M" : "L"} ${x},${y}`
+                          })
+                          .join(" ")}
+                        fill="none"
+                        stroke="#3b82f6"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        filter="url(#chartShadow)"
+                      />
+                    )}
+
+                    {/* Emitidos points */}
+                    {datosGrafico.map((dato, index) => {
+                      const x = 80 + (index * 670) / Math.max(datosGrafico.length - 1, 1)
+                      const maxValue = Math.max(...datosGrafico.map((d) => Math.max(d.emitidos, d.atendidos)))
+                      const y = 280 - (dato.emitidos / maxValue) * 240
+
+                      return (
+                        <g key={`emitidos-${index}`}>
+                          <circle
+                            cx={x}
+                            cy={y}
+                            r="6"
+                            fill="white"
+                            stroke="#3b82f6"
+                            strokeWidth="3"
+                            filter="url(#chartShadow)"
+                          />
+                          <circle cx={x} cy={y} r="3" fill="#3b82f6" />
+                          <title>
+                            {dato.fecha}: {dato.emitidos} emitidos
+                          </title>
+                        </g>
+                      )
+                    })}
+
+                    {/* Area under atendidos line */}
+                    {datosGrafico.length > 1 && (
+                      <path
+                        d={`
+                          M 80,280
+                          ${datosGrafico
+                            .map((dato, index) => {
+                              const x = 80 + (index * 670) / Math.max(datosGrafico.length - 1, 1)
+                              const maxValue = Math.max(...datosGrafico.map((d) => Math.max(d.emitidos, d.atendidos)))
+                              const y = 280 - (dato.atendidos / maxValue) * 240
+                              return `L ${x},${y}`
+                            })
+                            .join(" ")}
+                          L ${80 + 670},280
+                          Z
+                        `}
+                        fill="url(#greenGradient)"
+                      />
+                    )}
+
+                    {/* Atendidos line */}
+                    {datosGrafico.length > 1 && (
+                      <path
+                        d={datosGrafico
+                          .map((dato, index) => {
+                            const x = 80 + (index * 670) / Math.max(datosGrafico.length - 1, 1)
+                            const maxValue = Math.max(...datosGrafico.map((d) => Math.max(d.emitidos, d.atendidos)))
+                            const y = 280 - (dato.atendidos / maxValue) * 240
+                            return `${index === 0 ? "M" : "L"} ${x},${y}`
+                          })
+                          .join(" ")}
+                        fill="none"
+                        stroke="#10b981"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        filter="url(#chartShadow)"
+                      />
+                    )}
+
+                    {/* Atendidos points */}
+                    {datosGrafico.map((dato, index) => {
+                      const x = 80 + (index * 670) / Math.max(datosGrafico.length - 1, 1)
+                      const maxValue = Math.max(...datosGrafico.map((d) => Math.max(d.emitidos, d.atendidos)))
+                      const y = 280 - (dato.atendidos / maxValue) * 240
+
+                      return (
+                        <g key={`atendidos-${index}`}>
+                          <circle
+                            cx={x}
+                            cy={y}
+                            r="6"
+                            fill="white"
+                            stroke="#10b981"
+                            strokeWidth="3"
+                            filter="url(#chartShadow)"
+                          />
+                          <circle cx={x} cy={y} r="3" fill="#10b981" />
+                          <title>
+                            {dato.fecha}: {dato.atendidos} atendidos
+                          </title>
+                        </g>
+                      )
+                    })}
+
+                    {/* Y-axis label */}
+                    <text
+                      x="20"
+                      y="160"
+                      textAnchor="middle"
+                      fill="#6b7280"
+                      fontSize="12"
+                      transform="rotate(-90, 20, 160)"
+                    >
+                      Cantidad de Tickets
                     </text>
                   </svg>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "center", gap: "1.5rem", marginTop: "1rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <div
+                      style={{
+                        width: "16px",
+                        height: "3px",
+                        background: "#3b82f6",
+                        borderRadius: "2px",
+                      }}
+                    ></div>
+                    <span style={{ fontSize: "0.875rem", color: "#6b7280" }}>Tickets Emitidos</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <div
+                      style={{
+                        width: "16px",
+                        height: "3px",
+                        background: "#10b981",
+                        borderRadius: "2px",
+                      }}
+                    ></div>
+                    <span style={{ fontSize: "0.875rem", color: "#6b7280" }}>Tickets Atendidos</span>
+                  </div>
                 </div>
               </div>
             )}
