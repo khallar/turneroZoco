@@ -454,13 +454,12 @@ export default function PaginaAdmin() {
     }
   }
 
+  const backupsUltimoMes = backups.slice(-30)
+
   const prepararDatosGraficoEvolucion = () => {
-    if (backups.length === 0) return []
+    if (backupsUltimoMes.length === 0) return []
 
-    // Tomar los últimos 30 días activos (que tienen backups)
-    const ultimos30Dias = backups.slice(-30).reverse() // Más recientes primero
-
-    return ultimos30Dias
+    return backupsUltimoMes
       .map((backup) => {
         const fecha = new Date(backup.fecha)
         const emitidos = backup.resumen?.totalTicketsEmitidos || 0
@@ -481,12 +480,6 @@ export default function PaginaAdmin() {
       })
       .reverse() // Volver a orden cronológico (más antiguos primero)
   }
-
-  const estadisticasAdminCalculadas = calcularEstadisticasAdmin()
-  const metricasAvanzadas = calcularMetricasAvanzadas()
-
-  // Preparar datos para el gráfico de evolución
-  const datosGraficoEvolucion = prepararDatosGraficoEvolucion()
 
   // Agregar función para descargar datos de un día específico
   const descargarDatosDia = async (backup: any) => {
@@ -529,7 +522,7 @@ export default function PaginaAdmin() {
         analisisTemporal: {
           tiempoPromedioEsperaReal: `${backupCompleto.resumen?.tiempoPromedioEsperaReal || 0} minutos`,
           velocidadAtencion: `${backupCompleto.resumen?.velocidadAtencion || 0} tickets/minuto`,
-          tiempoEntreTickets: `${backupCompleto.resumen?.tiempoEntreTickets || 0} minutos`,
+          tiempoEntreTickets: `${backupCompleto.resumen?.tiempoEntreTickets || 0} minutes`,
           duracionOperaciones: backupCompleto.datosDetallados?.analisisTemporal?.duracionTotal || 0,
           inicioOperaciones: backupCompleto.datosDetallados?.analisisTemporal?.inicioOperaciones || backup.fecha,
           finOperaciones: backupCompleto.datosDetallados?.analisisTemporal?.finOperaciones || backup.fecha,
@@ -712,6 +705,12 @@ export default function PaginaAdmin() {
 
   const totalesHistoricos = calcularTotalesHistoricos()
 
+  const estadisticasAdminCalculadas = calcularEstadisticasAdmin()
+  const metricasAvanzadas = calcularMetricasAvanzadas()
+
+  // Preparar datos para el gráfico de evolución
+  const datosGraficoEvolucion = prepararDatosGraficoEvolucion()
+
   if (loading || !isClient) {
     return (
       <div className={styles.loading}>
@@ -724,26 +723,26 @@ export default function PaginaAdmin() {
   }
 
   return (
-    <div className={styles.container}>
-      <div className={styles.maxWidth}>
-        {/* Header */}
-        <div className={styles.header}>
-          <div>
-            <img src="/logo-rojo.png" alt="Logo Sistema de Atención" className={styles.logo} />
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
+      <div className="max-w-7xl mx-auto p-4 md:p-6 lg:p-8">
+        {/* Header mejorado */}
+        <div className="mb-8 text-center">
+          <div className="mb-4">
+            <img src="/logo-rojo.png" alt="Logo" className="h-16 md:h-20 mx-auto" />
           </div>
-          <h1 className={styles.title}>
+          <h1 className="text-3xl md:text-4xl font-bold text-gray-800 mb-2 flex items-center justify-center gap-3">
             <Shield className="h-8 w-8 md:h-12 md:w-12 text-red-600" />
             Panel de Administración
           </h1>
-          <p className={styles.subtitle}>Control total del sistema de atención</p>
+          <p className="text-gray-600 text-lg">Control total del sistema de atención</p>
 
-          {/* Información de estado */}
-          <div className={styles.statusInfo}>
-            <div className={styles.statusItem}>
+          {/* Información de estado compacta */}
+          <div className="flex justify-center gap-6 mt-4 text-sm text-gray-600">
+            <div className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
               <span>{horaActual.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}</span>
             </div>
-            <div className={styles.statusItem}>
+            <div className="flex items-center gap-2">
               <Database className="h-4 w-4" />
               <span>
                 Última sync: {new Date().toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })}
@@ -751,17 +750,26 @@ export default function PaginaAdmin() {
             </div>
           </div>
 
-          {/* Botones de navegación */}
-          <div className={styles.navButtons}>
-            <a href="/" className={`${styles.navButton} ${styles.navButtonBlue}`}>
+          {/* Botones de navegación compactos */}
+          <div className="flex flex-wrap justify-center gap-3 mt-6">
+            <a
+              href="/"
+              className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Volver a Tickets
             </a>
-            <a href="/empleados" className={`${styles.navButton} ${styles.navButtonGreen}`}>
+            <a
+              href="/empleados"
+              className="inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+            >
               <Users className="mr-2 h-4 w-4" />
               Panel Empleados
             </a>
-            <a href="/proximos" className={`${styles.navButton} ${styles.navButtonPurple}`}>
+            <a
+              href="/proximos"
+              className="inline-flex items-center px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+            >
               <Eye className="mr-2 h-4 w-4" />
               Ver Próximos
             </a>
@@ -769,41 +777,41 @@ export default function PaginaAdmin() {
         </div>
 
         {/* Estadísticas Principales del Día */}
-        <div className={styles.statsGrid}>
-          <div className={`${styles.statCard} ${styles.statCardBlue}`}>
-            <div className={styles.statHeader}>
-              <span className={styles.statTitle}>Tickets Hoy</span>
-              <Users className="h-4 w-4" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div className="bg-white p-4 rounded-lg shadow border-l-4 border-blue-500 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-600">Tickets Hoy</span>
+              <Users className="h-4 w-4 text-blue-500" />
             </div>
-            <div className={styles.statValue}>{estado?.totalAtendidos}</div>
-            <p className={styles.statLabel}>Emitidos en el día</p>
+            <div className="text-3xl font-bold text-blue-600">{estado?.totalAtendidos}</div>
+            <p className="text-xs text-gray-500 mt-1">Emitidos en el día</p>
           </div>
 
-          <div className={`${styles.statCard} ${styles.statCardGreen}`}>
-            <div className={styles.statHeader}>
-              <span className={styles.statTitle}>Atendidos</span>
-              <CheckCircle className="h-4 w-4" />
+          <div className="bg-white p-4 rounded-lg shadow border-l-4 border-green-500 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-600">Atendidos</span>
+              <CheckCircle className="h-4 w-4 text-green-500" />
             </div>
-            <div className={styles.statValue}>{estado?.numerosLlamados}</div>
-            <p className={styles.statLabel}>Tickets procesados</p>
+            <div className="text-3xl font-bold text-green-600">{estado?.numerosLlamados}</div>
+            <p className="text-xs text-gray-500 mt-1">Tickets procesados</p>
           </div>
 
-          <div className={`${styles.statCard} ${styles.statCardOrange}`}>
-            <div className={styles.statHeader}>
-              <span className={styles.statTitle}>En Espera</span>
-              <Clock className="h-4 w-4" />
+          <div className="bg-white p-4 rounded-lg shadow border-l-4 border-orange-500 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-600">En Espera</span>
+              <Clock className="h-4 w-4 text-orange-500" />
             </div>
-            <div className={styles.statValue}>{estado?.totalAtendidos - estado?.numerosLlamados}</div>
-            <p className={styles.statLabel}>Pendientes</p>
+            <div className="text-3xl font-bold text-orange-600">{estado?.totalAtendidos - estado?.numerosLlamados}</div>
+            <p className="text-xs text-gray-500 mt-1">Pendientes</p>
           </div>
 
-          <div className={`${styles.statCard} ${styles.statCardPurple}`}>
-            <div className={styles.statHeader}>
-              <span className={styles.statTitle}>Eficiencia</span>
-              <TrendingUp className="h-4 w-4" />
+          <div className="bg-white p-4 rounded-lg shadow border-l-4 border-purple-500 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-600">Eficiencia</span>
+              <TrendingUp className="h-4 w-4 text-purple-500" />
             </div>
-            <div className={styles.statValue}>{estadisticasAdminCalculadas.eficienciaGeneral}%</div>
-            <p className={styles.statLabel}>Tasa de atención</p>
+            <div className="text-3xl font-bold text-purple-600">{estadisticasAdminCalculadas.eficienciaGeneral}%</div>
+            <p className="text-xs text-gray-500 mt-1">Tasa de atención</p>
           </div>
         </div>
 
@@ -1034,13 +1042,170 @@ export default function PaginaAdmin() {
           </CardContent>
         </Card>
 
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                Resumen del Historial - Último Mes
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={cargarBackups} variant="outline" size="sm" disabled={loadingBackups}>
+                  <RefreshCw className={`mr-2 h-4 w-4 ${loadingBackups ? "animate-spin" : ""}`} />
+                  {loadingBackups ? "Cargando..." : "Actualizar"}
+                </Button>
+              </div>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingBackups ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Cargando historial...</p>
+              </div>
+            ) : errorBackups ? (
+              <div className="text-center py-8">
+                <p className="text-red-600 mb-4">{errorBackups}</p>
+                <Button onClick={cargarBackups} variant="outline">
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Reintentar
+                </Button>
+              </div>
+            ) : backupsUltimoMes.length > 0 ? (
+              <div className="space-y-4">
+                {/* Resumen compacto del mes */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+                  <h4 className="font-semibold text-blue-800 mb-3 text-sm">📊 Resumen del Último Mes</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-blue-600">{backupsUltimoMes.length}</div>
+                      <p className="text-xs text-blue-700">Días activos</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-green-600">
+                        {Math.round(
+                          backupsUltimoMes.reduce(
+                            (sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0),
+                            0,
+                          ) / backupsUltimoMes.length,
+                        )}
+                      </div>
+                      <p className="text-xs text-green-700">Promedio/día</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-orange-600">
+                        {Math.max(...backupsUltimoMes.map((backup) => backup.resumen?.totalTicketsEmitidos || 0))}
+                      </div>
+                      <p className="text-xs text-orange-700">Día pico</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-purple-600">
+                        {backupsUltimoMes.reduce((sum, backup) => sum + (backup.resumen?.totalTicketsEmitidos || 0), 0)}
+                      </div>
+                      <p className="text-xs text-purple-700">Total mes</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lista compacta de días */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {backupsUltimoMes.map((backup, index) => {
+                    const emitidos = backup.resumen?.totalTicketsEmitidos || 0
+                    const atendidos = backup.resumen?.totalTicketsAtendidos || 0
+                    const eficiencia = emitidos > 0 ? Math.round((atendidos / emitidos) * 100) : 0
+                    const esReciente = index < 3
+
+                    return (
+                      <div
+                        key={index}
+                        className={`p-3 rounded-lg border transition-all duration-200 hover:shadow-md ${
+                          esReciente
+                            ? "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300"
+                            : "bg-gray-50 border-gray-300"
+                        }`}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h4 className={`font-bold text-sm ${esReciente ? "text-blue-800" : "text-gray-800"}`}>
+                              {backup.fecha}
+                            </h4>
+                            <p className="text-xs text-gray-500">
+                              {new Date(backup.fecha).toLocaleDateString("es-AR", { weekday: "short" })}
+                            </p>
+                          </div>
+                          {esReciente && (
+                            <div className="bg-blue-500 text-white px-2 py-0.5 rounded-full text-xs font-bold">
+                              NUEVO
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-1 text-xs mb-2">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Emitidos:</span>
+                            <span className="font-bold text-blue-600">{emitidos}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Atendidos:</span>
+                            <span className="font-bold text-green-600">{atendidos}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Eficiencia:</span>
+                            <span
+                              className={`font-bold ${
+                                eficiencia >= 90
+                                  ? "text-green-600"
+                                  : eficiencia >= 70
+                                    ? "text-yellow-600"
+                                    : "text-red-600"
+                              }`}
+                            >
+                              {eficiencia}%
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="w-full bg-gray-200 rounded-full h-1.5 mb-2">
+                          <div
+                            className={`h-1.5 rounded-full transition-all ${
+                              eficiencia >= 90 ? "bg-green-500" : eficiencia >= 70 ? "bg-yellow-500" : "bg-red-500"
+                            }`}
+                            style={{ width: `${eficiencia}%` }}
+                          ></div>
+                        </div>
+
+                        <Button
+                          onClick={() => descargarDatosDia(backup)}
+                          className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs py-1"
+                          size="sm"
+                        >
+                          <Download className="mr-1 h-3 w-3" />
+                          Descargar
+                        </Button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-500 mb-4">No hay historial del último mes disponible</p>
+                <Button onClick={crearBackupPrueba} className="bg-blue-600 hover:bg-blue-700 text-white">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Crear Backup
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Historial de Días Anteriores MEJORADO */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Calendar className="h-5 w-5" />
-                Historial de Días Anteriores
+                Historial Completo de Días Anteriores
               </div>
               <div className="flex gap-2">
                 <Button onClick={cargarBackups} variant="outline" size="sm" disabled={loadingBackups}>
