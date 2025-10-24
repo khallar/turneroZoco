@@ -132,8 +132,12 @@ export default function PaginaAdmin() {
     const filteredBackups = getFilteredBackups()
     const distribucionPorHora: { [hora: number]: number } = {}
 
+    console.log("[v0] Preparando datos de horas pico")
+    console.log("[v0] Backups filtrados:", filteredBackups.length)
+
     filteredBackups.forEach((backup) => {
       if (backup.resumen?.distribucionPorHora) {
+        console.log("[v0] Distribución por hora del backup:", backup.fecha, backup.resumen.distribucionPorHora)
         Object.entries(backup.resumen.distribucionPorHora).forEach(([hora, cantidad]) => {
           const h = Number.parseInt(hora)
           distribucionPorHora[h] = (distribucionPorHora[h] || 0) + (cantidad as number)
@@ -141,12 +145,17 @@ export default function PaginaAdmin() {
       }
     })
 
-    return Object.entries(distribucionPorHora)
+    console.log("[v0] Distribución agregada por hora:", distribucionPorHora)
+
+    const resultado = Object.entries(distribucionPorHora)
       .map(([hora, cantidad]) => ({
         hora: Number.parseInt(hora),
         cantidad,
       }))
       .sort((a, b) => a.hora - b.hora)
+
+    console.log("[v0] Datos finales para el gráfico:", resultado)
+    return resultado
   }
 
   const prepararDatosGrafico = () => {
