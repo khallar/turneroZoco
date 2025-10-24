@@ -6,7 +6,7 @@ import styles from "./page.module.css"
 
 export const dynamic = "force-dynamic"
 
-type FilterPeriod = "7days" | "30days" | "all"
+type FilterPeriod = "hoy" | "ayer" | "7days" | "30days" | "all" // Added "hoy" and "ayer" filter options
 
 export default function PaginaAdmin() {
   const { estado, loading, error, reiniciarContador, recargar } = useSistemaEstado()
@@ -16,7 +16,7 @@ export default function PaginaAdmin() {
   const [mostrarConfirmacionReinicio, setMostrarConfirmacionReinicio] = useState(false)
   const [procesandoAccion, setProcesandoAccion] = useState(false)
   const [vistaActual, setVistaActual] = useState<"resumen" | "historial" | "metricas">("resumen")
-  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("7days")
+  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("hoy") // Changed default to "hoy"
 
   useEffect(() => {
     setIsClient(true)
@@ -101,8 +101,21 @@ export default function PaginaAdmin() {
 
   const getFilteredBackups = () => {
     const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+
     const filtered = backups.filter((backup) => {
       const backupDate = new Date(backup.fecha)
+      const backupDay = new Date(backupDate.getFullYear(), backupDate.getMonth(), backupDate.getDate())
+
+      if (filterPeriod === "hoy") {
+        return backupDay.getTime() === today.getTime()
+      }
+      if (filterPeriod === "ayer") {
+        return backupDay.getTime() === yesterday.getTime()
+      }
+
       const diffDays = Math.floor((now.getTime() - backupDate.getTime()) / (1000 * 60 * 60 * 24))
 
       if (filterPeriod === "7days") return diffDays <= 7
@@ -338,7 +351,16 @@ export default function PaginaAdmin() {
                 <div className={styles.statValue}>{tiempoEsperaPromedio}</div>
                 <p className={styles.statLabel}>
                   minutos por cliente (
-                  {filterPeriod === "7days" ? "7 días" : filterPeriod === "30days" ? "30 días" : "total"})
+                  {filterPeriod === "hoy"
+                    ? "hoy"
+                    : filterPeriod === "ayer"
+                      ? "ayer"
+                      : filterPeriod === "7days"
+                        ? "7 días"
+                        : filterPeriod === "30days"
+                          ? "30 días"
+                          : "total"}
+                  )
                 </p>
               </div>
             </div>
@@ -353,6 +375,18 @@ export default function PaginaAdmin() {
                     Tendencia de Tickets
                   </h3>
                   <div className={styles.filterGroup}>
+                    <button
+                      onClick={() => setFilterPeriod("hoy")}
+                      className={`${styles.filterButton} ${filterPeriod === "hoy" ? styles.filterButtonActive : ""}`}
+                    >
+                      Hoy
+                    </button>
+                    <button
+                      onClick={() => setFilterPeriod("ayer")}
+                      className={`${styles.filterButton} ${filterPeriod === "ayer" ? styles.filterButtonActive : ""}`}
+                    >
+                      Ayer
+                    </button>
                     <button
                       onClick={() => setFilterPeriod("7days")}
                       className={`${styles.filterButton} ${filterPeriod === "7days" ? styles.filterButtonActive : ""}`}
@@ -603,6 +637,18 @@ export default function PaginaAdmin() {
                   </h3>
                   <div className={styles.filterGroup}>
                     <button
+                      onClick={() => setFilterPeriod("hoy")}
+                      className={`${styles.filterButton} ${filterPeriod === "hoy" ? styles.filterButtonActive : ""}`}
+                    >
+                      Hoy
+                    </button>
+                    <button
+                      onClick={() => setFilterPeriod("ayer")}
+                      className={`${styles.filterButton} ${filterPeriod === "ayer" ? styles.filterButtonActive : ""}`}
+                    >
+                      Ayer
+                    </button>
+                    <button
                       onClick={() => setFilterPeriod("7days")}
                       className={`${styles.filterButton} ${filterPeriod === "7days" ? styles.filterButtonActive : ""}`}
                     >
@@ -770,6 +816,18 @@ export default function PaginaAdmin() {
                     Horas Pico - Distribución de Clientes
                   </h3>
                   <div className={styles.filterGroup}>
+                    <button
+                      onClick={() => setFilterPeriod("hoy")}
+                      className={`${styles.filterButton} ${filterPeriod === "hoy" ? styles.filterButtonActive : ""}`}
+                    >
+                      Hoy
+                    </button>
+                    <button
+                      onClick={() => setFilterPeriod("ayer")}
+                      className={`${styles.filterButton} ${filterPeriod === "ayer" ? styles.filterButtonActive : ""}`}
+                    >
+                      Ayer
+                    </button>
                     <button
                       onClick={() => setFilterPeriod("7days")}
                       className={`${styles.filterButton} ${filterPeriod === "7days" ? styles.filterButtonActive : ""}`}
