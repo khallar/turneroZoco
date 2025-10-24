@@ -144,6 +144,18 @@ export default function PaginaAdmin() {
       }))
   }
 
+  const prepararDatosGraficoTiempoEspera = () => {
+    const filteredBackups = getFilteredBackups()
+    return filteredBackups
+      .slice(-30)
+      .reverse()
+      .map((backup) => ({
+        fecha: new Date(backup.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }),
+        tiempoEspera: backup.resumen?.tiempoPromedioEsperaReal || 0,
+      }))
+      .filter((item) => item.tiempoEspera > 0) // Only show days with wait time data
+  }
+
   if (loading || !isClient) {
     return (
       <div className={styles.loading}>
@@ -158,6 +170,7 @@ export default function PaginaAdmin() {
   const metricas = calcularMetricas()
   const datosGrafico = prepararDatosGrafico()
   const tiempoEsperaPromedio = calcularTiempoEsperaPromedio()
+  const datosGraficoTiempoEspera = prepararDatosGraficoTiempoEspera()
 
   return (
     <div className={styles.container}>
@@ -398,6 +411,173 @@ export default function PaginaAdmin() {
                       {filterPeriod === "7days" ? "7 días" : filterPeriod === "30days" ? "30 días" : "Todo"})
                     </text>
                   </svg>
+                </div>
+              </div>
+            )}
+
+            {datosGraficoTiempoEspera.length > 0 && (
+              <div className={styles.chartCard}>
+                <div className={styles.filterContainer}>
+                  <h3 className={styles.chartTitle}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <polyline points="12 6 12 12 16 14" />
+                    </svg>
+                    Tendencia de Tiempo de Espera
+                  </h3>
+                  <div className={styles.filterGroup}>
+                    <button
+                      onClick={() => setFilterPeriod("7days")}
+                      className={`${styles.filterButton} ${filterPeriod === "7days" ? styles.filterButtonActive : ""}`}
+                    >
+                      Últimos 7 días
+                    </button>
+                    <button
+                      onClick={() => setFilterPeriod("30days")}
+                      className={`${styles.filterButton} ${filterPeriod === "30days" ? styles.filterButtonActive : ""}`}
+                    >
+                      Últimos 30 días
+                    </button>
+                    <button
+                      onClick={() => setFilterPeriod("all")}
+                      className={`${styles.filterButton} ${filterPeriod === "all" ? styles.filterButtonActive : ""}`}
+                    >
+                      Todo el tiempo
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ width: "100%", height: "300px", padding: "1rem 0" }}>
+                  <svg width="100%" height="100%" viewBox="0 0 800 300" style={{ overflow: "visible" }}>
+                    <defs>
+                      <linearGradient id="cyanGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.2" />
+                        <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
+                      </linearGradient>
+                      <filter id="shadow">
+                        <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.3" />
+                      </filter>
+                    </defs>
+
+                    {/* Grid lines */}
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <g key={i}>
+                        <line x1="80" y1={40 + i * 50} x2="750" y2={40 + i * 50} stroke="#e5e7eb" strokeWidth="1" />
+                        <text x="70" y={45 + i * 50} textAnchor="end" fill="#9ca3af" fontSize="12">
+                          {Math.round((4 - i) * (Math.max(...datosGraficoTiempoEspera.map((d) => d.tiempoEspera)) / 4))}
+                        </text>
+                      </g>
+                    ))}
+
+                    {/* X-axis labels */}
+                    {datosGraficoTiempoEspera.map((dato, index) => {
+                      const x = 80 + (index * 670) / Math.max(datosGraficoTiempoEspera.length - 1, 1)
+                      return (
+                        <text
+                          key={index}
+                          x={x}
+                          y="260"
+                          textAnchor="middle"
+                          fill="#6b7280"
+                          fontSize="11"
+                          transform={`rotate(-45, ${x}, 260)`}
+                        >
+                          {dato.fecha}
+                        </text>
+                      )
+                    })}
+
+                    {/* Area under the line */}
+                    {datosGraficoTiempoEspera.length > 1 && (
+                      <path
+                        d={`
+                          M 80,240
+                          ${datosGraficoTiempoEspera
+                            .map((dato, index) => {
+                              const x = 80 + (index * 670) / Math.max(datosGraficoTiempoEspera.length - 1, 1)
+                              const maxValue = Math.max(...datosGraficoTiempoEspera.map((d) => d.tiempoEspera))
+                              const y = 240 - (dato.tiempoEspera / maxValue) * 200
+                              return `L ${x},${y}`
+                            })
+                            .join(" ")}
+                          L ${80 + 670},240
+                          Z
+                        `}
+                        fill="url(#cyanGradient)"
+                      />
+                    )}
+
+                    {/* Line */}
+                    {datosGraficoTiempoEspera.length > 1 && (
+                      <path
+                        d={datosGraficoTiempoEspera
+                          .map((dato, index) => {
+                            const x = 80 + (index * 670) / Math.max(datosGraficoTiempoEspera.length - 1, 1)
+                            const maxValue = Math.max(...datosGraficoTiempoEspera.map((d) => d.tiempoEspera))
+                            const y = 240 - (dato.tiempoEspera / maxValue) * 200
+                            return `${index === 0 ? "M" : "L"} ${x},${y}`
+                          })
+                          .join(" ")}
+                        fill="none"
+                        stroke="#06b6d4"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        filter="url(#shadow)"
+                      />
+                    )}
+
+                    {/* Points */}
+                    {datosGraficoTiempoEspera.map((dato, index) => {
+                      const x = 80 + (index * 670) / Math.max(datosGraficoTiempoEspera.length - 1, 1)
+                      const maxValue = Math.max(...datosGraficoTiempoEspera.map((d) => d.tiempoEspera))
+                      const y = 240 - (dato.tiempoEspera / maxValue) * 200
+
+                      return (
+                        <g key={index}>
+                          <circle
+                            cx={x}
+                            cy={y}
+                            r="6"
+                            fill="white"
+                            stroke="#06b6d4"
+                            strokeWidth="3"
+                            filter="url(#shadow)"
+                          />
+                          <circle cx={x} cy={y} r="3" fill="#06b6d4" />
+                          <title>
+                            {dato.fecha}: {dato.tiempoEspera.toFixed(1)} min
+                          </title>
+                        </g>
+                      )
+                    })}
+
+                    {/* Y-axis label */}
+                    <text
+                      x="20"
+                      y="140"
+                      textAnchor="middle"
+                      fill="#6b7280"
+                      fontSize="12"
+                      transform="rotate(-90, 20, 140)"
+                    >
+                      Minutos
+                    </text>
+                  </svg>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "center", gap: "1.5rem", marginTop: "1rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <div
+                      style={{
+                        width: "16px",
+                        height: "3px",
+                        background: "#06b6d4",
+                        borderRadius: "2px",
+                      }}
+                    ></div>
+                    <span style={{ fontSize: "0.875rem", color: "#6b7280" }}>Tiempo de Espera Promedio</span>
+                  </div>
                 </div>
               </div>
             )}
