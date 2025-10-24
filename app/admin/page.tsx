@@ -117,6 +117,21 @@ export default function PaginaAdmin() {
     return filtered
   }
 
+  const calcularTiempoEsperaPromedio = () => {
+    const filteredBackups = getFilteredBackups()
+
+    if (filteredBackups.length === 0) return 0
+
+    const tiemposEspera = filteredBackups
+      .map((backup) => backup.resumen?.tiempoPromedioEsperaReal || 0)
+      .filter((tiempo) => tiempo > 0)
+
+    if (tiemposEspera.length === 0) return 0
+
+    const promedio = tiemposEspera.reduce((sum, tiempo) => sum + tiempo, 0) / tiemposEspera.length
+    return Math.round(promedio * 10) / 10 // Redondear a 1 decimal
+  }
+
   const prepararDatosGrafico = () => {
     const filteredBackups = getFilteredBackups()
     return filteredBackups
@@ -142,6 +157,7 @@ export default function PaginaAdmin() {
 
   const metricas = calcularMetricas()
   const datosGrafico = prepararDatosGrafico()
+  const tiempoEsperaPromedio = calcularTiempoEsperaPromedio()
 
   return (
     <div className={styles.container}>
@@ -301,6 +317,21 @@ export default function PaginaAdmin() {
                     }}
                   ></div>
                 </div>
+              </div>
+
+              <div className={`${styles.statCard} ${styles.statCardCyan}`}>
+                <div className={styles.statHeader}>
+                  <span className={styles.statTitle}>Tiempo de Espera</span>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#06b6d4" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                </div>
+                <div className={styles.statValue}>{tiempoEsperaPromedio}</div>
+                <p className={styles.statLabel}>
+                  minutos promedio (
+                  {filterPeriod === "7days" ? "7 días" : filterPeriod === "30days" ? "30 días" : "total"})
+                </p>
               </div>
             </div>
 

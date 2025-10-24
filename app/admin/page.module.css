@@ -225,6 +225,19 @@
   height: 8px;
 }
 
+/* Adding cyan stat card styles for wait time metric */
+.statCardCyan {
+  border-color: #cffafe;
+}
+
+.statCardCyan::before {
+  background: linear-gradient(90deg, #06b6d4 0%, #0891b2 100%);
+}
+
+.statCardCyan:hover::before {
+  height: 8px;
+}
+
 .statHeader {
   display: flex;
   justify-content: space-between;
