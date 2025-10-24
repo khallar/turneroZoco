@@ -68,15 +68,12 @@ export default function PaginaAdmin() {
       fecha: backup.fecha,
       emitidos: backup.resumen?.totalTicketsEmitidos || 0,
       atendidos: backup.resumen?.totalTicketsAtendidos || 0,
-      eficiencia:
-        backup.resumen?.totalTicketsEmitidos > 0
-          ? Math.round(((backup.resumen?.totalTicketsAtendidos || 0) / backup.resumen.totalTicketsEmitidos) * 100)
-          : 0,
+      tiempoEspera: backup.resumen?.tiempoPromedioEsperaReal || 0,
     }))
 
     const csv = [
-      ["Fecha", "Emitidos", "Atendidos", "Eficiencia (%)"],
-      ...dataToExport.map((row) => [row.fecha, row.emitidos, row.atendidos, row.eficiencia]),
+      ["Fecha", "Emitidos", "Atendidos", "Tiempo Espera (min)"],
+      ...dataToExport.map((row) => [row.fecha, row.emitidos, row.atendidos, row.tiempoEspera]),
     ]
       .map((row) => row.join(","))
       .join("\n")
@@ -93,15 +90,13 @@ export default function PaginaAdmin() {
   }
 
   const calcularMetricas = () => {
-    const eficiencia =
-      estado.totalAtendidos > 0 ? Math.round((estado.numerosLlamados / estado.totalAtendidos) * 100) : 0
     const pendientes = estado.totalAtendidos - estado.numerosLlamados
     const promedioHistorico =
       backups.length > 0
         ? Math.round(backups.reduce((sum, b) => sum + (b.resumen?.totalTicketsEmitidos || 0), 0) / backups.length)
         : 0
 
-    return { eficiencia, pendientes, promedioHistorico }
+    return { pendientes, promedioHistorico }
   }
 
   const getFilteredBackups = () => {
@@ -129,7 +124,28 @@ export default function PaginaAdmin() {
     if (tiemposEspera.length === 0) return 0
 
     const promedio = tiemposEspera.reduce((sum, tiempo) => sum + tiempo, 0) / tiemposEspera.length
-    return Math.round(promedio * 10) / 10 // Redondear a 1 decimal
+    return Math.round(promedio * 10) / 10
+  }
+
+  const prepararDatosHorasPico = () => {
+    const filteredBackups = getFilteredBackups()
+    const distribucionPorHora: { [hora: number]: number } = {}
+
+    filteredBackups.forEach((backup) => {
+      if (backup.resumen?.distribucionPorHora) {
+        Object.entries(backup.resumen.distribucionPorHora).forEach(([hora, cantidad]) => {
+          const h = Number.parseInt(hora)
+          distribucionPorHora[h] = (distribucionPorHora[h] || 0) + (cantidad as number)
+        })
+      }
+    })
+
+    return Object.entries(distribucionPorHora)
+      .map(([hora, cantidad]) => ({
+        hora: Number.parseInt(hora),
+        cantidad,
+      }))
+      .sort((a, b) => a.hora - b.hora)
   }
 
   const prepararDatosGrafico = () => {
@@ -153,7 +169,7 @@ export default function PaginaAdmin() {
         fecha: new Date(backup.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }),
         tiempoEspera: backup.resumen?.tiempoPromedioEsperaReal || 0,
       }))
-      .filter((item) => item.tiempoEspera > 0) // Only show days with wait time data
+      .filter((item) => item.tiempoEspera > 0)
   }
 
   if (loading || !isClient) {
@@ -171,6 +187,7 @@ export default function PaginaAdmin() {
   const datosGrafico = prepararDatosGrafico()
   const tiempoEsperaPromedio = calcularTiempoEsperaPromedio()
   const datosGraficoTiempoEspera = prepararDatosGraficoTiempoEspera()
+  const datosHorasPico = prepararDatosHorasPico()
 
   return (
     <div className={styles.container}>
@@ -300,38 +317,6 @@ export default function PaginaAdmin() {
                 <p className={styles.statLabel}>Tickets pendientes</p>
               </div>
 
-              <div className={`${styles.statCard} ${styles.statCardPurple}`}>
-                <div className={styles.statHeader}>
-                  <span className={styles.statTitle}>Eficiencia</span>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10" />
-                    <circle cx="12" cy="12" r="6" />
-                    <circle cx="12" cy="12" r="2" />
-                  </svg>
-                </div>
-                <div className={styles.statValue}>{metricas.eficiencia}%</div>
-                <div
-                  style={{
-                    width: "100%",
-                    height: "8px",
-                    background: "#f3f4f6",
-                    borderRadius: "9999px",
-                    overflow: "hidden",
-                    marginTop: "0.5rem",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${metricas.eficiencia}%`,
-                      height: "100%",
-                      background: "linear-gradient(90deg, #a855f7 0%, #9333ea 100%)",
-                      borderRadius: "9999px",
-                      transition: "width 0.6s ease",
-                    }}
-                  ></div>
-                </div>
-              </div>
-
               <div className={`${styles.statCard} ${styles.statCardCyan}`}>
                 <div className={styles.statHeader}>
                   <span className={styles.statTitle}>Tiempo de Espera</span>
@@ -342,7 +327,7 @@ export default function PaginaAdmin() {
                 </div>
                 <div className={styles.statValue}>{tiempoEsperaPromedio}</div>
                 <p className={styles.statLabel}>
-                  minutos promedio (
+                  minutos por cliente (
                   {filterPeriod === "7days" ? "7 días" : filterPeriod === "30days" ? "30 días" : "total"})
                 </p>
               </div>
@@ -577,6 +562,136 @@ export default function PaginaAdmin() {
                       }}
                     ></div>
                     <span style={{ fontSize: "0.875rem", color: "#6b7280" }}>Tiempo de Espera Promedio</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {datosHorasPico.length > 0 && (
+              <div className={styles.chartCard}>
+                <div className={styles.filterContainer}>
+                  <h3 className={styles.chartTitle}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="12" y1="20" x2="12" y2="10" />
+                      <line x1="18" y1="20" x2="18" y2="4" />
+                      <line x1="6" y1="20" x2="6" y2="16" />
+                    </svg>
+                    Horas Pico - Distribución de Clientes
+                  </h3>
+                  <div className={styles.filterGroup}>
+                    <button
+                      onClick={() => setFilterPeriod("7days")}
+                      className={`${styles.filterButton} ${filterPeriod === "7days" ? styles.filterButtonActive : ""}`}
+                    >
+                      Últimos 7 días
+                    </button>
+                    <button
+                      onClick={() => setFilterPeriod("30days")}
+                      className={`${styles.filterButton} ${filterPeriod === "30days" ? styles.filterButtonActive : ""}`}
+                    >
+                      Últimos 30 días
+                    </button>
+                    <button
+                      onClick={() => setFilterPeriod("all")}
+                      className={`${styles.filterButton} ${filterPeriod === "all" ? styles.filterButtonActive : ""}`}
+                    >
+                      Todo el tiempo
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ width: "100%", height: "350px", padding: "1rem 0" }}>
+                  <svg width="100%" height="100%" viewBox="0 0 800 350" style={{ overflow: "visible" }}>
+                    <defs>
+                      <linearGradient id="barGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.8" />
+                        <stop offset="100%" stopColor="#6366f1" stopOpacity="0.9" />
+                      </linearGradient>
+                      <filter id="barShadow">
+                        <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.3" />
+                      </filter>
+                    </defs>
+
+                    {/* Grid lines */}
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <g key={i}>
+                        <line x1="80" y1={40 + i * 60} x2="750" y2={40 + i * 60} stroke="#e5e7eb" strokeWidth="1" />
+                        <text x="70" y={45 + i * 60} textAnchor="end" fill="#9ca3af" fontSize="12">
+                          {Math.round((4 - i) * (Math.max(...datosHorasPico.map((d) => d.cantidad)) / 4))}
+                        </text>
+                      </g>
+                    ))}
+
+                    {/* Bars */}
+                    {datosHorasPico.map((dato, index) => {
+                      const barWidth = 670 / Math.max(datosHorasPico.length, 1)
+                      const x = 80 + index * barWidth
+                      const maxValue = Math.max(...datosHorasPico.map((d) => d.cantidad))
+                      const barHeight = (dato.cantidad / maxValue) * 240
+                      const y = 280 - barHeight
+
+                      return (
+                        <g key={index}>
+                          <rect
+                            x={x + barWidth * 0.1}
+                            y={y}
+                            width={barWidth * 0.8}
+                            height={barHeight}
+                            fill="url(#barGradient)"
+                            filter="url(#barShadow)"
+                            rx="4"
+                          >
+                            <title>
+                              {dato.hora}:00 - {dato.cantidad} clientes
+                            </title>
+                          </rect>
+                          <text
+                            x={x + barWidth / 2}
+                            y={y - 5}
+                            textAnchor="middle"
+                            fill="#6b7280"
+                            fontSize="11"
+                            fontWeight="600"
+                          >
+                            {dato.cantidad}
+                          </text>
+                          <text x={x + barWidth / 2} y="305" textAnchor="middle" fill="#6b7280" fontSize="11">
+                            {dato.hora}h
+                          </text>
+                        </g>
+                      )
+                    })}
+
+                    {/* Y-axis label */}
+                    <text
+                      x="20"
+                      y="160"
+                      textAnchor="middle"
+                      fill="#6b7280"
+                      fontSize="12"
+                      transform="rotate(-90, 20, 160)"
+                    >
+                      Cantidad de Clientes
+                    </text>
+
+                    {/* X-axis label */}
+                    <text x="400" y="340" textAnchor="middle" fill="#6b7280" fontSize="12">
+                      Hora del Día
+                    </text>
+                  </svg>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "center", gap: "1.5rem", marginTop: "1rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <div
+                      style={{
+                        width: "16px",
+                        height: "16px",
+                        background: "linear-gradient(180deg, #8b5cf6 0%, #6366f1 100%)",
+                        borderRadius: "4px",
+                      }}
+                    ></div>
+                    <span style={{ fontSize: "0.875rem", color: "#6b7280" }}>Clientes por Hora</span>
                   </div>
                 </div>
               </div>
