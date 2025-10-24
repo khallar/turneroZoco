@@ -16,7 +16,7 @@ export default function PaginaAdmin() {
   const [mostrarConfirmacionReinicio, setMostrarConfirmacionReinicio] = useState(false)
   const [procesandoAccion, setProcesandoAccion] = useState(false)
   const [vistaActual, setVistaActual] = useState<"resumen" | "historial" | "metricas">("resumen")
-  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("hoy") // Changed default to "hoy"
+  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("30days") // Changed default to "30days"
 
   useEffect(() => {
     setIsClient(true)
@@ -105,23 +105,36 @@ export default function PaginaAdmin() {
     const yesterday = new Date(today)
     yesterday.setDate(yesterday.getDate() - 1)
 
+    console.log("[v0] Filtering backups with period:", filterPeriod)
+    console.log("[v0] Total backups available:", backups.length)
+    console.log("[v0] Today date:", today.toISOString())
+
     const filtered = backups.filter((backup) => {
       const backupDate = new Date(backup.fecha)
       const backupDay = new Date(backupDate.getFullYear(), backupDate.getMonth(), backupDate.getDate())
 
+      console.log("[v0] Comparing backup date:", backup.fecha, "parsed as:", backupDay.toISOString())
+
       if (filterPeriod === "hoy") {
-        return backupDay.getTime() === today.getTime()
+        const matches = backupDay.getTime() === today.getTime()
+        console.log("[v0] Hoy filter - matches:", matches)
+        return matches
       }
       if (filterPeriod === "ayer") {
-        return backupDay.getTime() === yesterday.getTime()
+        const matches = backupDay.getTime() === yesterday.getTime()
+        console.log("[v0] Ayer filter - matches:", matches)
+        return matches
       }
 
       const diffDays = Math.floor((now.getTime() - backupDate.getTime()) / (1000 * 60 * 60 * 24))
+      console.log("[v0] Days difference:", diffDays)
 
       if (filterPeriod === "7days") return diffDays <= 7
       if (filterPeriod === "30days") return diffDays <= 30
       return true
     })
+
+    console.log("[v0] Filtered backups count:", filtered.length)
     return filtered
   }
 
