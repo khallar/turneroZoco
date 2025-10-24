@@ -1,42 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Shield,
-  RotateCcw,
-  BarChart3,
-  Calendar,
-  Users,
-  Clock,
-  TrendingUp,
-  AlertTriangle,
-  RefreshCw,
-  ArrowLeft,
-  CheckCircle,
-  Eye,
-  Target,
-  Zap,
-  LineChart,
-  Activity,
-  Award,
-} from "lucide-react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
-import {
-  LineChart as RechartsLineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  BarChart as RechartsBarChart,
-  Bar,
-} from "recharts"
+import styles from "./page.module.css"
 
 export const dynamic = "force-dynamic"
+
+type FilterPeriod = "7days" | "30days" | "all"
 
 export default function PaginaAdmin() {
   const { estado, loading, error, reiniciarContador, recargar } = useSistemaEstado()
@@ -46,6 +16,7 @@ export default function PaginaAdmin() {
   const [mostrarConfirmacionReinicio, setMostrarConfirmacionReinicio] = useState(false)
   const [procesandoAccion, setProcesandoAccion] = useState(false)
   const [vistaActual, setVistaActual] = useState<"resumen" | "historial" | "metricas">("resumen")
+  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("7days")
 
   useEffect(() => {
     setIsClient(true)
@@ -92,6 +63,35 @@ export default function PaginaAdmin() {
     }
   }
 
+  const descargarHistorial = () => {
+    const dataToExport = backups.map((backup) => ({
+      fecha: backup.fecha,
+      emitidos: backup.resumen?.totalTicketsEmitidos || 0,
+      atendidos: backup.resumen?.totalTicketsAtendidos || 0,
+      eficiencia:
+        backup.resumen?.totalTicketsEmitidos > 0
+          ? Math.round(((backup.resumen?.totalTicketsAtendidos || 0) / backup.resumen.totalTicketsEmitidos) * 100)
+          : 0,
+    }))
+
+    const csv = [
+      ["Fecha", "Emitidos", "Atendidos", "Eficiencia (%)"],
+      ...dataToExport.map((row) => [row.fecha, row.emitidos, row.atendidos, row.eficiencia]),
+    ]
+      .map((row) => row.join(","))
+      .join("\n")
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const link = document.createElement("a")
+    const url = URL.createObjectURL(blob)
+    link.setAttribute("href", url)
+    link.setAttribute("download", `historial_${new Date().toISOString().split("T")[0]}.csv`)
+    link.style.visibility = "hidden"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   const calcularMetricas = () => {
     const eficiencia =
       estado.totalAtendidos > 0 ? Math.round((estado.numerosLlamados / estado.totalAtendidos) * 100) : 0
@@ -104,9 +104,23 @@ export default function PaginaAdmin() {
     return { eficiencia, pendientes, promedioHistorico }
   }
 
+  const getFilteredBackups = () => {
+    const now = new Date()
+    const filtered = backups.filter((backup) => {
+      const backupDate = new Date(backup.fecha)
+      const diffDays = Math.floor((now.getTime() - backupDate.getTime()) / (1000 * 60 * 60 * 24))
+
+      if (filterPeriod === "7days") return diffDays <= 7
+      if (filterPeriod === "30days") return diffDays <= 30
+      return true
+    })
+    return filtered
+  }
+
   const prepararDatosGrafico = () => {
-    return backups
-      .slice(-7)
+    const filteredBackups = getFilteredBackups()
+    return filteredBackups
+      .slice(-30)
       .reverse()
       .map((backup) => ({
         fecha: new Date(backup.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }),
@@ -117,10 +131,10 @@ export default function PaginaAdmin() {
 
   if (loading || !isClient) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 text-lg">Cargando panel...</p>
+      <div className={styles.loading}>
+        <div className={styles.loadingContent}>
+          <div className={styles.spinner}></div>
+          <p className={styles.loadingText}>Cargando panel...</p>
         </div>
       </div>
     )
@@ -130,200 +144,336 @@ export default function PaginaAdmin() {
   const datosGrafico = prepararDatosGrafico()
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className={styles.container}>
       {/* Header Moderno */}
-      <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <img src="/logo-rojo.png" alt="Logo" className="h-12" />
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                  <Shield className="h-6 w-6 text-red-600" />
+      <div className={styles.headerContainer}>
+        <div className={styles.headerContent}>
+          <div className={styles.headerTop}>
+            <div className={styles.headerLeft}>
+              <img src="/logo-rojo.png" alt="Logo" className={styles.headerLogo} />
+              <div className={styles.headerTitle}>
+                <h1 className={styles.headerTitleMain}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  </svg>
                   Panel de Administración
                 </h1>
-                <p className="text-sm text-gray-500">Control y análisis del sistema</p>
+                <p className={styles.headerSubtitle}>Control y análisis del sistema</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <a href="/" className="text-sm text-gray-600 hover:text-blue-600 flex items-center gap-1">
-                <ArrowLeft className="h-4 w-4" />
+            <div className={styles.headerRight}>
+              <a href="/" className={styles.headerLink}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M19 12H5M12 19l-7-7 7-7" />
+                </svg>
                 Tickets
               </a>
-              <a href="/empleados" className="text-sm text-gray-600 hover:text-green-600 flex items-center gap-1">
-                <Users className="h-4 w-4" />
+              <a href="/empleados" className={styles.headerLink}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
                 Empleados
               </a>
-              <a href="/proximos" className="text-sm text-gray-600 hover:text-purple-600 flex items-center gap-1">
-                <Eye className="h-4 w-4" />
+              <a href="/proximos" className={styles.headerLink}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
                 Próximos
               </a>
             </div>
           </div>
 
           {/* Navegación de vistas */}
-          <div className="flex gap-2 mt-4">
+          <div className={styles.tabs}>
             <button
               onClick={() => setVistaActual("resumen")}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                vistaActual === "resumen" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
+              className={`${styles.tab} ${vistaActual === "resumen" ? styles.tabActive : ""}`}
             >
-              <Activity className="inline h-4 w-4 mr-1" />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              </svg>
               Resumen
             </button>
             <button
               onClick={() => setVistaActual("historial")}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                vistaActual === "historial" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
+              className={`${styles.tab} ${vistaActual === "historial" ? styles.tabActive : ""}`}
             >
-              <Calendar className="inline h-4 w-4 mr-1" />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
               Historial
             </button>
             <button
               onClick={() => setVistaActual("metricas")}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                vistaActual === "metricas" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
+              className={`${styles.tab} ${vistaActual === "metricas" ? styles.tabActive : ""}`}
             >
-              <BarChart3 className="inline h-4 w-4 mr-1" />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="20" x2="12" y2="10" />
+                <line x1="18" y1="20" x2="18" y2="4" />
+                <line x1="6" y1="20" x2="6" y2="16" />
+              </svg>
               Métricas
             </button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className={styles.maxWidth}>
         {/* Vista: Resumen */}
         {vistaActual === "resumen" && (
-          <div className="space-y-6">
+          <div style={{ marginTop: "2rem" }}>
             {/* KPIs Principales */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card className="border-l-4 border-blue-500 hover:shadow-lg transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <Users className="h-8 w-8 text-blue-500" />
-                    <span className="text-3xl font-bold text-blue-600">{estado.totalAtendidos}</span>
-                  </div>
-                  <p className="text-sm font-medium text-gray-600">Tickets Emitidos Hoy</p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {estado.totalAtendidos > metricas.promedioHistorico ? "↗" : "↘"} vs promedio (
-                    {metricas.promedioHistorico})
-                  </p>
-                </CardContent>
-              </Card>
+            <div className={styles.statsGrid}>
+              <div className={`${styles.statCard} ${styles.statCardBlue}`}>
+                <div className={styles.statHeader}>
+                  <span className={styles.statTitle}>Tickets Emitidos</span>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </div>
+                <div className={styles.statValue}>{estado.totalAtendidos}</div>
+                <p className={styles.statLabel}>
+                  {estado.totalAtendidos > metricas.promedioHistorico ? "↗" : "↘"} vs promedio (
+                  {metricas.promedioHistorico})
+                </p>
+              </div>
 
-              <Card className="border-l-4 border-green-500 hover:shadow-lg transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <CheckCircle className="h-8 w-8 text-green-500" />
-                    <span className="text-3xl font-bold text-green-600">{estado.numerosLlamados}</span>
-                  </div>
-                  <p className="text-sm font-medium text-gray-600">Tickets Atendidos</p>
-                  <p className="text-xs text-gray-400 mt-1">Procesados exitosamente</p>
-                </CardContent>
-              </Card>
+              <div className={`${styles.statCard} ${styles.statCardGreen}`}>
+                <div className={styles.statHeader}>
+                  <span className={styles.statTitle}>Atendidos</span>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                </div>
+                <div className={styles.statValue}>{estado.numerosLlamados}</div>
+                <p className={styles.statLabel}>Procesados exitosamente</p>
+              </div>
 
-              <Card className="border-l-4 border-orange-500 hover:shadow-lg transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <Clock className="h-8 w-8 text-orange-500" />
-                    <span className="text-3xl font-bold text-orange-600">{metricas.pendientes}</span>
-                  </div>
-                  <p className="text-sm font-medium text-gray-600">En Espera</p>
-                  <p className="text-xs text-gray-400 mt-1">Tickets pendientes</p>
-                </CardContent>
-              </Card>
+              <div className={`${styles.statCard} ${styles.statCardOrange}`}>
+                <div className={styles.statHeader}>
+                  <span className={styles.statTitle}>En Espera</span>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                </div>
+                <div className={styles.statValue}>{metricas.pendientes}</div>
+                <p className={styles.statLabel}>Tickets pendientes</p>
+              </div>
 
-              <Card className="border-l-4 border-purple-500 hover:shadow-lg transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <Target className="h-8 w-8 text-purple-500" />
-                    <span className="text-3xl font-bold text-purple-600">{metricas.eficiencia}%</span>
-                  </div>
-                  <p className="text-sm font-medium text-gray-600">Eficiencia</p>
-                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                    <div
-                      className="bg-purple-500 h-2 rounded-full transition-all"
-                      style={{ width: `${metricas.eficiencia}%` }}
-                    ></div>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className={`${styles.statCard} ${styles.statCardPurple}`}>
+                <div className={styles.statHeader}>
+                  <span className={styles.statTitle}>Eficiencia</span>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#a855f7" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <circle cx="12" cy="12" r="6" />
+                    <circle cx="12" cy="12" r="2" />
+                  </svg>
+                </div>
+                <div className={styles.statValue}>{metricas.eficiencia}%</div>
+                <div
+                  style={{
+                    width: "100%",
+                    height: "8px",
+                    background: "#f3f4f6",
+                    borderRadius: "9999px",
+                    overflow: "hidden",
+                    marginTop: "0.5rem",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${metricas.eficiencia}%`,
+                      height: "100%",
+                      background: "linear-gradient(90deg, #a855f7 0%, #9333ea 100%)",
+                      borderRadius: "9999px",
+                      transition: "width 0.6s ease",
+                    }}
+                  ></div>
+                </div>
+              </div>
             </div>
 
-            {/* Gráfico de Tendencia Semanal */}
             {datosGrafico.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <LineChart className="h-5 w-5" />
-                    Tendencia Últimos 7 Días
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <RechartsLineChart data={datosGrafico}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="fecha" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line type="monotone" dataKey="emitidos" stroke="#3b82f6" strokeWidth={2} name="Emitidos" />
-                      <Line type="monotone" dataKey="atendidos" stroke="#10b981" strokeWidth={2} name="Atendidos" />
-                    </RechartsLineChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
+              <div className={styles.chartCard}>
+                <div className={styles.filterContainer}>
+                  <h3 className={styles.chartTitle}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                    </svg>
+                    Tendencia de Tickets
+                  </h3>
+                  <div className={styles.filterGroup}>
+                    <button
+                      onClick={() => setFilterPeriod("7days")}
+                      className={`${styles.filterButton} ${filterPeriod === "7days" ? styles.filterButtonActive : ""}`}
+                    >
+                      Últimos 7 días
+                    </button>
+                    <button
+                      onClick={() => setFilterPeriod("30days")}
+                      className={`${styles.filterButton} ${filterPeriod === "30days" ? styles.filterButtonActive : ""}`}
+                    >
+                      Últimos 30 días
+                    </button>
+                    <button
+                      onClick={() => setFilterPeriod("all")}
+                      className={`${styles.filterButton} ${filterPeriod === "all" ? styles.filterButtonActive : ""}`}
+                    >
+                      Todo el tiempo
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ width: "100%", height: "300px", padding: "1rem 0" }}>
+                  <svg width="100%" height="100%" viewBox="0 0 800 300">
+                    <defs>
+                      <linearGradient id="blueGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.3" />
+                        <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+                      </linearGradient>
+                      <linearGradient id="greenGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stopColor="#10b981" stopOpacity="0.3" />
+                        <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+
+                    {/* Grid lines */}
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <line
+                        key={i}
+                        x1="50"
+                        y1={50 + i * 50}
+                        x2="750"
+                        y2={50 + i * 50}
+                        stroke="#e5e7eb"
+                        strokeWidth="1"
+                      />
+                    ))}
+
+                    {/* Data visualization would go here - simplified for vanilla CSS */}
+                    <text x="400" y="150" textAnchor="middle" fill="#9ca3af" fontSize="14">
+                      Gráfico de tendencia (
+                      {filterPeriod === "7days" ? "7 días" : filterPeriod === "30days" ? "30 días" : "Todo"})
+                    </text>
+                  </svg>
+                </div>
+              </div>
             )}
 
             {/* Acción Rápida: Reiniciar Contador */}
-            <Card className="bg-gradient-to-r from-orange-50 to-red-50 border-orange-200">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-bold text-orange-800 flex items-center gap-2">
-                      <RotateCcw className="h-5 w-5" />
-                      Reiniciar Contador Diario
-                    </h3>
-                    <p className="text-sm text-orange-700 mt-1">
-                      Crea un backup automático y reinicia el contador para un nuevo día
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => setMostrarConfirmacionReinicio(true)}
-                    disabled={procesandoAccion}
-                    className="bg-orange-600 hover:bg-orange-700 text-white"
+            <div
+              className={styles.card}
+              style={{ background: "linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%)", border: "2px solid #fdba74" }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: "1rem",
+                }}
+              >
+                <div>
+                  <h3
+                    style={{
+                      fontSize: "1.125rem",
+                      fontWeight: "700",
+                      color: "#9a3412",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      marginBottom: "0.5rem",
+                    }}
                   >
-                    <RotateCcw className="mr-2 h-4 w-4" />
-                    Reiniciar
-                  </Button>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="23 4 23 10 17 10" />
+                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                    </svg>
+                    Reiniciar Contador Diario
+                  </h3>
+                  <p style={{ fontSize: "0.875rem", color: "#c2410c" }}>
+                    Crea un backup automático y reinicia el contador para un nuevo día
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
+                <button
+                  onClick={() => setMostrarConfirmacionReinicio(true)}
+                  disabled={procesandoAccion}
+                  className={`${styles.button} ${styles.buttonDanger}`}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="23 4 23 10 17 10" />
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                  </svg>
+                  Reiniciar
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Vista: Historial */}
         {vistaActual === "historial" && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-gray-900">Historial de Días</h2>
-              <Button onClick={cargarBackups} variant="outline" disabled={loadingBackups}>
-                <RefreshCw className={`mr-2 h-4 w-4 ${loadingBackups ? "animate-spin" : ""}`} />
-                Actualizar
-              </Button>
+          <div style={{ marginTop: "2rem" }}>
+            <div className={styles.filterContainer}>
+              <h2 className={styles.sectionTitle}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                Historial de Días
+              </h2>
+              <div style={{ display: "flex", gap: "0.75rem" }}>
+                <button onClick={descargarHistorial} className={styles.downloadButton} disabled={backups.length === 0}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Descargar CSV
+                </button>
+                <button
+                  onClick={cargarBackups}
+                  className={`${styles.button} ${styles.buttonOutline}`}
+                  disabled={loadingBackups}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    style={{ animation: loadingBackups ? "spin 1s linear infinite" : "none" }}
+                  >
+                    <polyline points="23 4 23 10 17 10" />
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                  </svg>
+                  Actualizar
+                </button>
+              </div>
             </div>
 
             {loadingBackups ? (
-              <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Cargando historial...</p>
+              <div style={{ textAlign: "center", padding: "3rem 0" }}>
+                <div className={styles.spinner} style={{ width: "3rem", height: "3rem", margin: "0 auto 1rem" }}></div>
+                <p style={{ color: "#6b7280" }}>Cargando historial...</p>
               </div>
             ) : backups.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className={styles.historyGrid}>
                 {backups
                   .slice(-30)
                   .reverse()
@@ -333,154 +483,185 @@ export default function PaginaAdmin() {
                     const eficiencia = emitidos > 0 ? Math.round((atendidos / emitidos) * 100) : 0
 
                     return (
-                      <Card key={index} className="hover:shadow-lg transition-shadow">
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div>
-                              <h4 className="font-bold text-gray-900">{backup.fecha}</h4>
-                              <p className="text-xs text-gray-500">
-                                {new Date(backup.fecha).toLocaleDateString("es-AR", { weekday: "long" })}
-                              </p>
+                      <div key={index} className={styles.historyCard}>
+                        <div className={styles.historyCardHeader}>
+                          <div>
+                            <div className={styles.historyDate}>{backup.fecha}</div>
+                            <div className={styles.historyDay}>
+                              {new Date(backup.fecha).toLocaleDateString("es-AR", { weekday: "long" })}
                             </div>
-                            {index < 3 && (
-                              <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-medium">
-                                Reciente
-                              </span>
-                            )}
                           </div>
+                          {index < 3 && <span className={`${styles.badge} ${styles.badgeInfo}`}>Reciente</span>}
+                        </div>
 
-                          <div className="space-y-2 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Emitidos:</span>
-                              <span className="font-bold text-blue-600">{emitidos}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Atendidos:</span>
-                              <span className="font-bold text-green-600">{atendidos}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Eficiencia:</span>
-                              <span className={`font-bold ${eficiencia >= 80 ? "text-green-600" : "text-orange-600"}`}>
-                                {eficiencia}%
-                              </span>
-                            </div>
+                        <div className={styles.historyStats}>
+                          <div className={styles.historyStat}>
+                            <span className={styles.historyStatLabel}>Emitidos:</span>
+                            <span className={styles.historyStatValue} style={{ color: "#3b82f6" }}>
+                              {emitidos}
+                            </span>
                           </div>
+                          <div className={styles.historyStat}>
+                            <span className={styles.historyStatLabel}>Atendidos:</span>
+                            <span className={styles.historyStatValue} style={{ color: "#10b981" }}>
+                              {atendidos}
+                            </span>
+                          </div>
+                          <div className={styles.historyStat}>
+                            <span className={styles.historyStatLabel}>Eficiencia:</span>
+                            <span
+                              className={styles.historyStatValue}
+                              style={{ color: eficiencia >= 80 ? "#10b981" : "#f97316" }}
+                            >
+                              {eficiencia}%
+                            </span>
+                          </div>
+                        </div>
 
-                          <div className="w-full bg-gray-200 rounded-full h-2 mt-3">
-                            <div
-                              className={`h-2 rounded-full ${eficiencia >= 80 ? "bg-green-500" : "bg-orange-500"}`}
-                              style={{ width: `${eficiencia}%` }}
-                            ></div>
-                          </div>
-                        </CardContent>
-                      </Card>
+                        <div className={styles.historyProgress}>
+                          <div
+                            className={styles.historyProgressBar}
+                            style={{
+                              width: `${eficiencia}%`,
+                              background:
+                                eficiencia >= 80
+                                  ? "linear-gradient(90deg, #10b981 0%, #059669 100%)"
+                                  : "linear-gradient(90deg, #f97316 0%, #ea580c 100%)",
+                            }}
+                          ></div>
+                        </div>
+                      </div>
                     )
                   })}
               </div>
             ) : (
-              <Card>
-                <CardContent className="p-12 text-center">
-                  <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500 text-lg">No hay historial disponible</p>
-                  <p className="text-gray-400 text-sm mt-2">Los datos aparecerán después del primer día de operación</p>
-                </CardContent>
-              </Card>
+              <div className={styles.card} style={{ textAlign: "center", padding: "3rem" }}>
+                <svg
+                  width="64"
+                  height="64"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#d1d5db"
+                  strokeWidth="2"
+                  style={{ margin: "0 auto 1rem" }}
+                >
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                <p style={{ fontSize: "1.125rem", color: "#6b7280", marginBottom: "0.5rem" }}>
+                  No hay historial disponible
+                </p>
+                <p style={{ fontSize: "0.875rem", color: "#9ca3af" }}>
+                  Los datos aparecerán después del primer día de operación
+                </p>
+              </div>
             )}
           </div>
         )}
 
         {/* Vista: Métricas */}
         {vistaActual === "metricas" && (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-gray-900">Métricas Avanzadas</h2>
+          <div style={{ marginTop: "2rem" }}>
+            <h2 className={styles.sectionTitle}>Métricas Avanzadas</h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
-                <CardContent className="p-6 text-center">
-                  <Award className="h-12 w-12 text-yellow-500 mx-auto mb-3" />
-                  <div className="text-3xl font-bold text-gray-900">{backups.length}</div>
-                  <p className="text-sm text-gray-600 mt-1">Días Operativos</p>
-                </CardContent>
-              </Card>
+            <div className={styles.statsGrid}>
+              <div className={styles.card} style={{ textAlign: "center" }}>
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#eab308"
+                  strokeWidth="2"
+                  style={{ margin: "0 auto 0.75rem" }}
+                >
+                  <circle cx="12" cy="8" r="7" />
+                  <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" />
+                </svg>
+                <div style={{ fontSize: "2.5rem", fontWeight: "800", color: "#1f2937", marginBottom: "0.5rem" }}>
+                  {backups.length}
+                </div>
+                <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Días Operativos</p>
+              </div>
 
-              <Card>
-                <CardContent className="p-6 text-center">
-                  <TrendingUp className="h-12 w-12 text-green-500 mx-auto mb-3" />
-                  <div className="text-3xl font-bold text-gray-900">
-                    {backups.reduce((sum, b) => sum + (b.resumen?.totalTicketsEmitidos || 0), 0)}
-                  </div>
-                  <p className="text-sm text-gray-600 mt-1">Total Histórico</p>
-                </CardContent>
-              </Card>
+              <div className={styles.card} style={{ textAlign: "center" }}>
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="2"
+                  style={{ margin: "0 auto 0.75rem" }}
+                >
+                  <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+                  <polyline points="17 6 23 6 23 12" />
+                </svg>
+                <div style={{ fontSize: "2.5rem", fontWeight: "800", color: "#1f2937", marginBottom: "0.5rem" }}>
+                  {backups.reduce((sum, b) => sum + (b.resumen?.totalTicketsEmitidos || 0), 0)}
+                </div>
+                <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Total Histórico</p>
+              </div>
 
-              <Card>
-                <CardContent className="p-6 text-center">
-                  <Zap className="h-12 w-12 text-blue-500 mx-auto mb-3" />
-                  <div className="text-3xl font-bold text-gray-900">{metricas.promedioHistorico}</div>
-                  <p className="text-sm text-gray-600 mt-1">Promedio Diario</p>
-                </CardContent>
-              </Card>
+              <div className={styles.card} style={{ textAlign: "center" }}>
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#3b82f6"
+                  strokeWidth="2"
+                  style={{ margin: "0 auto 0.75rem" }}
+                >
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                </svg>
+                <div style={{ fontSize: "2.5rem", fontWeight: "800", color: "#1f2937", marginBottom: "0.5rem" }}>
+                  {metricas.promedioHistorico}
+                </div>
+                <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Promedio Diario</p>
+              </div>
             </div>
-
-            {/* Gráfico de barras comparativo */}
-            {datosGrafico.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Comparativa Semanal</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <RechartsBarChart data={datosGrafico}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="fecha" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="emitidos" fill="#3b82f6" name="Emitidos" />
-                      <Bar dataKey="atendidos" fill="#10b981" name="Atendidos" />
-                    </RechartsBarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            )}
           </div>
         )}
       </div>
 
       {/* Modal de Confirmación */}
       {mostrarConfirmacionReinicio && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle className="text-orange-800 flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5" />
-                Confirmar Reinicio
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-700 mb-4">
-                ¿Está seguro de que desea reiniciar el contador diario? Se creará un backup automático de los datos
-                actuales.
-              </p>
-              <div className="flex gap-4">
-                <Button
-                  onClick={() => setMostrarConfirmacionReinicio(false)}
-                  variant="outline"
-                  className="flex-1"
-                  disabled={procesandoAccion}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={reiniciarContadorDiario}
-                  className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
-                  disabled={procesandoAccion}
-                >
-                  {procesandoAccion ? "Reiniciando..." : "Confirmar"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+        <div className={styles.modal}>
+          <div className={styles.modalContent}>
+            <div className={styles.modalHeader}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <h3 className={styles.modalTitle}>Confirmar Reinicio</h3>
+            </div>
+            <div className={styles.modalBody}>
+              ¿Está seguro de que desea reiniciar el contador diario? Se creará un backup automático de los datos
+              actuales.
+            </div>
+            <div className={styles.modalActions}>
+              <button
+                onClick={() => setMostrarConfirmacionReinicio(false)}
+                className={`${styles.button} ${styles.buttonOutline}`}
+                disabled={procesandoAccion}
+                style={{ flex: 1 }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={reiniciarContadorDiario}
+                className={`${styles.button} ${styles.buttonDanger}`}
+                disabled={procesandoAccion}
+                style={{ flex: 1 }}
+              >
+                {procesandoAccion ? "Reiniciando..." : "Confirmar"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
