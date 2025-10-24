@@ -1,7 +1,8 @@
 /* Container and Layout */
 .container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 50%, #fed7aa 100%);
+  /* Changed to dark background with deep gradient */
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
   padding: 2rem 1rem;
   position: relative;
 }
@@ -13,7 +14,8 @@
   left: 0;
   right: 0;
   height: 300px;
-  background: radial-gradient(circle at 50% 0%, rgba(220, 38, 38, 0.1) 0%, transparent 70%);
+  /* Updated radial gradient for dark theme */
+  background: radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -34,7 +36,8 @@
 .logo {
   height: 5rem;
   margin: 0 auto 1.5rem;
-  filter: drop-shadow(0 4px 6px rgba(220, 38, 38, 0.3));
+  /* Updated shadow for dark background */
+  filter: drop-shadow(0 4px 6px rgba(59, 130, 246, 0.4));
   transition: transform 0.3s ease;
 }
 
@@ -45,7 +48,8 @@
 .title {
   font-size: 2.5rem;
   font-weight: 800;
-  background: linear-gradient(135deg, #dc2626 0%, #ea580c 100%);
+  /* Updated gradient for better contrast on dark background */
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -59,7 +63,8 @@
 
 .subtitle {
   font-size: 1.125rem;
-  color: #6b7280;
+  /* Updated text color for dark background */
+  color: #94a3b8;
   font-weight: 500;
   margin-bottom: 2rem;
 }
@@ -78,18 +83,21 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1.5rem;
-  background: white;
+  /* Updated to dark card background */
+  background: rgba(30, 41, 59, 0.8);
   border-radius: 9999px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   font-size: 0.875rem;
-  color: #374151;
+  /* Updated text color for dark theme */
+  color: #e2e8f0;
   font-weight: 500;
   transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
 }
 
 .statusItem:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
 /* Navigation Buttons */
@@ -152,14 +160,16 @@
 }
 
 .statCard {
-  background: white;
+  /* Updated to dark card background with transparency */
+  background: rgba(30, 41, 59, 0.6);
   border-radius: 1.25rem;
   padding: 2rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
   border: 2px solid transparent;
+  backdrop-filter: blur(10px);
 }
 
 .statCard::before {
@@ -174,7 +184,7 @@
 
 .statCard:hover {
   transform: translateY(-6px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
 }
 
 .statCardBlue {
@@ -247,7 +257,8 @@
 
 .statTitle {
   font-size: 0.875rem;
-  color: #6b7280;
+  /* Updated text color for dark theme */
+  color: #94a3b8;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -258,7 +269,8 @@
   font-weight: 800;
   line-height: 1;
   margin-bottom: 0.5rem;
-  background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+  /* Updated gradient for light text on dark background */
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -266,7 +278,8 @@
 
 .statLabel {
   font-size: 0.875rem;
-  color: #9ca3af;
+  /* Updated text color for dark theme */
+  color: #64748b;
   font-weight: 500;
 }
 
@@ -276,7 +289,8 @@
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 50%, #fed7aa 100%);
+  /* Updated loading background to dark */
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
 }
 
 .loadingContent {
@@ -287,17 +301,19 @@
 .spinner {
   width: 5rem;
   height: 5rem;
-  border: 5px solid #fecaca;
-  border-top-color: #dc2626;
+  /* Updated spinner colors for dark theme */
+  border: 5px solid #334155;
+  border-top-color: #3b82f6;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin: 0 auto 1.5rem;
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
 .loadingText {
   font-size: 1.5rem;
-  color: #374151;
+  /* Updated text color for dark background */
+  color: #e2e8f0;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -405,7 +421,8 @@
 .sectionTitle {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #1f2937;
+  /* Updated text color for dark theme */
+  color: #f1f5f9;
   margin-bottom: 1.5rem;
   display: flex;
   align-items: center;
@@ -413,16 +430,18 @@
 }
 
 .card {
-  background: white;
+  /* Updated card background for dark theme */
+  background: rgba(30, 41, 59, 0.6);
   border-radius: 1rem;
   padding: 1.5rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   margin-bottom: 1.5rem;
   transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
 }
 
 .card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 .badge {
@@ -547,13 +566,15 @@
 
 /* Header with Tabs */
 .headerContainer {
-  background: white;
-  border-bottom: 2px solid #f3f4f6;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  /* Updated header background for dark theme */
+  background: rgba(15, 23, 42, 0.95);
+  border-bottom: 2px solid #334155;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   position: sticky;
   top: 0;
   z-index: 50;
   animation: slideDown 0.4s ease-out;
+  backdrop-filter: blur(10px);
 }
 
 .headerContent {
@@ -590,7 +611,8 @@
 .headerTitleMain {
   font-size: 1.5rem;
   font-weight: 800;
-  color: #1f2937;
+  /* Updated text color for dark theme */
+  color: #f1f5f9;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -598,7 +620,8 @@
 
 .headerSubtitle {
   font-size: 0.875rem;
-  color: #6b7280;
+  /* Updated text color for dark theme */
+  color: #94a3b8;
   font-weight: 500;
 }
 
@@ -618,14 +641,15 @@
   font-size: 0.875rem;
   font-weight: 500;
   text-decoration: none;
-  color: #6b7280;
+  /* Updated link colors for dark theme */
+  color: #94a3b8;
   transition: all 0.2s ease;
-  background: #f9fafb;
+  background: rgba(51, 65, 85, 0.5);
 }
 
 .headerLink:hover {
-  background: #f3f4f6;
-  color: #1f2937;
+  background: rgba(51, 65, 85, 0.8);
+  color: #f1f5f9;
   transform: translateY(-1px);
 }
 
@@ -633,7 +657,8 @@
 .tabs {
   display: flex;
   gap: 0.5rem;
-  border-bottom: 2px solid #f3f4f6;
+  /* Updated border color for dark theme */
+  border-bottom: 2px solid #334155;
   padding-bottom: 0;
 }
 
@@ -644,7 +669,8 @@
   padding: 0.75rem 1.5rem;
   border: none;
   background: transparent;
-  color: #6b7280;
+  /* Updated text color for dark theme */
+  color: #94a3b8;
   font-weight: 600;
   font-size: 0.875rem;
   cursor: pointer;
@@ -654,14 +680,14 @@
 }
 
 .tab:hover {
-  color: #3b82f6;
-  background: #f9fafb;
+  color: #60a5fa;
+  background: rgba(51, 65, 85, 0.5);
 }
 
 .tabActive {
-  color: #3b82f6;
+  color: #60a5fa;
   border-bottom-color: #3b82f6;
-  background: #eff6ff;
+  background: rgba(59, 130, 246, 0.1);
 }
 
 /* Filter Controls */
@@ -673,9 +699,11 @@
   margin-bottom: 1.5rem;
   flex-wrap: wrap;
   padding: 1rem;
-  background: white;
+  /* Updated filter container background for dark theme */
+  background: rgba(30, 41, 59, 0.6);
   border-radius: 0.75rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
 }
 
 .filterGroup {
@@ -686,9 +714,10 @@
 
 .filterButton {
   padding: 0.5rem 1rem;
-  border: 2px solid #e5e7eb;
-  background: white;
-  color: #6b7280;
+  /* Updated filter button colors for dark theme */
+  border: 2px solid #475569;
+  background: rgba(51, 65, 85, 0.5);
+  color: #94a3b8;
   border-radius: 0.5rem;
   font-size: 0.875rem;
   font-weight: 600;
@@ -698,7 +727,7 @@
 
 .filterButton:hover {
   border-color: #3b82f6;
-  color: #3b82f6;
+  color: #60a5fa;
 }
 
 .filterButtonActive {
@@ -730,11 +759,13 @@
 
 /* Chart Container */
 .chartCard {
-  background: white;
+  /* Updated chart card background for dark theme */
+  background: rgba(30, 41, 59, 0.6);
   border-radius: 1rem;
   padding: 1.5rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   margin-bottom: 1.5rem;
+  backdrop-filter: blur(10px);
 }
 
 .chartHeader {
@@ -747,7 +778,8 @@
 .chartTitle {
   font-size: 1.25rem;
   font-weight: 700;
-  color: #1f2937;
+  /* Updated text color for dark theme */
+  color: #f1f5f9;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -762,17 +794,19 @@
 }
 
 .historyCard {
-  background: white;
+  /* Updated history card background for dark theme */
+  background: rgba(30, 41, 59, 0.6);
   border-radius: 0.75rem;
   padding: 1.25rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   transition: all 0.3s ease;
   border: 2px solid transparent;
+  backdrop-filter: blur(10px);
 }
 
 .historyCard:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
   border-color: #3b82f6;
 }
 
@@ -785,13 +819,15 @@
 
 .historyDate {
   font-weight: 700;
-  color: #1f2937;
+  /* Updated text color for dark theme */
+  color: #f1f5f9;
   font-size: 1rem;
 }
 
 .historyDay {
   font-size: 0.75rem;
-  color: #9ca3af;
+  /* Updated text color for dark theme */
+  color: #64748b;
   text-transform: capitalize;
 }
 
@@ -809,18 +845,22 @@
 }
 
 .historyStatLabel {
-  color: #6b7280;
+  /* Updated text color for dark theme */
+  color: #94a3b8;
   font-weight: 500;
 }
 
 .historyStatValue {
   font-weight: 700;
+  /* Added text color for dark theme */
+  color: #e2e8f0;
 }
 
 .historyProgress {
   width: 100%;
   height: 0.5rem;
-  background: #f3f4f6;
+  /* Updated progress bar background for dark theme */
+  background: #334155;
   border-radius: 9999px;
   overflow: hidden;
   margin-top: 0.75rem;
@@ -836,23 +876,27 @@
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  /* Updated modal overlay for dark theme */
+  background: rgba(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
   padding: 1rem;
   animation: fadeIn 0.3s ease-out;
+  backdrop-filter: blur(4px);
 }
 
 .modalContent {
-  background: white;
+  /* Updated modal content background for dark theme */
+  background: #1e293b;
   border-radius: 1rem;
   padding: 2rem;
   max-width: 32rem;
   width: 100%;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
   animation: scaleIn 0.3s ease-out;
+  border: 1px solid #334155;
 }
 
 .modalHeader {
@@ -865,11 +909,13 @@
 .modalTitle {
   font-size: 1.25rem;
   font-weight: 700;
-  color: #1f2937;
+  /* Updated text color for dark theme */
+  color: #f1f5f9;
 }
 
 .modalBody {
-  color: #6b7280;
+  /* Updated text color for dark theme */
+  color: #94a3b8;
   margin-bottom: 1.5rem;
   line-height: 1.6;
 }
