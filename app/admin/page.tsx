@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useSistemaEstado } from "@/hooks/useSistemaEstado"
 import styles from "./page.module.css"
 
@@ -87,6 +87,128 @@ export default function PaginaAdmin() {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  const backupsFiltrados = useMemo(() => {
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+
+    console.log("[v0] Filtering backups with period:", filterPeriod)
+    console.log("[v0] Total backups available:", backups.length)
+    console.log("[v0] Today date:", today.toISOString())
+
+    return backups.filter((backup) => {
+      const backupDate = new Date(backup.fecha)
+      const backupDay = new Date(backupDate.getFullYear(), backupDate.getMonth(), backupDate.getDate())
+
+      console.log("[v0] Comparing backup date:", backup.fecha, "parsed as:", backupDay.toISOString())
+
+      if (filterPeriod === "hoy") {
+        const matches = backupDay.getTime() === today.getTime()
+        console.log("[v0] Hoy filter - matches:", matches)
+        return matches
+      }
+      if (filterPeriod === "ayer") {
+        const matches = backupDay.getTime() === yesterday.getTime()
+        console.log("[v0] Ayer filter - matches:", matches)
+        return matches
+      }
+
+      const diffDays = Math.floor((now.getTime() - backupDate.getTime()) / (1000 * 60 * 60 * 24))
+      console.log("[v0] Days difference:", diffDays)
+
+      if (filterPeriod === "7days") return diffDays <= 7
+      if (filterPeriod === "30days") return diffDays <= 30
+      return true
+    })
+  }, [backups, filterPeriod])
+
+  const metricas = useMemo(() => {
+    const pendientes = estado.totalAtendidos - estado.numerosLlamados
+    const promedioHistorico =
+      backups.length > 0
+        ? Math.round(backups.reduce((sum, b) => sum + (b.resumen?.totalTicketsEmitidos || 0), 0) / backups.length)
+        : 0
+
+    return { pendientes, promedioHistorico }
+  }, [estado.totalAtendidos, estado.numerosLlamados, backups])
+
+  const tiempoEsperaPromedio = useMemo(() => {
+    if (backupsFiltrados.length === 0) return 0
+
+    // Usar tiempoEntreTickets que ya está calculado en el backup
+    const tiemposEspera = backupsFiltrados
+      .map((backup) => backup.resumen?.tiempoEntreTickets || 0) // Changed from tiempoPromedioEsperaReal
+      .filter((tiempo) => tiempo > 0)
+
+    if (tiemposEspera.length === 0) return 0
+
+    const promedio = tiemposEspera.reduce((sum, tiempo) => sum + tiempo, 0) / tiemposEspera.length
+    return Math.round(promedio * 10) / 10
+  }, [backupsFiltrados])
+
+  const datosHorasPico = useMemo(() => {
+    const distribucionPorHora: { [hora: number]: number } = {}
+
+    console.log("[v0] Preparando datos de horas pico")
+    console.log("[v0] Backups filtrados:", backupsFiltrados.length)
+
+    backupsFiltrados.forEach((backup) => {
+      if (backup.resumen?.distribucionPorHora) {
+        console.log("[v0] Distribución por hora del backup:", backup.fecha, backup.resumen.distribucionPorHora)
+        Object.entries(backup.resumen.distribucionPorHora).forEach(([hora, cantidad]) => {
+          const h = Number.parseInt(hora)
+          distribucionPorHora[h] = (distribucionPorHora[h] || 0) + (cantidad as number)
+        })
+      }
+    })
+
+    console.log("[v0] Distribución agregada por hora:", distribucionPorHora)
+
+    const resultado = Object.entries(distribucionPorHora)
+      .map(([hora, cantidad]) => ({
+        hora: Number.parseInt(hora),
+        cantidad,
+      }))
+      .sort((a, b) => a.hora - b.hora)
+
+    console.log("[v0] Datos finales para el gráfico:", resultado)
+    return resultado
+  }, [backupsFiltrados])
+
+  const datosGrafico = useMemo(() => {
+    return backupsFiltrados
+      .slice(-30)
+      .reverse()
+      .map((backup) => ({
+        fecha: new Date(backup.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }),
+        emitidos: backup.resumen?.totalTicketsEmitidos || 0,
+        atendidos: backup.resumen?.totalTicketsAtendidos || 0,
+      }))
+  }, [backupsFiltrados])
+
+  const datosGraficoTiempoEspera = useMemo(() => {
+    return backupsFiltrados
+      .slice(-30)
+      .reverse()
+      .map((backup) => ({
+        fecha: new Date(backup.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }),
+        tiempoEspera: backup.resumen?.tiempoEntreTickets || 0, // Changed from tiempoPromedioEsperaReal
+      }))
+      .filter((item) => item.tiempoEspera > 0)
+  }, [backupsFiltrados])
+
+  if (loading || !isClient) {
+    return (
+      <div className={styles.loading}>
+        <div className={styles.loadingContent}>
+          <div className={styles.spinner}></div>
+          <p className={styles.loadingText}>Cargando panel...</p>
+        </div>
+      </div>
+    )
   }
 
   const calcularMetricas = () => {
@@ -208,22 +330,12 @@ export default function PaginaAdmin() {
       .filter((item) => item.tiempoEspera > 0)
   }
 
-  if (loading || !isClient) {
-    return (
-      <div className={styles.loading}>
-        <div className={styles.loadingContent}>
-          <div className={styles.spinner}></div>
-          <p className={styles.loadingText}>Cargando panel...</p>
-        </div>
-      </div>
-    )
-  }
-
-  const metricas = calcularMetricas()
-  const datosGrafico = prepararDatosGrafico()
-  const tiempoEsperaPromedio = calcularTiempoEsperaPromedio()
-  const datosGraficoTiempoEspera = prepararDatosGraficoTiempoEspera()
-  const datosHorasPico = prepararDatosHorasPico()
+  // Remove the old calculations and use the memoized ones
+  // const metricas = calcularMetricas()
+  // const datosGrafico = prepararDatosGrafico()
+  // const tiempoEsperaPromedio = calcularTiempoEsperaPromedio()
+  // const datosGraficoTiempoEspera = prepararDatosGraficoTiempoEspera()
+  // const datosHorasPico = prepararDatosHorasPico()
 
   return (
     <div className={styles.container}>
