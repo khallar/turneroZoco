@@ -1,8 +1,8 @@
 /* Container and Layout */
 .container {
   min-height: 100vh;
-  /* Changed to dark background with deep gradient */
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+  /* Changed to light background with subtle gradient */
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
   padding: 2rem 1rem;
   position: relative;
 }
@@ -14,8 +14,8 @@
   left: 0;
   right: 0;
   height: 300px;
-  /* Updated radial gradient for dark theme */
-  background: radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+  /* Updated radial gradient for light theme */
+  background: radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.08) 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -36,8 +36,8 @@
 .logo {
   height: 5rem;
   margin: 0 auto 1.5rem;
-  /* Updated shadow for dark background */
-  filter: drop-shadow(0 4px 6px rgba(59, 130, 246, 0.4));
+  /* Updated shadow for light background */
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
   transition: transform 0.3s ease;
 }
 
@@ -48,8 +48,8 @@
 .title {
   font-size: 2.5rem;
   font-weight: 800;
-  /* Updated gradient for better contrast on dark background */
-  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  /* Updated gradient for better contrast on light background */
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -63,8 +63,8 @@
 
 .subtitle {
   font-size: 1.125rem;
-  /* Updated text color for dark background */
-  color: #94a3b8;
+  /* Updated text color for light background */
+  color: #475569;
   font-weight: 500;
   margin-bottom: 2rem;
 }
@@ -83,21 +83,22 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1.5rem;
-  /* Updated to dark card background */
-  background: rgba(30, 41, 59, 0.8);
+  /* Updated to light card background */
+  background: rgba(255, 255, 255, 0.9);
   border-radius: 9999px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   font-size: 0.875rem;
-  /* Updated text color for dark theme */
-  color: #e2e8f0;
+  /* Updated text color for light theme */
+  color: #1e293b;
   font-weight: 500;
   transition: all 0.3s ease;
   backdrop-filter: blur(10px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
 }
 
 .statusItem:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
 }
 
 /* Navigation Buttons */
@@ -160,11 +161,11 @@
 }
 
 .statCard {
-  /* Updated to dark card background with transparency */
-  background: rgba(30, 41, 59, 0.6);
+  /* Updated to light card background */
+  background: rgba(255, 255, 255, 0.95);
   border-radius: 1.25rem;
   padding: 2rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
@@ -184,7 +185,7 @@
 
 .statCard:hover {
   transform: translateY(-6px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
 }
 
 .statCardBlue {
@@ -257,8 +258,8 @@
 
 .statTitle {
   font-size: 0.875rem;
-  /* Updated text color for dark theme */
-  color: #94a3b8;
+  /* Updated text color for light theme */
+  color: #64748b;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -269,8 +270,8 @@
   font-weight: 800;
   line-height: 1;
   margin-bottom: 0.5rem;
-  /* Updated gradient for light text on dark background */
-  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  /* Updated gradient for dark text on light background */
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -278,8 +279,8 @@
 
 .statLabel {
   font-size: 0.875rem;
-  /* Updated text color for dark theme */
-  color: #64748b;
+  /* Updated text color for light theme */
+  color: #475569;
   font-weight: 500;
 }
 
@@ -289,8 +290,8 @@
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  /* Updated loading background to dark */
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+  /* Updated loading background to light */
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e2e8f0 100%);
 }
 
 .loadingContent {
@@ -301,19 +302,19 @@
 .spinner {
   width: 5rem;
   height: 5rem;
-  /* Updated spinner colors for dark theme */
-  border: 5px solid #334155;
+  /* Updated spinner colors for light theme */
+  border: 5px solid #e2e8f0;
   border-top-color: #3b82f6;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin: 0 auto 1.5rem;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
 }
 
 .loadingText {
   font-size: 1.5rem;
-  /* Updated text color for dark background */
-  color: #e2e8f0;
+  /* Updated text color for light background */
+  color: #1e293b;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -421,8 +422,8 @@
 .sectionTitle {
   font-size: 1.5rem;
   font-weight: 700;
-  /* Updated text color for dark theme */
-  color: #f1f5f9;
+  /* Updated text color for light theme */
+  color: #0f172a;
   margin-bottom: 1.5rem;
   display: flex;
   align-items: center;
@@ -430,18 +431,19 @@
 }
 
 .card {
-  /* Updated card background for dark theme */
-  background: rgba(30, 41, 59, 0.6);
+  /* Updated card background for light theme */
+  background: rgba(255, 255, 255, 0.95);
   border-radius: 1rem;
   padding: 1.5rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   margin-bottom: 1.5rem;
   transition: all 0.3s ease;
   backdrop-filter: blur(10px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
 }
 
 .card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
 .badge {
@@ -566,10 +568,10 @@
 
 /* Header with Tabs */
 .headerContainer {
-  /* Updated header background for dark theme */
-  background: rgba(15, 23, 42, 0.95);
-  border-bottom: 2px solid #334155;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  /* Updated header background for light theme */
+  background: rgba(255, 255, 255, 0.98);
+  border-bottom: 2px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   position: sticky;
   top: 0;
   z-index: 50;
@@ -611,8 +613,8 @@
 .headerTitleMain {
   font-size: 1.5rem;
   font-weight: 800;
-  /* Updated text color for dark theme */
-  color: #f1f5f9;
+  /* Updated text color for light theme */
+  color: #0f172a;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -620,8 +622,8 @@
 
 .headerSubtitle {
   font-size: 0.875rem;
-  /* Updated text color for dark theme */
-  color: #94a3b8;
+  /* Updated text color for light theme */
+  color: #64748b;
   font-weight: 500;
 }
 
@@ -641,15 +643,15 @@
   font-size: 0.875rem;
   font-weight: 500;
   text-decoration: none;
-  /* Updated link colors for dark theme */
-  color: #94a3b8;
+  /* Updated link colors for light theme */
+  color: #475569;
   transition: all 0.2s ease;
-  background: rgba(51, 65, 85, 0.5);
+  background: rgba(241, 245, 249, 0.8);
 }
 
 .headerLink:hover {
-  background: rgba(51, 65, 85, 0.8);
-  color: #f1f5f9;
+  background: rgba(226, 232, 240, 0.9);
+  color: #0f172a;
   transform: translateY(-1px);
 }
 
@@ -657,8 +659,8 @@
 .tabs {
   display: flex;
   gap: 0.5rem;
-  /* Updated border color for dark theme */
-  border-bottom: 2px solid #334155;
+  /* Updated border color for light theme */
+  border-bottom: 2px solid #e2e8f0;
   padding-bottom: 0;
 }
 
@@ -669,8 +671,8 @@
   padding: 0.75rem 1.5rem;
   border: none;
   background: transparent;
-  /* Updated text color for dark theme */
-  color: #94a3b8;
+  /* Updated text color for light theme */
+  color: #64748b;
   font-weight: 600;
   font-size: 0.875rem;
   cursor: pointer;
@@ -680,14 +682,14 @@
 }
 
 .tab:hover {
-  color: #60a5fa;
-  background: rgba(51, 65, 85, 0.5);
+  color: #2563eb;
+  background: rgba(59, 130, 246, 0.05);
 }
 
 .tabActive {
-  color: #60a5fa;
+  color: #2563eb;
   border-bottom-color: #3b82f6;
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(59, 130, 246, 0.08);
 }
 
 /* Filter Controls */
@@ -699,11 +701,12 @@
   margin-bottom: 1.5rem;
   flex-wrap: wrap;
   padding: 1rem;
-  /* Updated filter container background for dark theme */
-  background: rgba(30, 41, 59, 0.6);
+  /* Updated filter container background for light theme */
+  background: rgba(255, 255, 255, 0.95);
   border-radius: 0.75rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   backdrop-filter: blur(10px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
 }
 
 .filterGroup {
@@ -714,10 +717,10 @@
 
 .filterButton {
   padding: 0.5rem 1rem;
-  /* Updated filter button colors for dark theme */
-  border: 2px solid #475569;
-  background: rgba(51, 65, 85, 0.5);
-  color: #94a3b8;
+  /* Updated filter button colors for light theme */
+  border: 2px solid #cbd5e1;
+  background: rgba(248, 250, 252, 0.9);
+  color: #475569;
   border-radius: 0.5rem;
   font-size: 0.875rem;
   font-weight: 600;
@@ -727,7 +730,8 @@
 
 .filterButton:hover {
   border-color: #3b82f6;
-  color: #60a5fa;
+  color: #2563eb;
+  background: rgba(59, 130, 246, 0.05);
 }
 
 .filterButtonActive {
@@ -759,13 +763,14 @@
 
 /* Chart Container */
 .chartCard {
-  /* Updated chart card background for dark theme */
-  background: rgba(30, 41, 59, 0.6);
+  /* Updated chart card background for light theme */
+  background: rgba(255, 255, 255, 0.95);
   border-radius: 1rem;
   padding: 1.5rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   margin-bottom: 1.5rem;
   backdrop-filter: blur(10px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
 }
 
 .chartHeader {
@@ -778,8 +783,8 @@
 .chartTitle {
   font-size: 1.25rem;
   font-weight: 700;
-  /* Updated text color for dark theme */
-  color: #f1f5f9;
+  /* Updated text color for light theme */
+  color: #0f172a;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -794,11 +799,11 @@
 }
 
 .historyCard {
-  /* Updated history card background for dark theme */
-  background: rgba(30, 41, 59, 0.6);
+  /* Updated history card background for light theme */
+  background: rgba(255, 255, 255, 0.95);
   border-radius: 0.75rem;
   padding: 1.25rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   transition: all 0.3s ease;
   border: 2px solid transparent;
   backdrop-filter: blur(10px);
@@ -806,7 +811,7 @@
 
 .historyCard:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
   border-color: #3b82f6;
 }
 
@@ -819,14 +824,14 @@
 
 .historyDate {
   font-weight: 700;
-  /* Updated text color for dark theme */
-  color: #f1f5f9;
+  /* Updated text color for light theme */
+  color: #0f172a;
   font-size: 1rem;
 }
 
 .historyDay {
   font-size: 0.75rem;
-  /* Updated text color for dark theme */
+  /* Updated text color for light theme */
   color: #64748b;
   text-transform: capitalize;
 }
@@ -845,22 +850,22 @@
 }
 
 .historyStatLabel {
-  /* Updated text color for dark theme */
-  color: #94a3b8;
+  /* Updated text color for light theme */
+  color: #64748b;
   font-weight: 500;
 }
 
 .historyStatValue {
   font-weight: 700;
-  /* Added text color for dark theme */
-  color: #e2e8f0;
+  /* Updated text color for light theme */
+  color: #1e293b;
 }
 
 .historyProgress {
   width: 100%;
   height: 0.5rem;
-  /* Updated progress bar background for dark theme */
-  background: #334155;
+  /* Updated progress bar background for light theme */
+  background: #e2e8f0;
   border-radius: 9999px;
   overflow: hidden;
   margin-top: 0.75rem;
@@ -876,8 +881,8 @@
 .modal {
   position: fixed;
   inset: 0;
-  /* Updated modal overlay for dark theme */
-  background: rgba(0, 0, 0, 0.7);
+  /* Updated modal overlay for light theme */
+  background: rgba(15, 23, 42, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -888,15 +893,15 @@
 }
 
 .modalContent {
-  /* Updated modal content background for dark theme */
-  background: #1e293b;
+  /* Updated modal content background for light theme */
+  background: #ffffff;
   border-radius: 1rem;
   padding: 2rem;
   max-width: 32rem;
   width: 100%;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
   animation: scaleIn 0.3s ease-out;
-  border: 1px solid #334155;
+  border: 1px solid #e2e8f0;
 }
 
 .modalHeader {
@@ -909,13 +914,13 @@
 .modalTitle {
   font-size: 1.25rem;
   font-weight: 700;
-  /* Updated text color for dark theme */
-  color: #f1f5f9;
+  /* Updated text color for light theme */
+  color: #0f172a;
 }
 
 .modalBody {
-  /* Updated text color for dark theme */
-  color: #94a3b8;
+  /* Updated text color for light theme */
+  color: #475569;
   margin-bottom: 1.5rem;
   line-height: 1.6;
 }
