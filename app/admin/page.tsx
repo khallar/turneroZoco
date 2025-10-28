@@ -1125,7 +1125,7 @@ export default function PaginaAdmin() {
 
         {/* Vista: Métricas */}
         {vistaActual === "metricas" && (
-          <div style={{ marginTop: "2rem" }}>
+          <div className="text-slate-500" style={{ marginTop: "2rem" }}>
             {/* Filtros para métricas */}
             <div className={styles.filterContainer}>
               <h2 className={styles.sectionTitle}>
