@@ -1638,7 +1638,7 @@ export default function PaginaAdmin() {
                         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                         <polyline points="22 4 12 14.01 9 11.01" />
                       </svg>
-                      <h4 style={{ fontSize: "1rem", fontWeight: "600", color: "#1f2937" }}>Eficiencia Promedio</h4>
+                      <h4 className="text-white" style={{ fontSize: "1rem", fontWeight: "600", color: "#1f2937" }}>Eficiencia Promedio</h4>
                     </div>
                     <div style={{ fontSize: "1.5rem", fontWeight: "700", color: "#10b981", marginBottom: "0.5rem" }}>
                       {promedioEficiencia}%
