@@ -1253,6 +1253,106 @@ export default function PaginaAdmin() {
               </div>
             </div>
 
+            {/* Estadísticas Destacadas */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+                gap: "1.5rem",
+                marginTop: "1.5rem",
+              }}
+            >
+              {/* Mejor Día */}
+              {(() => {
+                const mejorDia = backupsFiltrados.reduce((max, backup) => {
+                  const emitidos = backup.resumen?.totalTicketsEmitidos || 0
+                  return emitidos > (max.resumen?.totalTicketsEmitidos || 0) ? backup : max
+                }, backupsFiltrados[0] || {})
+
+                return mejorDia ? (
+                  <div className={styles.card}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2">
+                        <circle cx="12" cy="8" r="7" />
+                        <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" />
+                      </svg>
+                      <h4 style={{ fontSize: "1rem", fontWeight: "600", color: "#1f2937" }}>Mejor Día</h4>
+                    </div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: "700", color: "#eab308", marginBottom: "0.5rem" }}>
+                      {new Date(mejorDia.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "long" })}
+                    </div>
+                    <div style={{ fontSize: "0.875rem", color: "#6b7280" }}>
+                      {mejorDia.resumen?.totalTicketsEmitidos || 0} tickets emitidos
+                    </div>
+                  </div>
+                ) : null
+              })()}
+
+              {/* Promedio de Eficiencia */}
+              {(() => {
+                const promedioEficiencia =
+                  backupsFiltrados.length > 0
+                    ? Math.round(
+                        backupsFiltrados.reduce((sum, b) => {
+                          const emitidos = b.resumen?.totalTicketsEmitidos || 0
+                          const atendidos = b.resumen?.totalTicketsAtendidos || 0
+                          return sum + (emitidos > 0 ? (atendidos / emitidos) * 100 : 0)
+                        }, 0) / backupsFiltrados.length,
+                      )
+                    : 0
+
+                return (
+                  <div className={styles.card}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                        <polyline points="22 4 12 14.01 9 11.01" />
+                      </svg>
+                      <h4 style={{ fontSize: "1rem", fontWeight: "600", color: "#1f2937" }}>Eficiencia Promedio</h4>
+                    </div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: "700", color: "#10b981", marginBottom: "0.5rem" }}>
+                      {promedioEficiencia}%
+                    </div>
+                    <div style={{ fontSize: "0.875rem", color: "#6b7280" }}>Del período seleccionado</div>
+                  </div>
+                )
+              })()}
+
+              {/* Hora Pico Más Común */}
+              {(() => {
+                const horasPico: { [hora: number]: number } = {}
+                backupsFiltrados.forEach((backup) => {
+                  const hora = backup.resumen?.horaPico?.hora
+                  if (hora !== undefined) {
+                    horasPico[hora] = (horasPico[hora] || 0) + 1
+                  }
+                })
+
+                const horaMasComun = Object.entries(horasPico).reduce(
+                  (max, [hora, count]) => (count > max.count ? { hora: Number.parseInt(hora), count } : max),
+                  { hora: 0, count: 0 },
+                )
+
+                return horaMasComun.count > 0 ? (
+                  <div className={styles.card}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                      </svg>
+                      <h4 style={{ fontSize: "1rem", fontWeight: "600", color: "#1f2937" }}>Hora Pico Más Común</h4>
+                    </div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: "700", color: "#f97316", marginBottom: "0.5rem" }}>
+                      {horaMasComun.hora}:00
+                    </div>
+                    <div style={{ fontSize: "0.875rem", color: "#6b7280" }}>
+                      En {horaMasComun.count} de {backupsFiltrados.length} días
+                    </div>
+                  </div>
+                ) : null
+              })()}
+            </div>
+
             {/* Análisis de Eficiencia */}
             <div className={styles.chartCard}>
               <h3 className={styles.chartTitle}>
@@ -1638,7 +1738,7 @@ export default function PaginaAdmin() {
                         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                         <polyline points="22 4 12 14.01 9 11.01" />
                       </svg>
-                      <h4 className="text-white" style={{ fontSize: "1rem", fontWeight: "600", color: "#1f2937" }}>Eficiencia Promedio</h4>
+                      <h4 style={{ fontSize: "1rem", fontWeight: "600", color: "#1f2937" }}>Eficiencia Promedio</h4>
                     </div>
                     <div style={{ fontSize: "1.5rem", fontWeight: "700", color: "#10b981", marginBottom: "0.5rem" }}>
                       {promedioEficiencia}%
