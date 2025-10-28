@@ -1126,8 +1126,51 @@ export default function PaginaAdmin() {
         {/* Vista: Métricas */}
         {vistaActual === "metricas" && (
           <div style={{ marginTop: "2rem" }}>
-            <h2 className={styles.sectionTitle}>Métricas Avanzadas</h2>
+            {/* Filtros para métricas */}
+            <div className={styles.filterContainer}>
+              <h2 className={styles.sectionTitle}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="12" y1="20" x2="12" y2="10" />
+                  <line x1="18" y1="20" x2="18" y2="4" />
+                  <line x1="6" y1="20" x2="6" y2="16" />
+                </svg>
+                Métricas Avanzadas
+              </h2>
+              <div className={styles.filterGroup}>
+                <button
+                  onClick={() => setFilterPeriod("hoy")}
+                  className={`${styles.filterButton} ${filterPeriod === "hoy" ? styles.filterButtonActive : ""}`}
+                >
+                  Hoy
+                </button>
+                <button
+                  onClick={() => setFilterPeriod("ayer")}
+                  className={`${styles.filterButton} ${filterPeriod === "ayer" ? styles.filterButtonActive : ""}`}
+                >
+                  Ayer
+                </button>
+                <button
+                  onClick={() => setFilterPeriod("7days")}
+                  className={`${styles.filterButton} ${filterPeriod === "7days" ? styles.filterButtonActive : ""}`}
+                >
+                  Últimos 7 días
+                </button>
+                <button
+                  onClick={() => setFilterPeriod("30days")}
+                  className={`${styles.filterButton} ${filterPeriod === "30days" ? styles.filterButtonActive : ""}`}
+                >
+                  Últimos 30 días
+                </button>
+                <button
+                  onClick={() => setFilterPeriod("all")}
+                  className={`${styles.filterButton} ${filterPeriod === "all" ? styles.filterButtonActive : ""}`}
+                >
+                  Todo el tiempo
+                </button>
+              </div>
+            </div>
 
+            {/* KPIs Generales */}
             <div className={styles.statsGrid}>
               <div className={styles.card} style={{ textAlign: "center" }}>
                 <svg
@@ -1143,7 +1186,7 @@ export default function PaginaAdmin() {
                   <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" />
                 </svg>
                 <div style={{ fontSize: "2.5rem", fontWeight: "800", color: "#1f2937", marginBottom: "0.5rem" }}>
-                  {backups.length}
+                  {backupsFiltrados.length}
                 </div>
                 <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Días Operativos</p>
               </div>
@@ -1162,9 +1205,9 @@ export default function PaginaAdmin() {
                   <polyline points="17 6 23 6 23 12" />
                 </svg>
                 <div style={{ fontSize: "2.5rem", fontWeight: "800", color: "#1f2937", marginBottom: "0.5rem" }}>
-                  {backups.reduce((sum, b) => sum + (b.resumen?.totalTicketsEmitidos || 0), 0)}
+                  {backupsFiltrados.reduce((sum, b) => sum + (b.resumen?.totalTicketsEmitidos || 0), 0)}
                 </div>
-                <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Total Histórico</p>
+                <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Total Tickets Emitidos</p>
               </div>
 
               <div className={styles.card} style={{ textAlign: "center" }}>
@@ -1180,10 +1223,464 @@ export default function PaginaAdmin() {
                   <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
                 </svg>
                 <div style={{ fontSize: "2.5rem", fontWeight: "800", color: "#1f2937", marginBottom: "0.5rem" }}>
-                  {metricas.promedioHistorico}
+                  {backupsFiltrados.length > 0
+                    ? Math.round(
+                        backupsFiltrados.reduce((sum, b) => sum + (b.resumen?.totalTicketsEmitidos || 0), 0) /
+                          backupsFiltrados.length,
+                      )
+                    : 0}
                 </div>
                 <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Promedio Diario</p>
               </div>
+
+              <div className={styles.card} style={{ textAlign: "center" }}>
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#06b6d4"
+                  strokeWidth="2"
+                  style={{ margin: "0 auto 0.75rem" }}
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+                <div style={{ fontSize: "2.5rem", fontWeight: "800", color: "#1f2937", marginBottom: "0.5rem" }}>
+                  {tiempoEsperaPromedio}
+                </div>
+                <p style={{ fontSize: "0.875rem", color: "#6b7280" }}>Min. Espera Promedio</p>
+              </div>
+            </div>
+
+            {/* Análisis de Eficiencia */}
+            <div className={styles.chartCard}>
+              <h3 className={styles.chartTitle}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+                Análisis de Eficiencia
+              </h3>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+                  gap: "1rem",
+                  marginTop: "1rem",
+                }}
+              >
+                {backupsFiltrados.slice(0, 10).map((backup, index) => {
+                  const emitidos = backup.resumen?.totalTicketsEmitidos || 0
+                  const atendidos = backup.resumen?.totalTicketsAtendidos || 0
+                  const eficiencia = emitidos > 0 ? Math.round((atendidos / emitidos) * 100) : 0
+
+                  return (
+                    <div key={index} className={styles.card} style={{ padding: "1rem" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: "0.75rem",
+                        }}
+                      >
+                        <span style={{ fontSize: "0.875rem", fontWeight: "600", color: "#6b7280" }}>
+                          {new Date(backup.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "1.25rem",
+                            fontWeight: "700",
+                            color: eficiencia >= 80 ? "#10b981" : eficiencia >= 60 ? "#f97316" : "#ef4444",
+                          }}
+                        >
+                          {eficiencia}%
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "8px",
+                          background: "#e5e7eb",
+                          borderRadius: "4px",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: `${eficiencia}%`,
+                            height: "100%",
+                            background:
+                              eficiencia >= 80
+                                ? "linear-gradient(90deg, #10b981 0%, #059669 100%)"
+                                : eficiencia >= 60
+                                  ? "linear-gradient(90deg, #f97316 0%, #ea580c 100%)"
+                                  : "linear-gradient(90deg, #ef4444 0%, #dc2626 100%)",
+                            transition: "width 0.3s ease",
+                          }}
+                        ></div>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          marginTop: "0.5rem",
+                          fontSize: "0.75rem",
+                          color: "#9ca3af",
+                        }}
+                      >
+                        <span>{emitidos} emitidos</span>
+                        <span>{atendidos} atendidos</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Distribución Horaria Agregada */}
+            {(() => {
+              const distribucionAgregada: { [hora: number]: number } = {}
+              backupsFiltrados.forEach((backup) => {
+                if (backup.resumen?.distribucionPorHora) {
+                  Object.entries(backup.resumen.distribucionPorHora).forEach(([hora, cantidad]) => {
+                    const h = Number.parseInt(hora)
+                    distribucionAgregada[h] = (distribucionAgregada[h] || 0) + (cantidad as number)
+                  })
+                }
+              })
+
+              const datosDistribucion = Object.entries(distribucionAgregada)
+                .map(([hora, cantidad]) => ({ hora: Number.parseInt(hora), cantidad }))
+                .sort((a, b) => a.hora - b.hora)
+
+              const maxCantidad = Math.max(...datosDistribucion.map((d) => d.cantidad), 1)
+
+              return datosDistribucion.length > 0 ? (
+                <div className={styles.chartCard}>
+                  <h3 className={styles.chartTitle}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="12" y1="20" x2="12" y2="10" />
+                      <line x1="18" y1="20" x2="18" y2="4" />
+                      <line x1="6" y1="20" x2="6" y2="16" />
+                    </svg>
+                    Distribución Horaria del Período
+                  </h3>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(60px, 1fr))",
+                      gap: "0.5rem",
+                      marginTop: "1.5rem",
+                    }}
+                  >
+                    {datosDistribucion.map((dato) => {
+                      const altura = (dato.cantidad / maxCantidad) * 100
+                      const esHoraPico = dato.cantidad === maxCantidad
+
+                      return (
+                        <div
+                          key={dato.hora}
+                          style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}
+                        >
+                          <span
+                            style={{
+                              fontSize: "0.75rem",
+                              fontWeight: "600",
+                              color: esHoraPico ? "#8b5cf6" : "#6b7280",
+                            }}
+                          >
+                            {dato.cantidad}
+                          </span>
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "120px",
+                              display: "flex",
+                              alignItems: "flex-end",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: "80%",
+                                height: `${altura}%`,
+                                background: esHoraPico
+                                  ? "linear-gradient(180deg, #8b5cf6 0%, #6366f1 100%)"
+                                  : "linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%)",
+                                borderRadius: "4px 4px 0 0",
+                                transition: "all 0.3s ease",
+                                boxShadow: esHoraPico
+                                  ? "0 4px 12px rgba(139, 92, 246, 0.4)"
+                                  : "0 2px 8px rgba(59, 130, 246, 0.3)",
+                              }}
+                            ></div>
+                          </div>
+                          <span style={{ fontSize: "0.75rem", color: "#9ca3af" }}>{dato.hora}h</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null
+            })()}
+
+            {/* Comparativa de Días */}
+            <div className={styles.chartCard}>
+              <h3 className={styles.chartTitle}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                Comparativa de Días
+              </h3>
+
+              <div style={{ overflowX: "auto", marginTop: "1rem" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid #e5e7eb" }}>
+                      <th
+                        style={{
+                          padding: "0.75rem",
+                          textAlign: "left",
+                          fontSize: "0.875rem",
+                          fontWeight: "600",
+                          color: "#6b7280",
+                        }}
+                      >
+                        Fecha
+                      </th>
+                      <th
+                        style={{
+                          padding: "0.75rem",
+                          textAlign: "center",
+                          fontSize: "0.875rem",
+                          fontWeight: "600",
+                          color: "#6b7280",
+                        }}
+                      >
+                        Emitidos
+                      </th>
+                      <th
+                        style={{
+                          padding: "0.75rem",
+                          textAlign: "center",
+                          fontSize: "0.875rem",
+                          fontWeight: "600",
+                          color: "#6b7280",
+                        }}
+                      >
+                        Atendidos
+                      </th>
+                      <th
+                        style={{
+                          padding: "0.75rem",
+                          textAlign: "center",
+                          fontSize: "0.875rem",
+                          fontWeight: "600",
+                          color: "#6b7280",
+                        }}
+                      >
+                        Eficiencia
+                      </th>
+                      <th
+                        style={{
+                          padding: "0.75rem",
+                          textAlign: "center",
+                          fontSize: "0.875rem",
+                          fontWeight: "600",
+                          color: "#6b7280",
+                        }}
+                      >
+                        Tiempo Espera
+                      </th>
+                      <th
+                        style={{
+                          padding: "0.75rem",
+                          textAlign: "center",
+                          fontSize: "0.875rem",
+                          fontWeight: "600",
+                          color: "#6b7280",
+                        }}
+                      >
+                        Hora Pico
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {backupsFiltrados.slice(0, 15).map((backup, index) => {
+                      const emitidos = backup.resumen?.totalTicketsEmitidos || 0
+                      const atendidos = backup.resumen?.totalTicketsAtendidos || 0
+                      const eficiencia = emitidos > 0 ? Math.round((atendidos / emitidos) * 100) : 0
+                      const tiempoEspera = backup.resumen?.tiempoEntreTickets || 0
+                      const horaPico = backup.resumen?.horaPico?.hora || 0
+
+                      return (
+                        <tr key={index} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                          <td style={{ padding: "0.75rem", fontSize: "0.875rem", color: "#1f2937" }}>
+                            {new Date(backup.fecha).toLocaleDateString("es-AR", {
+                              weekday: "short",
+                              day: "2-digit",
+                              month: "short",
+                            })}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.75rem",
+                              textAlign: "center",
+                              fontSize: "0.875rem",
+                              fontWeight: "600",
+                              color: "#3b82f6",
+                            }}
+                          >
+                            {emitidos}
+                          </td>
+                          <td
+                            style={{
+                              padding: "0.75rem",
+                              textAlign: "center",
+                              fontSize: "0.875rem",
+                              fontWeight: "600",
+                              color: "#10b981",
+                            }}
+                          >
+                            {atendidos}
+                          </td>
+                          <td style={{ padding: "0.75rem", textAlign: "center" }}>
+                            <span
+                              style={{
+                                padding: "0.25rem 0.75rem",
+                                borderRadius: "12px",
+                                fontSize: "0.75rem",
+                                fontWeight: "600",
+                                background: eficiencia >= 80 ? "#d1fae5" : eficiencia >= 60 ? "#fed7aa" : "#fee2e2",
+                                color: eficiencia >= 80 ? "#065f46" : eficiencia >= 60 ? "#9a3412" : "#991b1b",
+                              }}
+                            >
+                              {eficiencia}%
+                            </span>
+                          </td>
+                          <td
+                            style={{ padding: "0.75rem", textAlign: "center", fontSize: "0.875rem", color: "#6b7280" }}
+                          >
+                            {tiempoEspera.toFixed(1)} min
+                          </td>
+                          <td
+                            style={{ padding: "0.75rem", textAlign: "center", fontSize: "0.875rem", color: "#6b7280" }}
+                          >
+                            {horaPico}:00
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Estadísticas Adicionales */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+                gap: "1.5rem",
+                marginTop: "1.5rem",
+              }}
+            >
+              {/* Mejor Día */}
+              {(() => {
+                const mejorDia = backupsFiltrados.reduce((max, backup) => {
+                  const emitidos = backup.resumen?.totalTicketsEmitidos || 0
+                  return emitidos > (max.resumen?.totalTicketsEmitidos || 0) ? backup : max
+                }, backupsFiltrados[0] || {})
+
+                return mejorDia ? (
+                  <div className={styles.card}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2">
+                        <circle cx="12" cy="8" r="7" />
+                        <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" />
+                      </svg>
+                      <h4 style={{ fontSize: "1rem", fontWeight: "600", color: "#1f2937" }}>Mejor Día</h4>
+                    </div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: "700", color: "#eab308", marginBottom: "0.5rem" }}>
+                      {new Date(mejorDia.fecha).toLocaleDateString("es-AR", { day: "2-digit", month: "long" })}
+                    </div>
+                    <div style={{ fontSize: "0.875rem", color: "#6b7280" }}>
+                      {mejorDia.resumen?.totalTicketsEmitidos || 0} tickets emitidos
+                    </div>
+                  </div>
+                ) : null
+              })()}
+
+              {/* Promedio de Eficiencia */}
+              {(() => {
+                const promedioEficiencia =
+                  backupsFiltrados.length > 0
+                    ? Math.round(
+                        backupsFiltrados.reduce((sum, b) => {
+                          const emitidos = b.resumen?.totalTicketsEmitidos || 0
+                          const atendidos = b.resumen?.totalTicketsAtendidos || 0
+                          return sum + (emitidos > 0 ? (atendidos / emitidos) * 100 : 0)
+                        }, 0) / backupsFiltrados.length,
+                      )
+                    : 0
+
+                return (
+                  <div className={styles.card}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                        <polyline points="22 4 12 14.01 9 11.01" />
+                      </svg>
+                      <h4 style={{ fontSize: "1rem", fontWeight: "600", color: "#1f2937" }}>Eficiencia Promedio</h4>
+                    </div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: "700", color: "#10b981", marginBottom: "0.5rem" }}>
+                      {promedioEficiencia}%
+                    </div>
+                    <div style={{ fontSize: "0.875rem", color: "#6b7280" }}>Del período seleccionado</div>
+                  </div>
+                )
+              })()}
+
+              {/* Hora Pico Más Común */}
+              {(() => {
+                const horasPico: { [hora: number]: number } = {}
+                backupsFiltrados.forEach((backup) => {
+                  const hora = backup.resumen?.horaPico?.hora
+                  if (hora !== undefined) {
+                    horasPico[hora] = (horasPico[hora] || 0) + 1
+                  }
+                })
+
+                const horaMasComun = Object.entries(horasPico).reduce(
+                  (max, [hora, count]) => (count > max.count ? { hora: Number.parseInt(hora), count } : max),
+                  { hora: 0, count: 0 },
+                )
+
+                return horaMasComun.count > 0 ? (
+                  <div className={styles.card}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                      </svg>
+                      <h4 style={{ fontSize: "1rem", fontWeight: "600", color: "#1f2937" }}>Hora Pico Más Común</h4>
+                    </div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: "700", color: "#f97316", marginBottom: "0.5rem" }}>
+                      {horaMasComun.hora}:00
+                    </div>
+                    <div style={{ fontSize: "0.875rem", color: "#6b7280" }}>
+                      En {horaMasComun.count} de {backupsFiltrados.length} días
+                    </div>
+                  </div>
+                ) : null
+              })()}
             </div>
           </div>
         )}
