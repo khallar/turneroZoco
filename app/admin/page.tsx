@@ -17,6 +17,7 @@ export default function PaginaAdmin() {
   const [procesandoAccion, setProcesandoAccion] = useState(false)
   const [vistaActual, setVistaActual] = useState<"resumen" | "historial" | "metricas">("resumen")
   const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("30days") // Changed default to "30days"
+  const [selectedMonth, setSelectedMonth] = useState<string>("")
 
   useEffect(() => {
     setIsClient(true)
@@ -88,6 +89,73 @@ export default function PaginaAdmin() {
     link.click()
     document.body.removeChild(link)
   }
+
+  const descargarPorMes = (mesAno: string) => {
+    const [year, month] = mesAno.split("-")
+    const backupsDelMes = backups.filter((backup) => {
+      const fechaBackup = backup.fecha
+      return fechaBackup.startsWith(`${year}-${month}`)
+    })
+
+    if (backupsDelMes.length === 0) {
+      alert("No hay datos para este mes")
+      return
+    }
+
+    const dataToExport = backupsDelMes.map((backup) => ({
+      fecha: backup.fecha,
+      emitidos: backup.resumen?.totalTicketsEmitidos || 0,
+      atendidos: backup.resumen?.totalTicketsAtendidos || 0,
+      tiempoEspera: backup.resumen?.tiempoEntreTickets || 0,
+      eficiencia:
+        backup.resumen?.totalTicketsEmitidos > 0
+          ? Math.round((backup.resumen?.totalTicketsAtendidos / backup.resumen?.totalTicketsEmitidos) * 100)
+          : 0,
+    }))
+
+    const csv = [
+      ["Fecha", "Emitidos", "Atendidos", "Tiempo Espera (min)", "Eficiencia (%)"],
+      ...dataToExport.map((row) => [row.fecha, row.emitidos, row.atendidos, row.tiempoEspera, row.eficiencia]),
+    ]
+      .map((row) => row.join(","))
+      .join("\n")
+
+    const nombreMes = new Date(`${year}-${month}-01`).toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const link = document.createElement("a")
+    const url = URL.createObjectURL(blob)
+    link.setAttribute("href", url)
+    link.setAttribute("download", `historial_${nombreMes.replace(" ", "_")}.csv`)
+    link.style.visibility = "hidden"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const mesesDisponibles = useMemo(() => {
+    const meses = new Set<string>()
+    backups.forEach((backup) => {
+      const fecha = backup.fecha
+      if (fecha) {
+        const mesAno = fecha.substring(0, 7) // "YYYY-MM"
+        meses.add(mesAno)
+      }
+    })
+    return Array.from(meses).sort().reverse()
+  }, [backups])
+
+  const backupsUltimos30Dias = useMemo(() => {
+    const hoy = new Date()
+    const hace30Dias = new Date(hoy)
+    hace30Dias.setDate(hace30Dias.getDate() - 30)
+
+    return backups
+      .filter((backup) => {
+        const fechaBackup = new Date(backup.fecha)
+        return fechaBackup >= hace30Dias && fechaBackup <= hoy
+      })
+      .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+  }, [backups])
 
   const backupsFiltrados = useMemo(() => {
     const now = new Date()
@@ -996,17 +1064,49 @@ export default function PaginaAdmin() {
                   <line x1="8" y1="2" x2="8" y2="6" />
                   <line x1="3" y1="10" x2="21" y2="10" />
                 </svg>
-                Historial de Días
+                Historial - Últimos 30 Días
               </h2>
-              <div style={{ display: "flex", gap: "0.75rem" }}>
-                <button onClick={descargarHistorial} className={styles.downloadButton} disabled={backups.length === 0}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                  Descargar CSV
-                </button>
+              <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    className={styles.filterButton}
+                    style={{
+                      padding: "0.5rem 1rem",
+                      cursor: "pointer",
+                      minWidth: "160px",
+                    }}
+                  >
+                    <option value="">Seleccionar mes...</option>
+                    {mesesDisponibles.map((mes) => {
+                      const [year, month] = mes.split("-")
+                      const nombreMes = new Date(`${year}-${month}-01`).toLocaleDateString("es-AR", {
+                        month: "long",
+                        year: "numeric",
+                      })
+                      return (
+                        <option key={mes} value={mes}>
+                          {nombreMes.charAt(0).toUpperCase() + nombreMes.slice(1)}
+                        </option>
+                      )
+                    })}
+                  </select>
+                  <button
+                    onClick={() => selectedMonth && descargarPorMes(selectedMonth)}
+                    className={styles.downloadButton}
+                    disabled={!selectedMonth}
+                    style={{ opacity: selectedMonth ? 1 : 0.5 }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Descargar Mes
+                  </button>
+                </div>
+
                 <button
                   onClick={cargarBackups}
                   className={`${styles.button} ${styles.buttonOutline}`}
@@ -1034,15 +1134,17 @@ export default function PaginaAdmin() {
                 <div className={styles.spinner} style={{ width: "3rem", height: "3rem", margin: "0 auto 1rem" }}></div>
                 <p style={{ color: "#6b7280" }}>Cargando historial...</p>
               </div>
-            ) : backups.length > 0 ? (
-              <div className={styles.historyGrid}>
-                {backups
-                  .slice(-30)
-                  .reverse()
-                  .map((backup, index) => {
+            ) : backupsUltimos30Dias.length > 0 ? (
+              <>
+                <p style={{ color: "#64748b", marginBottom: "1rem", fontSize: "0.875rem" }}>
+                  Mostrando {backupsUltimos30Dias.length} día(s) de los últimos 30 días
+                </p>
+                <div className={styles.historyGrid}>
+                  {backupsUltimos30Dias.map((backup, index) => {
                     const emitidos = backup.resumen?.totalTicketsEmitidos || 0
                     const atendidos = backup.resumen?.totalTicketsAtendidos || 0
                     const eficiencia = emitidos > 0 ? Math.round((atendidos / emitidos) * 100) : 0
+                    const tiempoEspera = backup.resumen?.tiempoEntreTickets || 0
 
                     return (
                       <div key={index} className={styles.historyCard}>
@@ -1070,12 +1172,9 @@ export default function PaginaAdmin() {
                             </span>
                           </div>
                           <div className={styles.historyStat}>
-                            <span className={styles.historyStatLabel}>Eficiencia:</span>
-                            <span
-                              className={styles.historyStatValue}
-                              style={{ color: eficiencia >= 80 ? "#10b981" : "#f97316" }}
-                            >
-                              {eficiencia}%
+                            <span className={styles.historyStatLabel}>Espera:</span>
+                            <span className={styles.historyStatValue} style={{ color: "#f97316" }}>
+                              {tiempoEspera} min
                             </span>
                           </div>
                         </div>
@@ -1092,10 +1191,16 @@ export default function PaginaAdmin() {
                             }}
                           ></div>
                         </div>
+                        <div
+                          style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "0.25rem", textAlign: "right" }}
+                        >
+                          {eficiencia}% eficiencia
+                        </div>
                       </div>
                     )
                   })}
-              </div>
+                </div>
+              </>
             ) : (
               <div className={styles.card} style={{ textAlign: "center", padding: "3rem" }}>
                 <svg
@@ -1113,7 +1218,7 @@ export default function PaginaAdmin() {
                   <line x1="3" y1="10" x2="21" y2="10" />
                 </svg>
                 <p style={{ fontSize: "1.125rem", color: "#6b7280", marginBottom: "0.5rem" }}>
-                  No hay historial disponible
+                  No hay historial en los últimos 30 días
                 </p>
                 <p style={{ fontSize: "0.875rem", color: "#9ca3af" }}>
                   Los datos aparecerán después del primer día de operación
