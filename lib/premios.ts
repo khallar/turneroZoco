@@ -33,21 +33,21 @@ export async function obtenerPremiosDia(fecha: string): Promise<ConfiguracionPre
       premios: [
         {
           id: "premio-1",
-          mensaje: "🎉 ¡Felicitaciones! Ganaste un 10% de descuento en tu compra",
+          mensaje: "🎉 ¡Felicitaciones! Ganaste un 10% de descuento en TODA tu compra",
           tipo: "aleatorio",
           activo: true,
           orden: 1,
         },
         {
           id: "premio-2",
-          mensaje: "🎁 ¡Sorpresa! Llevate un producto gratis de la sección promociones",
+          mensaje: "🎁 ¡Sorpresa! Llevate un Regalito gratis, Mostrale este Ticket al cajero para que te lo entregue.",
           tipo: "aleatorio",
           activo: true,
           orden: 2,
         },
         {
           id: "premio-3",
-          mensaje: "⭐ ¡Sos el cliente del día! Disfrutá de un 20% de descuento",
+          mensaje: "⭐ ¡Sos el cliente del día! Disfrutá de un 20% de descuento en el TOTAL de tu compra",
           tipo: "aleatorio",
           activo: true,
           orden: 3,
